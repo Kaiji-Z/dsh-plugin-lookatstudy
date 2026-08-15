@@ -20,17 +20,22 @@ const CSS = `
 .lks-root :where(button){font-family:var(--dsw-font-family);cursor:pointer;border:none;background:none;padding:0}
 .lks-root :where(a){color:var(--dsw-alias-state-business-primary)}
 
-/* ── the study tab: three columns, each scrolls independently ── */
-.lks-study{height:100%;display:flex;align-items:stretch;color:var(--dsw-alias-label-primary);container:lksstudy/inline-size}
-.lks-col{display:flex;flex-direction:column;min-width:0;overflow-y:auto;padding:12px 14px}
+/* ── the study tab: composer-width center, self-scrolling flanks ──
+   The center strip reuses the conversation column's own width axis
+   (--dsh-composer-card-max-width inherits from ConversationRoot's root), so
+   the tutor transcript is exactly as wide as the native composer below it
+   and the controls attach to the composer without covering the flow. The
+   flanking columns absorb the remaining width and scroll independently. */
+.lks-study{height:100%;display:flex;gap:16px;padding:10px 14px 8px;color:var(--dsw-alias-label-primary);container:lksstudy/inline-size}
+.lks-col{display:flex;flex-direction:column;min-width:0}
 .lks-colhead{flex:none;font-size:11px;font-weight:600;color:var(--dsw-alias-label-tertiary);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
-.lks-col-rail{flex:0 0 292px;border-right:1px solid var(--dsw-alias-border-l1)}
-.lks-col-tutor{flex:1 1 auto}
-.lks-col-bb{flex:0 0 400px;border-left:1px solid var(--dsw-alias-border-l1)}
-@container lksstudy (max-width: 1024px){
+.lks-col-rail{flex:1 1 0;min-width:190px;overflow-y:auto;padding:2px 6px}
+.lks-col-tutor{flex:0 0 auto;width:min(100%,var(--dsh-composer-card-max-width,780px))}
+.lks-col-bb{flex:1 1 0;min-width:230px;overflow-y:auto;padding:2px 6px}
+@container lksstudy (max-width: 1220px){
   .lks-study{flex-direction:column;overflow-y:auto}
-  .lks-col{flex:none;overflow:visible;border-right:none;border-bottom:1px solid var(--dsw-alias-border-l1)}
-  .lks-col-bb{border-left:none}
+  .lks-col{flex:none;overflow:visible;width:auto}
+  .lks-transcript{flex:none;min-height:200px;max-height:56vh}
 }
 
 /* ── left column: course rail ── */
@@ -59,7 +64,7 @@ const CSS = `
 .lks-empty{color:var(--dsw-alias-label-tertiary);text-align:center;padding:48px 8px;font-size:13px;line-height:2}
 
 /* ── middle column: the tutor ── */
-.lks-transcript{flex:1;min-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px}
+.lks-transcript{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px}
 .lks-msg{max-width:94%;font-size:13px;line-height:1.65;border-radius:12px;padding:8px 12px;word-break:break-word}
 .lks-msg.user{align-self:flex-end;white-space:pre-wrap;background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish)}
 .lks-msg.assistant{align-self:flex-start;background:var(--dsw-alias-bg-layer-2)}
