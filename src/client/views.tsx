@@ -116,7 +116,7 @@ export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNod
     inputActions.setDraft(text)
     inputActions.submit()
   }
-  return createElement('div', { className: 'lks-root lks-study' },
+  return createElement('div', { className: 'lks-root lks-study', 'data-conversation-composer-overlay': '' },
     createElement(CourseRail, { data, setFocus, send }),
     createElement(TutorColumn, { data, setMode, send, snapshot }),
     createElement(BlackboardColumn, { data }),

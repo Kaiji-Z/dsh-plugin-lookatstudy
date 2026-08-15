@@ -21,12 +21,16 @@ const CSS = `
 .lks-root :where(a){color:var(--dsw-alias-state-business-primary)}
 
 /* ── the study tab: composer-width center, self-scrolling flanks ──
-   The center strip reuses the conversation column's own width axis
+   data-conversation-composer-overlay (set on the root element) opts the
+   view into the host's overlay mode: viewArea becomes a fixed-height
+   non-growing host and the composer floats over the tab's bottom band, so
+   the tab itself never feeds the page scroll. The bottom padding clears the
+   floating composer via the host-published live --dsh-composer-height. The
+   center strip reuses the conversation column's width axis
    (--dsh-composer-card-max-width inherits from ConversationRoot's root), so
-   the tutor transcript is exactly as wide as the native composer below it
-   and the controls attach to the composer without covering the flow. The
+   the tutor transcript is exactly as wide as the native composer; the
    flanking columns absorb the remaining width and scroll independently. */
-.lks-study{height:100%;display:flex;gap:16px;padding:10px 14px 8px;color:var(--dsw-alias-label-primary);container:lksstudy/inline-size}
+.lks-study{height:100%;min-height:0;width:100%;box-sizing:border-box;overflow:hidden;display:flex;gap:16px;padding:10px 14px calc(var(--dsh-composer-height, 152px) + 12px);color:var(--dsw-alias-label-primary);container:lksstudy/inline-size}
 .lks-col{display:flex;flex-direction:column;min-width:0}
 .lks-colhead{flex:none;font-size:11px;font-weight:600;color:var(--dsw-alias-label-tertiary);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
 .lks-col-rail{flex:1 1 0;min-width:190px;overflow-y:auto;padding:2px 6px}
@@ -35,7 +39,7 @@ const CSS = `
 @container lksstudy (max-width: 1220px){
   .lks-study{flex-direction:column;overflow-y:auto}
   .lks-col{flex:none;overflow:visible;width:auto}
-  .lks-transcript{flex:none;min-height:200px;max-height:56vh}
+  .lks-transcript{flex:none;min-height:160px;max-height:44vh}
 }
 
 /* ── left column: course rail ── */
