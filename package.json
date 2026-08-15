@@ -57,5 +57,16 @@
   "devDependencies": {
     "@types/react": "~18.3.31",
     "react": "^18.3.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kaiji-Z/dsh-plugin-lookatstudy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Kaiji-Z/dsh-plugin-lookatstudy/issues"
+  },
+  "homepage": "https://github.com/Kaiji-Z/dsh-plugin-lookatstudy#readme",
+  "engines": {
+    "node": ">=22.19"
   }
 }
