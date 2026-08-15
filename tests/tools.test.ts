@@ -133,6 +133,105 @@ test('presentCall and presentResult are total over representative values', async
   }
 })
 
+
+/** Minimal JSON-schema subset the tools actually declare (object/array/scalars/enum/oneOf/required/additionalProperties/items). */
+interface Schema {
+  type?: string
+  enum?: unknown[]
+  properties?: Record<string, Schema>
+  required?: string[]
+  additionalProperties?: boolean
+  items?: Schema
+  oneOf?: Schema[]
+}
+
+/** Structural conformance check mirroring the real tool-call path's output validation (tests bypass it by calling execute directly). */
+function conforms(value: unknown, schema: Schema, path: string): string | null {
+  if (schema.oneOf !== undefined) {
+    return schema.oneOf.some(arm => conforms(value, arm, path) === null) ? null : `${path}: no oneOf arm matched (${JSON.stringify(value)})`
+  }
+  if (schema.enum !== undefined) {
+    return schema.enum.some(e => e === value) ? null : `${path}: ${JSON.stringify(value)} not in enum`
+  }
+  switch (schema.type) {
+    case 'object': {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) return `${path}: not an object`
+      const record = value as Record<string, unknown>
+      for (const key of schema.required ?? []) {
+        if (!(key in record)) return `${path}.${key}: required field missing`
+      }
+      for (const key of Object.keys(record)) {
+        const prop = schema.properties?.[key]
+        if (prop !== undefined) {
+          const err = conforms(record[key], prop, `${path}.${key}`)
+          if (err !== null) return err
+        } else if (schema.additionalProperties === false) {
+          return `${path}.${key}: present but undeclared (additionalProperties:false) — the real tool path rejects this`
+        }
+      }
+      return null
+    }
+    case 'array': {
+      if (!Array.isArray(value)) return `${path}: not an array`
+      for (const [i, item] of value.entries()) {
+        const err = conforms(item, schema.items ?? {}, `${path}[${i}]`)
+        if (err !== null) return err
+      }
+      return null
+    }
+    case 'string':
+      return typeof value === 'string' ? null : `${path}: not a string`
+    case 'integer':
+      return typeof value === 'number' && Number.isInteger(value) ? null : `${path}: not an integer`
+    case 'boolean':
+      return typeof value === 'boolean' ? null : `${path}: not a boolean`
+    case 'null':
+      return value === null ? null : `${path}: not null`
+    default:
+      return null
+  }
+}
+
+test('every tool output conforms to its declared output schema (the real tool-call path validates; direct execute calls do not)', async () => {
+  const { byName } = setup()
+  const imported = await run(byName, 'study_import_markdown', { markdown: COURSE_MD }) as { courseId: string; firstLessonId: string }
+  const lessonId = imported.firstLessonId as string
+
+  // The regression the tutor found live: concepts defined → ConceptView carries
+  // `tested`, which the study_lesson schema used to omit (additionalProperties:false).
+  await run(byName, 'study_define_concepts', {
+    lessonId,
+    concepts: [
+      { title: '读取', description: 'what reading means' },
+      { title: '写作', description: 'what writing means' },
+    ],
+  })
+
+  const scenarios: Array<[string, Record<string, unknown>]> = [
+    ['study_courses', {}],
+    ['study_map', { courseId: imported.courseId }],
+    ['study_lesson', { lessonId }],
+    ['study_record_answer', { lessonId, correct: true, concept: '读取' }],
+    ['study_due_reviews', {}],
+    ['study_complete_lesson', { lessonId }],
+    ['study_record_review', { lessonId, quality: 4 }],
+    ['study_propose_mastery', { lessonId, rationale: 'recap' }],
+    ['study_resolve_proposal', { proposalId: (await run(byName, 'study_propose_mastery', { lessonId, rationale: 'again' }) as { proposalId: string }).proposalId, accept: false }],
+    ['study_report_friction', { category: 'confused', summary: 'x', lessonId }],
+    ['study_remember', { category: 'global', content: 'prefers analogies' }],
+    ['study_notes', { lessonId }],
+    ['study_note_save', { lessonId, zone: 'record', title: 't', text: 'x', source: 'chat' }],
+    ['study_set_mode', { mode: 'practice' }],
+    ['study_lesson', { lessonId }],
+  ]
+  for (const [name, args] of scenarios) {
+    const tool = byName.get(name)!
+    const output = await run(byName, name, args)
+    const err = conforms(output, tool.output.schema as Schema, name)
+    assert.equal(err, null, `${name} output must satisfy its schema`)
+  }
+})
+
 test('every presentResult is total over a result with no meta (history events predating presentationMeta)', async () => {
   const { byName } = setup()
   const imported = await run(byName, 'study_import_markdown', { markdown: COURSE_MD })

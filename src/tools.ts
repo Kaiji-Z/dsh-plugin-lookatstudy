@@ -476,6 +476,8 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
                 title: { type: 'string', required: true },
                 masteryPct: { type: 'integer', required: true },
                 weak: { type: 'boolean', required: true },
+                /** 1 once this concept has been quizzed at least once, else 0 (ConceptView.tested). */
+                tested: { type: 'integer', required: true },
               },
             },
           }], required: true },
