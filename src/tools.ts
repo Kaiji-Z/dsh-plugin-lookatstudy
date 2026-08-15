@@ -25,6 +25,7 @@ import {
   NEAR_MASTERED_THRESHOLD,
   addFriction,
   addNote,
+  attemptLesson,
   completeLesson,
   conceptViews,
   courseSummaries,
@@ -57,7 +58,8 @@ export interface StudyStore {
 
 /** SM-2 quality grades, shared by the parameter enum and the state layer. */
 const QUALITIES = [0, 1, 2, 3, 4, 5] as const
-const LESSON_STATUSES = ['locked', 'available', 'completed'] as const
+const LESSON_STATUSES = ['locked', 'available', 'in_progress', 'mastered'] as const
+const LESSON_KINDS = ['study', 'practice', 'exam'] as const
 const FRICTION_CATEGORIES = ['confused', 'blocked', 'frustrated'] as const
 const MEMORY_CATEGORIES = ['global', 'pattern', 'lesson'] as const
 const NOTE_ZONES = ['understand', 'record', 'practice'] as const
@@ -104,7 +106,7 @@ function toMapValue(course: CourseState): cards.MapValue {
     title: course.title,
     counts: {
       total: lessons.length,
-      completed: lessons.filter(l => l.status === 'completed').length,
+      mastered: lessons.filter(l => l.status === 'mastered').length,
       available: lessons.filter(l => l.status === 'available').length,
     },
     tree: course.sections.map(section => ({
@@ -112,6 +114,7 @@ function toMapValue(course: CourseState): cards.MapValue {
       lessons: section.lessons.map(lesson => ({
         id: lesson.id,
         title: lesson.title,
+        kind: lesson.kind,
         status: lesson.status,
         masteryPct: lesson.mastery === null ? null : Math.round(lesson.mastery * 100),
         crown: masteryToCrown(lesson.mastery),
@@ -132,6 +135,7 @@ function toLessonValue(ref: LessonRef, state: LearningState) {
     courseTitle: ref.course.title,
     sectionTitle: ref.section.title,
     title: ref.lesson.title,
+    kind: ref.lesson.kind,
     status: ref.lesson.status,
     body: ref.lesson.body,
     masteryPct: ref.lesson.mastery === null ? null : Math.round(ref.lesson.mastery * 100),
@@ -328,7 +332,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
                 title: { type: 'string', required: true },
                 source: { type: 'string', required: true, enum: ['markdown', 'folder', 'github'] },
                 total: { type: 'integer', required: true },
-                completed: { type: 'integer', required: true },
+                mastered: { type: 'integer', required: true },
                 avgMasteryPct: { ...nullableInteger, required: true },
                 dueCount: { type: 'integer', required: true },
                 currentLessonId: { ...nullableString, required: true },
@@ -342,7 +346,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
         text: value.courses.length === 0
           ? 'No courses imported yet. Import one with study_import_markdown, study_import_folder, or study_import_github.'
           : value.courses.map(c =>
-              `“${c.title}” (${c.source}) — ${c.completed}/${c.total} lessons`
+              `“${c.title}” (${c.source}) — ${c.mastered}/${c.total} lessons mastered`
               + `${c.avgMasteryPct === null ? '' : `, avg mastery ${c.avgMasteryPct}%`}`
               + `${c.dueCount === 0 ? '' : `, ${c.dueCount} reviews due`}`
               + `${c.currentLessonId === null ? '' : `, current lesson ${c.currentLessonId}`}`,
@@ -358,7 +362,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
           title: s.title,
           source: s.source,
           total: s.total,
-          completed: s.completed,
+          mastered: s.mastered,
           avgMasteryPct: s.avgMasteryPct,
           dueCount: s.dueCount,
           currentLessonId: s.currentLessonId,
@@ -372,7 +376,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
   const courseMap = defineTool({
     name: 'study_map',
     description:
-      'Show one course\'s skill tree: sections, lessons with locked/available/completed status, mastery, '
+      'Show one course\'s skill tree: sections, lessons with locked/available/in_progress/mastered status, mastery, '
       + 'weak-concept count (⚡), and friction count — the weak spots to target.',
     parameters: {
       courseId: { type: 'string', required: true, description: 'Course id from an import result or study_courses.' },
@@ -390,7 +394,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
             additionalProperties: false,
             properties: {
               total: { type: 'integer', required: true },
-              completed: { type: 'integer', required: true },
+              mastered: { type: 'integer', required: true },
               available: { type: 'integer', required: true },
             },
           },
@@ -411,6 +415,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
                     properties: {
                       id: { type: 'string', required: true },
                       title: { type: 'string', required: true },
+                      kind: { type: 'string', required: true, enum: [...LESSON_KINDS] },
                       status: { type: 'string', required: true, enum: [...LESSON_STATUSES] },
                       masteryPct: { ...nullableInteger, required: true },
                       crown: { type: 'integer', required: true },
@@ -454,6 +459,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
           courseTitle: { type: 'string', required: true },
           sectionTitle: { type: 'string', required: true },
           title: { type: 'string', required: true },
+          kind: { type: 'string', required: true, enum: [...LESSON_KINDS] },
           status: { type: 'string', required: true, enum: [...LESSON_STATUSES] },
           body: { type: 'string', required: true },
           masteryPct: { ...nullableInteger, required: true },
@@ -519,7 +525,9 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
     async execute(args, exec) {
       note(exec)
       return mutate((state) => {
-        const ref = findLesson(state, args.lessonId)
+        // Opening IS attempting (LookatStudy markNodeAttempted): first open
+        // marks in_progress, seeds mastery 0.5, and runs the dual-track unlock.
+        const { ref } = attemptLesson(state, args.lessonId, new Date())
         state.focus = { lessonId: ref.lesson.id }
         return toLessonValue(ref, state)
       })
@@ -563,7 +571,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
           attempts: { type: 'integer', required: true },
           correctCount: { type: 'integer', required: true },
           graduated: { type: 'boolean', required: true },
-          unlockedLessonId: { ...nullableString, required: true },
+          unlockedLessonIds: { type: 'array', required: true, items: { type: 'string' } },
           reviewDueAt: { ...nullableString, required: true },
         },
       },
@@ -572,7 +580,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
         text: cards.answerLine(value)
           + (value.concept === null ? '' : `\nconcept: ${value.concept.title} ${value.concept.masteryPct}%${value.concept.weak ? ' ⚡weak' : ''}`)
           + (value.graduated ? '\n🎓 mastery ≥90% — lesson graduated, first review scheduled.' : '')
-          + (value.unlockedLessonId === null ? '' : `\n🔓 next lesson unlocked: ${value.unlockedLessonId}`),
+          + (value.unlockedLessonIds.length === 0 ? '' : `\n🔓 unlocked: ${value.unlockedLessonIds.join(', ')}`),
       }],
     },
     async execute(args, exec) {
@@ -607,7 +615,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
           attempts: r.ref.lesson.attempts,
           correctCount: r.ref.lesson.correctCount,
           graduated: r.progression.graduated,
-          unlockedLessonId: r.progression.unlocked?.id ?? null,
+          unlockedLessonIds: r.progression.unlocked.map(u => u.id),
           reviewDueAt: r.progression.nextDue,
         }
       })
@@ -623,7 +631,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
   const completeLessonTool = defineTool({
     name: 'study_complete_lesson',
     description:
-      'Mark a lesson completed manually (graduation at 90% mastery is the automatic path — this is the '
+      'Mark a lesson mastered manually (graduation at 90% mastery is the automatic path — this is the '
       + 'override). Unlocks the next lesson and schedules the first spaced review for tomorrow. Call only '
       + 'when the learner has genuinely worked through the lesson.',
     parameters: {
@@ -636,8 +644,8 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
         properties: {
           lessonId: { type: 'string', required: true },
           lessonTitle: { type: 'string', required: true },
-          unlockedLessonId: { ...nullableString, required: true },
-          unlockedLessonTitle: { ...nullableString, required: true },
+          unlockedLessonIds: { type: 'array', required: true, items: { type: 'string' } },
+          unlockedLessonTitles: { type: 'array', required: true, items: { type: 'string' } },
           reviewDueAt: { type: 'string', required: true },
           courseComplete: { type: 'boolean', required: true },
         },
@@ -654,8 +662,8 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
         return {
           lessonId: r.ref.lesson.id,
           lessonTitle: r.ref.lesson.title,
-          unlockedLessonId: r.unlocked?.id ?? null,
-          unlockedLessonTitle: r.unlocked?.title ?? null,
+          unlockedLessonIds: r.unlocked.map(u => u.id),
+          unlockedLessonTitles: r.unlocked.map(u => u.title),
           reviewDueAt: r.dueAt,
           courseComplete: r.courseComplete,
         }
@@ -668,7 +676,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
 
   const dueReviewsTool = defineTool({
     name: 'study_due_reviews',
-    description: 'List completed lessons whose spaced-repetition review is due (optionally within one course), oldest first. Start every session here.',
+    description: 'List mastered lessons whose spaced-repetition review is due (optionally within one course), oldest first. Start every session here.',
     parameters: {
       courseId: { type: 'string', description: 'Restrict to one course; omit to scan all courses.' },
     },
@@ -720,7 +728,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
   const recordReviewTool = defineTool({
     name: 'study_record_review',
     description:
-      'Record an SM-2 review grade for a completed lesson and advance its schedule. Grade how well the '
+      'Record an SM-2 review grade for a mastered lesson and advance its schedule. Grade how well the '
       + 'learner recalled the material: 5 perfect, 4 hesitant, 3 recalled with effort, 2 incorrect but '
       + 'recognized, 1 incorrect, 0 complete blackout. Target weak concepts (⚡) first.',
     parameters: {

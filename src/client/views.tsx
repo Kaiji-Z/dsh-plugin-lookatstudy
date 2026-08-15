@@ -12,7 +12,7 @@
  */
 
 import { createElement, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {
   AssistantBlock, ConversationNode, ConversationSnapshot, PartialAssistant,
@@ -35,10 +35,50 @@ const ZONES: ReadonlyArray<readonly [string, string]> = [
 ]
 
 /** Status glyph for one lesson row (LookatStudy's map icons). */
-function glyph(status: string): string {
-  if (status === 'completed') return '✅'
-  if (status === 'available') return '▶️'
+function glyph(kind: string, status: string): string {
+  if (kind === 'exam') return '🎯'
+  if (status === 'mastered') return '👑'
+  if (status === 'in_progress') return '📖'
+  if (status === 'available') return '⭐'
   return '🔒'
+}
+
+/** LookatStudy's exam gate: an exam node opens only when every sibling study lesson reached mastery ≥50%. */
+function examOpen(lessons: ReadonlyArray<{ kind: string; masteryPct: number | null }>): boolean {
+  return lessons.every(l => l.kind !== 'study' || (l.masteryPct ?? 0) >= 50)
+}
+
+/** Multi-keyword AND title filter (LookatStudy course-tree-filter). */
+function titleMatches(title: string, query: string): boolean {
+  const keys = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  return keys.every(k => title.toLowerCase().includes(k))
+}
+
+/** The rail's import row: a GitHub URL input plus the paste/folder hints. */
+function ImportRow({ send }: { send: StudySend }): ReactNode {
+  const [url, setUrl] = useState('')
+  return createElement('div', { className: 'lks-import' },
+    createElement('div', { className: 'lks-inputrow' },
+      createElement('input', {
+        className: 'lks-input',
+        type: 'url',
+        placeholder: 'GitHub 仓库链接,如 microsoft/AI-For-Beginners',
+        value: url,
+        onChange: (e: { target: { value: string } }) => { setUrl(e.target.value) },
+        onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
+          if (e.key === 'Enter' && url.trim() !== '') send(`导入课程:用 study_import_github 抓取 ${url.trim()}`)
+        },
+      }),
+      createElement('button', {
+        className: 'lks-btn primary',
+        disabled: url.trim() === '',
+        onClick: () => { send(`导入课程:用 study_import_github 抓取 ${url.trim()}`) },
+      }, '导入'),
+    ),
+    createElement('div', { className: 'lks-import-hint' },
+      '粘贴 markdown → 说「导入为课程」', createElement('br'),
+      '本地文件夹 → 说「导入 D:/path/to/folder」'),
+  )
 }
 
 /** One rendered transcript row (pure fold of the conversation snapshot). */
@@ -130,7 +170,7 @@ function storedPane(): StudyPane {
 
 /** The whole study tab. Wide = three columns (课程 | 导师 | 黑板); narrow (<1220px) = one composer-width pane with a three-way switcher. */
 export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNode {
-  const { data, setMode, setFocus } = useStudy()
+  const { data, setMode, setFocus, deleteCourse } = useStudy()
   const snapshot = useSession((s: ConversationSnapshot) => s)
   const [pane, setPane] = useState<StudyPane>(storedPane)
   const send: StudySend = (text) => {
@@ -164,7 +204,7 @@ export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNod
       },
       }, p.label)),
     ),
-    createElement(CourseRail, { data, setFocus, send }),
+    createElement(CourseRail, { data, setFocus, deleteCourse, send }),
     createElement(TutorColumn, { data, setMode, send, snapshot }),
     createElement(BlackboardColumn, { data }),
   ),
@@ -173,9 +213,17 @@ export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNod
 
 type StudyData = ReturnType<typeof useStudy>['data']
 
-/** Left column: course picker, lesson tree, due box, or the import empty state. */
-function CourseRail({ data, setFocus, send }: { data: StudyData; setFocus: (id: string) => Promise<void>; send: StudySend }): ReactNode {
+/** Left column: course management (pick/delete/search/import), lesson tree, due box. */
+function CourseRail({ data, setFocus, deleteCourse, send }: {
+  data: StudyData
+  setFocus: (id: string) => Promise<void>
+  deleteCourse: (courseId: string) => Promise<void>
+  send: StudySend
+}): ReactNode {
   const [selectedCourse, setSelectedCourse] = useState('')
+  const [query, setQuery] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const reportError = (err: unknown): void => { setError(err instanceof Error ? err.message : String(err)) }
   const body: ReactNode = data === null
@@ -185,13 +233,10 @@ function CourseRail({ data, setFocus, send }: { data: StudyData; setFocus: (id: 
         '暂无课程', createElement('br'),
         createElement('button', {
           className: 'lks-btn primary',
-          style: { marginTop: '10px' },
+          style: { margin: '10px 0' },
           onClick: () => { send('导入课程:用 study_import_github 抓取 https://github.com/microsoft/AI-For-Beginners') },
         }, '📚 导入示例课程'),
-        createElement('div', { style: { marginTop: '12px', fontSize: '12px' } },
-          '粘贴 markdown → 说「导入为课程」', createElement('br'),
-          '本地文件夹 → 说「导入 D:/path/to/folder」', createElement('br'),
-          '任意 GitHub 仓库 → 贴链接给导师'),
+        createElement(ImportRow, { send }),
       )
       : (() => {
         const courseId = data.courses.some(c => c.courseId === selectedCourse)
@@ -199,15 +244,46 @@ function CourseRail({ data, setFocus, send }: { data: StudyData; setFocus: (id: 
           : data.courses[0]!.courseId
         const course = data.courses.find(c => c.courseId === courseId)!
         return createElement('div', null,
-          data.courses.length > 1
-            ? createElement('select', {
-              className: 'lks-rail-select',
-              value: courseId,
-              onChange: (e: { target: { value: string } }) => { setSelectedCourse(e.target.value) },
-            }, ...data.courses.map(c => createElement('option', { key: c.courseId, value: c.courseId }, c.title)))
-            : createElement('div', { className: 'lks-rail-title' }, course.title),
-          createElement('div', { className: 'lks-rail-sub' },
-            `${course.completed}/${course.total} 完成${course.avgMasteryPct !== null ? ` · 平均 ${course.avgMasteryPct}%` : ''}`),
+          createElement('div', { className: 'lks-rail-head' },
+            data.courses.length > 1
+              ? createElement('select', {
+                className: 'lks-rail-select',
+                value: courseId,
+                onChange: (e: { target: { value: string } }) => { setSelectedCourse(e.target.value); setConfirmDelete(false) },
+              }, ...data.courses.map(c => createElement('option', { key: c.courseId, value: c.courseId }, c.title)))
+              : createElement('div', { className: 'lks-rail-title' }, course.title),
+            createElement('button', {
+              className: `lks-btn ${confirmDelete ? 'primary' : 'ghost'}`,
+              title: confirmDelete ? '再点一次确认删除(含全部进度与笔记)' : '删除本课程',
+              onClick: () => {
+                if (!confirmDelete) { setConfirmDelete(true); return }
+                setConfirmDelete(false)
+                deleteCourse(courseId).then(() => { setSelectedCourse('') }, reportError)
+              },
+            }, confirmDelete ? '确认删除?' : '🗑'),
+          ),
+          createElement('div', { className: 'lks-rail-sub' }, `${course.mastered}/${course.total} 已掌握`),
+          createElement('div', {
+            className: `lks-masterybar${course.avgMasteryPct === 100 ? ' gold' : ''}`,
+            title: course.avgMasteryPct === null ? '尚无掌握度数据' : `平均掌握度 ${course.avgMasteryPct}%`,
+          }, createElement('i', { style: { width: `${course.avgMasteryPct ?? 0}%` } })),
+          createElement('input', {
+            className: 'lks-search',
+            type: 'search',
+            placeholder: '搜索课时…(多关键词空格分隔)',
+            value: query,
+            onChange: (e: { target: { value: string } }) => { setQuery(e.target.value) },
+            onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
+              if (e.key !== 'Enter' || query.trim() === '') return
+              for (const section of course.sections) {
+                const hit = section.lessons.find(l => l.kind !== 'exam' && l.status !== 'locked' && titleMatches(l.title, query))
+                if (hit !== undefined) {
+                  void setFocus(hit.id).catch(reportError)
+                  return
+                }
+              }
+            },
+          }),
           data.dueCount > 0
             ? createElement('div', { className: 'lks-duebox' },
               `🔁 待复习 ${data.dueCount}`,
@@ -221,27 +297,47 @@ function CourseRail({ data, setFocus, send }: { data: StudyData; setFocus: (id: 
               }, '开始复习'),
             )
             : null,
-          ...course.sections.flatMap(section => [
-            createElement('div', { key: section.title, className: 'lks-sec' }, section.title),
-            ...section.lessons.map(lesson => createElement('div', {
-              key: lesson.id,
-              className: `lks-node${lesson.status === 'locked' ? ' locked' : ''}${lesson.focus ? ' focus' : ''}`,
-              title: lesson.status === 'locked' ? '尚未解锁 — 先完成前面的课时' : lesson.title,
-              onClick: () => {
-                if (lesson.status === 'locked') return
-                void setFocus(lesson.id).catch(reportError)
-              },
-            },
-            createElement('span', { className: 'lks-g' }, glyph(lesson.status)),
-            createElement('span', { className: 'lks-t' }, lesson.title),
-            lesson.weakConcepts > 0 ? createElement('span', { className: 'lks-tag weak' }, `⚡${lesson.weakConcepts}`) : null,
-            lesson.frictionCount > 0 ? createElement('span', { className: 'lks-tag fric' }, `😣${lesson.frictionCount}`) : null,
-            lesson.masteryPct !== null
-              ? createElement('span', { className: 'lks-bar' }, createElement('i', { style: { width: `${lesson.masteryPct}%` } }))
-              : null,
-            lesson.masteryPct !== null ? createElement('span', { className: 'lks-pct' }, `${lesson.masteryPct}%`) : null,
-            )),
-          ]),
+          ...course.sections.flatMap(section => {
+            const examAllowed = examOpen(section.lessons)
+            const lessons = section.lessons.filter(l => query.trim() === '' || titleMatches(l.title, query) || l.focus)
+            if (lessons.length === 0) return []
+            return [
+              createElement('div', { key: section.title, className: 'lks-sec' },
+                createElement('span', { className: 'lks-sec-num' }, String(section.index + 1)),
+                ` ${section.title}`),
+              ...lessons.map(lesson => {
+                const locked = lesson.status === 'locked' || (lesson.kind === 'exam' && !examAllowed)
+                return createElement('div', {
+                  key: lesson.id,
+                  className: `lks-node${locked ? ' locked' : ''}${lesson.focus ? ' focus' : ''}`,
+                  title: locked
+                    ? lesson.kind === 'exam' ? '章节测验:本节全部课时掌握度 ≥50% 后开放' : '尚未解锁 — 先学前面的课时'
+                    : lesson.title,
+                  onClick: () => {
+                    if (locked) return
+                    void setFocus(lesson.id).catch(reportError)
+                    if (lesson.kind === 'exam') send(`开始「${section.title}」的章节测验:按本节课时出题,答完逐题判分`)
+                  },
+                },
+                createElement('span', { className: 'lks-g' }, glyph(lesson.kind, locked ? 'locked' : lesson.status)),
+                createElement('span', { className: 'lks-t' }, lesson.title),
+                lesson.due ? createElement('span', { className: 'lks-tag due' }, '🔁') : null,
+                lesson.weakConcepts > 0 ? createElement('span', { className: 'lks-tag weak' }, `⚡${lesson.weakConcepts}`) : null,
+                lesson.frictionCount > 0 ? createElement('span', { className: 'lks-tag fric' }, `😣${lesson.frictionCount}`) : null,
+                lesson.masteryPct !== null
+                  ? createElement('span', { className: 'lks-bar' }, createElement('i', { style: { width: `${lesson.masteryPct}%` } }))
+                  : null,
+                lesson.masteryPct !== null ? createElement('span', { className: 'lks-pct' }, `${lesson.masteryPct}%`) : null,
+                )
+              }),
+            ]
+          }),
+          createElement('button', {
+            className: 'lks-btn ghost',
+            style: { marginTop: '10px' },
+            onClick: () => { setShowImport(!showImport) },
+          }, showImport ? '收起导入' : '＋ 导入课程'),
+          showImport ? createElement(ImportRow, { send }) : null,
         )
       })()
   return createElement('div', { className: 'lks-col lks-col-rail' },

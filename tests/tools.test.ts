@@ -41,7 +41,7 @@ test('the full study loop works through the tools', async () => {
   const imported = await run(byName, 'study_import_markdown', { markdown: COURSE_MD }) as {
     courseId: string; lessons: number; firstLessonId: string
   }
-  assert.equal(imported.lessons, 3)
+  assert.equal(imported.lessons, 4, 'three study lessons plus the S1 exam node')
   assert.equal(saves(), 1)
 
   const courses = await run(byName, 'study_courses') as { total: number; courses: Array<{ currentLessonId: string }> }
@@ -49,19 +49,23 @@ test('the full study loop works through the tools', async () => {
   assert.equal(courses.courses[0]!.currentLessonId, imported.firstLessonId)
 
   const map = await run(byName, 'study_map', { courseId: imported.courseId })
-  assert.equal(map.counts.total, 3)
+  assert.equal(map.counts.total, 4)
   assert.equal(map.tree[0]!.lessons[0]!.status, 'available')
 
   const lesson = await run(byName, 'study_lesson', { lessonId: imported.firstLessonId })
   assert.equal(lesson.body, 'reading body')
   assert.equal(lesson.nextLessonId, `${imported.courseId}:0:1`)
+  assert.equal(lesson.status, 'in_progress', 'opening is attempting')
+  assert.equal(state.courses[0]!.sections[0]!.lessons[1]!.status, 'available',
+    'the attempt itself unlocks the dual track (mastery seeded at the 0.5 prior)')
 
   const answer = await run(byName, 'study_record_answer', { lessonId: imported.firstLessonId, correct: true })
   assert.equal(answer.attempts, 1)
   assert.ok(answer.newMasteryPct > 0)
 
   const completed = await run(byName, 'study_complete_lesson', { lessonId: imported.firstLessonId })
-  assert.equal(completed.unlockedLessonId, `${imported.courseId}:0:1`)
+  assert.deepEqual(completed.unlockedLessonIds, [],
+    'already unlocked by the study_lesson attempt — completion adds nothing new')
   assert.equal(completed.courseComplete, false)
 
   const due = await run(byName, 'study_due_reviews') as { total: number }
@@ -156,7 +160,9 @@ test('render returns text blocks for the core outputs', async () => {
   const blocks = mapTool.output.render({ courseId: imported.courseId }, await run(byName, 'study_map', { courseId: imported.courseId }))
   assert.ok(blocks.length > 0)
   assert.ok(blocks.every(b => b.type === 'text'))
-  assert.ok(blocks.some(b => 'text' in b && b.text.includes('▶️')))
+  assert.ok(blocks.some(b => 'text' in b && b.text.includes('⭐')),
+    'the fresh first lesson renders as the available star')
+  assert.ok(blocks.some(b => 'text' in b && b.text.includes('🎯')), 'exam nodes render')
 })
 
 test('KC lifecycle: define, attribute answers, weak flags, min aggregation', async () => {
@@ -203,7 +209,7 @@ test('mastery proposals: propose, resolve accept/reject', async () => {
   const resolved = await run(byName, 'study_resolve_proposal', { proposalId: proposal.proposalId, accept: true })
   assert.equal(resolved.status, 'applied')
   const lesson = state.courses[0]!.sections[0]!.lessons[0]!
-  assert.equal(lesson.status, 'completed')
+  assert.equal(lesson.status, 'mastered')
   assert.ok((lesson.mastery ?? 0) >= 0.95)
   await assert.rejects(
     () => run(byName, 'study_resolve_proposal', { proposalId: proposal.proposalId, accept: true }),
@@ -253,11 +259,11 @@ test('answers auto-graduate at 90% and early-unlock at 50%', async () => {
   assert.equal(state.courses[0]!.sections[0]!.lessons[1]!.status, 'available', 'early unlock at ≥50%')
 
   // Keep answering until graduation (>=90%).
-  for (let i = 0; i < 30 && state.courses[0]!.sections[0]!.lessons[0]!.status !== 'completed'; i++) {
+  for (let i = 0; i < 30 && state.courses[0]!.sections[0]!.lessons[0]!.status !== 'mastered'; i++) {
     await run(byName, 'study_record_answer', { lessonId: l1, correct: true })
   }
   const graduated = state.courses[0]!.sections[0]!.lessons[0]!
-  assert.equal(graduated.status, 'completed')
+  assert.equal(graduated.status, 'mastered')
   assert.ok(graduated.dueAt !== null, 'graduation seeds the first review')
   assert.notEqual(l2, undefined)
 })

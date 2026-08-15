@@ -90,7 +90,7 @@ test('workbenchState assembles map, lesson html, notes, proposals, and due list'
   assert.equal(wb.mode, 'guide')
   assert.equal(wb.courses.length, 1)
   assert.equal(wb.courses[0]!.courseId, courseId)
-  assert.equal(wb.courses[0]!.total, 3)
+  assert.equal(wb.courses[0]!.total, 4, 'three study lessons plus the S1 exam node')
   const focusNode = wb.courses[0]!.sections[0]!.lessons[0]!
   assert.ok(focusNode.focus)
   assert.equal(wb.focusLessonId, lessonId)

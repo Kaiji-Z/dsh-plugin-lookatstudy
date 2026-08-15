@@ -15,8 +15,11 @@ import { computeSm2, type ReviewQuality, type Sm2State } from './vendor/sm2.ts'
 import { masteryToCrown, updateMastery } from './vendor/bkt.ts'
 import type { ParsedCourse } from './vendor/markdown-course.ts'
 
-/** Lesson position on the mastery-gated path. */
-export type LessonStatus = 'locked' | 'available' | 'completed'
+/** Lesson position on the mastery-gated path (LookatStudy NodeStatus). */
+export type LessonStatus = 'locked' | 'available' | 'in_progress' | 'mastered'
+
+/** Lesson role: gated teaching material, free practice material (LookatStudy's 实操 world), or a section exam node gated on sibling mastery. */
+export type LessonKind = 'study' | 'practice' | 'exam'
 
 /** Tutoring persona (soul), switchable at runtime. */
 export type StudyMode = 'direct' | 'guide' | 'practice'
@@ -75,6 +78,8 @@ export interface LessonState {
   anchor: string
   /** Lesson markdown body (verbatim from import). */
   body: string
+  /** Teaching node or section exam node (exams gate on sibling mastery in the UI). */
+  kind: LessonKind
   status: LessonStatus
   /** Knowledge components defined by the tutor (null until defined). */
   concepts: ConceptDef[] | null
@@ -119,9 +124,9 @@ export interface CourseState {
   sections: SectionState[]
 }
 
-/** Whole persisted state; `version` gates future migrations. */
+/** Whole persisted state; `version` gates migrations (v1 → v2 renamed completed→mastered and added lesson.kind). */
 export interface LearningState {
-  version: 1
+  version: 2
   courses: CourseState[]
   /** Active tutoring soul. */
   mode: StudyMode
@@ -155,7 +160,7 @@ const FRICTION_CAP = 10
 
 /** Fresh empty state for a first run. */
 export function emptyState(): LearningState {
-  return { version: 1, courses: [], mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, proposals: [] }
+  return { version: 2, courses: [], mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, proposals: [] }
 }
 
 /**
@@ -172,7 +177,8 @@ export function resolveStatePath(configured: string): string {
 
 /**
  * Load persisted state; a missing file yields empty state, a corrupt file fails loud.
- * Fields introduced after the first release default into place here.
+ * v1 → v2 migration: `completed` lessons become `mastered`, lessons gain `kind`
+ * (default `study`). Newer files than this code knows are rejected.
  * @param path - state-file path.
  * @returns the loaded state.
  */
@@ -187,10 +193,40 @@ export function loadState(path: string): LearningState {
   if (typeof parsed !== 'object' || parsed === null || !Array.isArray((parsed as LearningState).courses)) {
     throw new Error(`lookatstudy-plugin: state file has an unexpected shape: ${path}`)
   }
-  const raw = parsed as Partial<LearningState>
+  const raw = parsed as Partial<LearningState> & { version?: number }
+  if (raw.version !== undefined && raw.version > 2) {
+    throw new Error(`lookatstudy-plugin: state file version ${raw.version} is newer than this plugin supports: ${path}`)
+  }
+  const courses = raw.courses!.map(course => ({
+    ...course,
+    sections: course.sections.map(section => ({
+      ...section,
+      lessons: section.lessons.map(lesson => ({
+        ...lesson,
+        kind: lesson.kind ?? 'study',
+        status: lesson.status === ('completed' as LessonStatus) ? 'mastered' : lesson.status,
+      })),
+    })),
+  }))
+  for (const course of courses) {
+    // LookatStudy's ensureExamNodesForExistingCourses: courses imported before
+    // exam nodes existed gain them at load (appended per section end, so
+    // existing lesson ids never move).
+    course.sections.forEach((section, si) => {
+      const hasExam = section.lessons.some(l => l.kind === 'exam')
+      const studyCount = section.lessons.filter(l => l.kind === 'study').length
+      if (!hasExam && studyCount >= 2) {
+        section.lessons.push({
+          ...freshLesson(`${section.title} · 章节测验`, `${section.anchor}#exam`, '', 'exam'),
+          id: `${course.id}:${si}:${section.lessons.length}`,
+          status: 'available',
+        })
+      }
+    })
+  }
   return {
-    version: 1,
-    courses: raw.courses!,
+    version: 2,
+    courses,
     mode: raw.mode ?? 'guide',
     focus: raw.focus ?? null,
     memoryGlobal: raw.memoryGlobal ?? null,
@@ -221,12 +257,13 @@ function slugify(title: string): string {
   return slug === '' ? 'course' : slug
 }
 
-function freshLesson(title: string, anchor: string, body: string): LessonState {
+function freshLesson(title: string, anchor: string, body: string, kind: LessonKind = 'study'): LessonState {
   return {
     id: '',
     title,
     anchor,
     body,
+    kind,
     status: 'locked',
     concepts: null,
     conceptMastery: null,
@@ -244,13 +281,17 @@ function freshLesson(title: string, anchor: string, body: string): LessonState {
 }
 
 /**
- * Import a parsed course: assign a fresh id, gate the path (first lesson
- * available, the rest locked), and append it to the state.
+ * Import a parsed course. Idempotent: the id is the title slug, so importing
+ * the same source again returns the existing course unchanged (LookatStudy's
+ * pasted-markdown contract, applied to every source). Study lessons are gated
+ * (first available, rest locked); every study section with ≥2 lessons also
+ * gets a 章节测验 exam node (available in state, gated on sibling mastery in
+ * the UI — LookatStudy's rule).
  * @param state - state to mutate.
  * @param parsed - course tree from an importer.
  * @param source - import origin.
  * @param sourceRef - markdown/folder/repo reference for display.
- * @returns the new course.
+ * @returns the imported (or pre-existing) course.
  */
 export function importCourse(
   state: LearningState,
@@ -258,26 +299,34 @@ export function importCourse(
   source: CourseSource,
   sourceRef: string,
 ): CourseState {
-  const id = `${slugify(parsed.title)}-${randomBytes(3).toString('hex')}`
+  const id = slugify(parsed.title)
+  const existing = state.courses.find(c => c.id === id)
+  if (existing) return existing
   const course: CourseState = {
     id,
     title: parsed.title,
     source,
     sourceRef,
     createdAt: new Date().toISOString(),
-    sections: parsed.sections.map(section => ({
-      title: section.title,
-      anchor: section.anchor,
-      lessons: section.lessons.map(lesson => freshLesson(lesson.title, lesson.anchor, lesson.body)),
-    })),
+    sections: parsed.sections.map(section => {
+      const lessons = section.lessons.map(lesson =>
+        freshLesson(lesson.title, lesson.anchor, lesson.body, lesson.world === 'practice' ? 'practice' : 'study'))
+      if (section.world !== 'practice' && lessons.filter(l => l.kind === 'study').length >= 2) {
+        lessons.push(freshLesson(`${section.title} · 章节测验`, `${section.anchor}#exam`, section.examBody ?? '', 'exam'))
+      }
+      return { title: section.title, anchor: section.anchor, lessons }
+    }),
   }
   let first = true
   for (let si = 0; si < course.sections.length; si++) {
     const lessons = course.sections[si]!.lessons
     for (let li = 0; li < lessons.length; li++) {
-      lessons[li]!.id = `${id}:${si}:${li}`
-      if (first) {
-        lessons[li]!.status = 'available'
+      const lesson = lessons[li]!
+      lesson.id = `${id}:${si}:${li}`
+      if (lesson.kind === 'exam' || lesson.kind === 'practice') {
+        lesson.status = 'available'
+      } else if (first) {
+        lesson.status = 'available'
         first = false
       }
     }
@@ -335,15 +384,53 @@ export function findLesson(state: LearningState, lessonId: string): LessonRef {
 }
 
 /**
- * Find the lesson that follows the given one in course order.
+ * Find the next STUDY lesson after the given one in flat course order
+ * (practice/exam nodes never gate the path).
  * @param course - course to walk.
  * @param lessonId - current lesson id.
- * @returns the next lesson, or null at the end of the path.
+ * @returns the next study lesson, or null at the end of the path.
  */
 export function nextLesson(course: CourseState, lessonId: string): LessonState | null {
   const flat = course.sections.flatMap(s => s.lessons)
   const i = flat.findIndex(l => l.id === lessonId)
-  return i >= 0 ? (flat[i + 1] ?? null) : null
+  for (let j = i + 1; j < flat.length; j++) {
+    if (flat[j]!.kind === 'study') return flat[j]!
+  }
+  return null
+}
+
+/**
+ * LookatStudy's dual-track unlock, fired whenever the current lesson reaches
+ * mastery ≥0.5 (which includes the 0.5 seed from the first attempt): unlock
+ * (1) the next locked study lesson later in the same section AND (2) the
+ * first study lesson of the next section. Only `locked` nodes ever change;
+ * nothing re-locks.
+ * @param ref - the lesson that reached the threshold.
+ * @returns the lessons unlocked by this call.
+ */
+function unlockAfter(ref: LessonRef): Array<{ id: string; title: string }> {
+  const unlocked: Array<{ id: string; title: string }> = []
+  const lessons = ref.section.lessons
+  const li = lessons.indexOf(ref.lesson)
+  for (let i = li + 1; i < lessons.length; i++) {
+    const next = lessons[i]!
+    if (next.kind !== 'study') continue
+    if (next.status === 'locked') {
+      next.status = 'available'
+      unlocked.push({ id: next.id, title: next.title })
+    }
+    break
+  }
+  const si = ref.course.sections.indexOf(ref.section)
+  const nextSection = ref.course.sections[si + 1]
+  if (nextSection !== undefined) {
+    const first = nextSection.lessons.find(l => l.kind === 'study')
+    if (first !== undefined && first.status === 'locked') {
+      first.status = 'available'
+      unlocked.push({ id: first.id, title: first.title })
+    }
+  }
+  return unlocked
 }
 
 /** Recompute lesson mastery as the weakest concept once KCs exist. */
@@ -354,46 +441,50 @@ function aggregateMastery(lesson: LessonState): void {
 }
 
 /**
- * Graduate a lesson: mark completed, seed its SM-2 schedule if absent (first
- * review due tomorrow), and unlock the next lesson on the path.
+ * Graduate a lesson: mark mastered, seed its SM-2 schedule if absent (first
+ * review due tomorrow), and run the dual-track unlock.
  */
-function graduate(lesson: LessonState, course: CourseState, now: Date): void {
-  if (lesson.status !== 'completed') {
-    lesson.status = 'completed'
+function graduate(lesson: LessonState, course: CourseState, now: Date): Array<{ id: string; title: string }> {
+  if (lesson.status !== 'mastered') {
+    lesson.status = 'mastered'
     lesson.completedAt = now.toISOString()
     if (lesson.sm2 === null) {
       lesson.sm2 = { easeFactor: 2.5, intervalDays: 1, repetitions: 0 }
       lesson.dueAt = new Date(now.getTime() + DAY_MS).toISOString()
     }
   }
-  const next = nextLesson(course, lesson.id)
-  if (next && next.status === 'locked') next.status = 'available'
+  const si = course.sections.findIndex(s => s.lessons.includes(lesson))
+  return unlockAfter({ course, section: course.sections[si]!, lesson })
 }
 
 /** Outcome details shared by answer recording and proposal application. */
 export interface Progression {
   graduated: boolean
-  unlocked: { id: string; title: string } | null
+  unlocked: Array<{ id: string; title: string }>
   nextDue: string | null
   courseComplete: boolean
+}
+
+/** Whether every study lesson of the course is mastered. */
+function courseComplete(course: CourseState): boolean {
+  return course.sections.every(s => s.lessons.every(l => l.kind !== 'study' || l.status === 'mastered'))
 }
 
 /** Describe the path effects of a mastery change (early unlock, graduation). */
 function applyProgression(ref: LessonRef, now: Date): Progression {
   const before = ref.lesson.status
   const graduated = ref.lesson.mastery !== null && ref.lesson.mastery >= MASTERED_THRESHOLD
-  if (graduated && before !== 'completed') {
-    graduate(ref.lesson, ref.course, now)
+  let unlocked: Array<{ id: string; title: string }> = []
+  if (graduated && before !== 'mastered') {
+    unlocked = graduate(ref.lesson, ref.course, now)
   } else if (ref.lesson.mastery !== null && ref.lesson.mastery >= UNLOCK_THRESHOLD) {
-    const next = nextLesson(ref.course, ref.lesson.id)
-    if (next && next.status === 'locked') next.status = 'available'
+    unlocked = unlockAfter(ref)
   }
-  const next = nextLesson(ref.course, ref.lesson.id)
   return {
-    graduated: graduated && before !== 'completed',
-    unlocked: next && next.status !== 'locked' ? { id: next.id, title: next.title } : null,
+    graduated: graduated && before !== 'mastered',
+    unlocked,
     nextDue: ref.lesson.dueAt,
-    courseComplete: next === null && ref.lesson.status === 'completed',
+    courseComplete: courseComplete(ref.course),
   }
 }
 
@@ -409,10 +500,40 @@ export interface AnswerResult {
 }
 
 /**
+ * Open a lesson for study (LookatStudy markNodeAttempted): locked lessons
+ * fail loud; the first open of an `available` lesson marks it `in_progress`,
+ * seeds mastery at the BKT prior (0.5), and — because 0.5 already meets the
+ * unlock threshold — runs the dual-track unlock, so merely starting a lesson
+ * lights up the next ones.
+ * @param state - state to mutate.
+ * @param lessonId - lesson to open.
+ * @param now - current time.
+ * @returns the lesson ref, whether this open started it, and what unlocked.
+ */
+export function attemptLesson(
+  state: LearningState,
+  lessonId: string,
+  now: Date,
+): { ref: LessonRef; started: boolean; unlocked: Array<{ id: string; title: string }> } {
+  const ref = findLesson(state, lessonId)
+  if (ref.lesson.status === 'locked') {
+    throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is locked; complete earlier lessons first`)
+  }
+  if (ref.lesson.status !== 'available') {
+    return { ref, started: false, unlocked: [] }
+  }
+  ref.lesson.status = 'in_progress'
+  ref.lesson.lastAnsweredAt = now.toISOString()
+  if (ref.lesson.mastery === null) ref.lesson.mastery = 0.5
+  return { ref, started: true, unlocked: unlockAfter(ref) }
+}
+
+/**
  * Record one graded answer against a lesson: attribute it to one knowledge
  * component when named, update BKT (per-KC, aggregated as the weakest),
  * nudge the SM-2 schedule when one exists, and apply mastery-driven
- * progression (early unlock at 0.5, graduation at 0.9).
+ * progression (early unlock at 0.5, graduation at 0.9). Locked lessons fail
+ * loud — open the lesson first (study_lesson does).
  * @param state - state to mutate.
  * @param lessonId - lesson to update.
  * @param correct - whether the learner answered correctly.
@@ -428,6 +549,10 @@ export function recordAnswer(
   now: Date,
 ): AnswerResult {
   const ref = findLesson(state, lessonId)
+  if (ref.lesson.status === 'locked') {
+    throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is locked; open it with study_lesson first`)
+  }
+  if (ref.lesson.status === 'available') ref.lesson.status = 'in_progress'
   const kcIndex = concept === undefined
     ? undefined
     : ref.lesson.concepts?.findIndex(c => c.title === concept)
@@ -480,24 +605,23 @@ export function recordAnswer(
  * @param state - state to mutate.
  * @param lessonId - lesson to complete.
  * @param now - current time.
- * @returns completion result including the unlocked lesson, if any.
+ * @returns completion result including the unlocked lessons.
  */
 export function completeLesson(
   state: LearningState,
   lessonId: string,
   now: Date,
-): { ref: LessonRef; unlocked: { id: string; title: string } | null; dueAt: string; courseComplete: boolean } {
+): { ref: LessonRef; unlocked: Array<{ id: string; title: string }>; dueAt: string; courseComplete: boolean } {
   const ref = findLesson(state, lessonId)
   if (ref.lesson.status === 'locked') {
     throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is locked; complete earlier lessons first`)
   }
-  graduate(ref.lesson, ref.course, now)
-  const next = nextLesson(ref.course, ref.lesson.id)
+  const unlocked = graduate(ref.lesson, ref.course, now)
   return {
     ref,
-    unlocked: next ? { id: next.id, title: next.title } : null,
+    unlocked,
     dueAt: ref.lesson.dueAt ?? new Date(now.getTime() + DAY_MS).toISOString(),
-    courseComplete: next === null,
+    courseComplete: courseComplete(ref.course),
   }
 }
 
@@ -671,6 +795,13 @@ export function resolveProposal(state: LearningState, proposalId: string, accept
       ref.lesson.mastery = Math.max(ref.lesson.mastery ?? 0, 0.95)
     }
     graduate(ref.lesson, ref.course, now)
+    // LookatStudy's manual-apply side effect: the graduation also counts as a
+    // correct SM-2 review when a schedule already exists.
+    if (ref.lesson.sm2 !== null) {
+      const review = computeSm2(ref.lesson.sm2, 5, now)
+      ref.lesson.sm2 = { easeFactor: review.easeFactor, intervalDays: review.intervalDays, repetitions: review.repetitions }
+      ref.lesson.dueAt = review.dueAt
+    }
   }
   proposal.status = accept ? 'applied' : 'rejected'
   return proposal
@@ -717,7 +848,7 @@ export interface DueReview {
 }
 
 /**
- * List completed lessons whose SM-2 review is due, oldest first.
+ * List mastered lessons whose SM-2 review is due, oldest first.
  * @param state - state to scan.
  * @param courseId - restrict to one course when provided.
  * @param now - current time.
@@ -728,7 +859,7 @@ export function dueReviews(state: LearningState, courseId: string | undefined, n
   const due: DueReview[] = []
   for (const course of courses) {
     for (const lesson of course.sections.flatMap(s => s.lessons)) {
-      if (lesson.status !== 'completed' || lesson.dueAt === null) continue
+      if (lesson.status !== 'mastered' || lesson.dueAt === null) continue
       if (Date.parse(lesson.dueAt) > now.getTime()) continue
       due.push({
         lessonId: lesson.id,
@@ -751,7 +882,7 @@ export interface CourseSummary {
   source: CourseSource
   createdAt: string
   total: number
-  completed: number
+  mastered: number
   available: number
   avgMasteryPct: number | null
   dueCount: number
@@ -760,7 +891,7 @@ export interface CourseSummary {
 
 /**
  * Summarize every course: counts, average mastery, due reviews, and the
- * current (first non-completed) lesson.
+ * current (first not-yet-mastered study) lesson.
  * @param state - state to summarize.
  * @param now - current time.
  * @returns one summary per course, in import order.
@@ -770,7 +901,7 @@ export function courseSummaries(state: LearningState, now: Date): CourseSummary[
     const lessons = course.sections.flatMap(s => s.lessons)
     const answered = lessons.filter(l => l.mastery !== null)
     const due = dueReviews({ ...emptyState(), courses: [course] }, course.id, now)
-    const current = lessons.find(l => l.status !== 'completed') ?? null
+    const current = lessons.find(l => l.kind === 'study' && l.status !== 'mastered') ?? null
     const avg = answered.length === 0
       ? null
       : answered.reduce((sum, l) => sum + (l.mastery ?? 0), 0) / answered.length
@@ -780,7 +911,7 @@ export function courseSummaries(state: LearningState, now: Date): CourseSummary[
       source: course.source,
       createdAt: course.createdAt,
       total: lessons.length,
-      completed: lessons.filter(l => l.status === 'completed').length,
+      mastered: lessons.filter(l => l.status === 'mastered').length,
       available: lessons.filter(l => l.status === 'available').length,
       avgMasteryPct: avg === null ? null : Math.round(avg * 100),
       dueCount: due.length,
@@ -868,7 +999,9 @@ export function learnerSnapshot(state: LearningState, now: Date): LearnerSnapsho
   let ref: LessonRef | null = state.focus === null ? null : tryFindLesson(state, state.focus.lessonId)
   if (ref === null && state.courses.length > 0) {
     const lessons = state.courses[0]!.sections.flatMap(s => s.lessons)
-    const current = lessons.find(l => l.status === 'available') ?? null
+    const current = lessons.find(l => l.kind === 'study' && l.status === 'in_progress')
+      ?? lessons.find(l => l.kind === 'study' && l.status === 'available')
+      ?? null
     ref = current === null ? null : { course: state.courses[0]!, section: state.courses[0]!.sections.find(s => s.lessons.includes(current))!, lesson: current }
   }
   return {

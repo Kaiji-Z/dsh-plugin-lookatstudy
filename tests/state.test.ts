@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
 import {
   addFriction,
+  attemptLesson,
   completeLesson,
   courseSummaries,
   deleteCourse,
@@ -50,14 +51,18 @@ function importedFixture(): { state: LearningState; courseId: string } {
   return { state, courseId: course.id }
 }
 
-test('import gates the path: first available, rest locked', () => {
+test('import gates the path: first study lesson available, rest locked, exams free', () => {
   const { state, courseId } = importedFixture()
   const course = findCourse(state, courseId)
-  const statuses = course.sections.flatMap(s => s.lessons.map(l => l.status))
-  assert.deepEqual(statuses, ['available', 'locked', 'locked'])
-  const ids = course.sections.flatMap(s => s.lessons.map(l => l.id))
+  const lessons = course.sections.flatMap(s => s.lessons)
+  assert.deepEqual(
+    lessons.map(l => [l.kind, l.status]),
+    [['study', 'available'], ['study', 'locked'], ['exam', 'available'], ['study', 'locked']],
+    'S1 has two study lessons so it gains a 章节测验 exam node; S2 has one, no exam',
+  )
+  const ids = lessons.map(l => l.id)
   assert.match(ids[0]!, new RegExp(`^${courseId}:0:0$`))
-  assert.match(ids[2]!, new RegExp(`^${courseId}:1:0$`))
+  assert.match(ids[3]!, new RegExp(`^${courseId}:1:0$`))
 })
 
 test('findLesson resolves hierarchical ids and rejects unknown ones', () => {
@@ -81,23 +86,42 @@ test('answers update mastery, attempts, and counters', () => {
   assert.equal(second.ref.lesson.correctCount, 1)
 })
 
-test('completing a lesson unlocks exactly the next one and seeds SM-2', () => {
+test('completing a lesson runs the dual-track unlock and seeds SM-2', () => {
   const { state, courseId } = importedFixture()
   const l1 = `${courseId}:0:0`
   const result = completeLesson(state, l1, T0)
-  assert.equal(result.unlocked?.id, `${courseId}:0:1`)
+  assert.deepEqual(result.unlocked.map(u => u.id), [`${courseId}:0:1`, `${courseId}:1:0`],
+    'unlocks the next study lesson in-section AND the first study lesson of the next section (LookatStudy dual-track)')
   assert.equal(result.ref.lesson.dueAt, new Date(T0.getTime() + DAY).toISOString())
   assert.equal(findLesson(state, `${courseId}:0:1`).lesson.status, 'available')
-  assert.equal(findLesson(state, `${courseId}:1:0`).lesson.status, 'locked')
-  assert.throws(() => completeLesson(state, `${courseId}:1:0`, T0), /locked/)
+  assert.equal(findLesson(state, `${courseId}:1:0`).lesson.status, 'available')
+  assert.throws(() => completeLesson(state, `${courseId}:1:9`, T0), /unknown lesson id/)
+})
+
+test('attempting a lesson marks in_progress, seeds mastery 0.5, and unlocks early', () => {
+  const { state, courseId } = importedFixture()
+  assert.throws(() => attemptLesson(state, `${courseId}:0:1`, T0), /locked; complete earlier lessons first/,
+    'locked lessons refuse to open')
+  const first = attemptLesson(state, `${courseId}:0:0`, T0)
+  assert.equal(first.started, true)
+  assert.equal(first.ref.lesson.status, 'in_progress')
+  assert.equal(first.ref.lesson.mastery, 0.5, 'BKT prior seeds mastery — the attempt itself meets the unlock threshold')
+  assert.deepEqual(first.unlocked.map(u => u.id), [`${courseId}:0:1`, `${courseId}:1:0`])
+  assert.deepEqual(attemptLesson(state, `${courseId}:0:0`, T0), { ref: first.ref, started: false, unlocked: [] },
+    're-opening an in_progress lesson is a no-op')
+})
+
+test('recordAnswer refuses locked lessons', () => {
+  const { state, courseId } = importedFixture()
+  assert.throws(() => recordAnswer(state, `${courseId}:0:1`, true, undefined, T0), /locked; open it with study_lesson/)
 })
 
 test('the whole path completes and reports course completion', () => {
   const { state, courseId } = importedFixture()
   const ids = [`${courseId}:0:0`, `${courseId}:0:1`, `${courseId}:1:0`]
   const last = ids.reduce((_prev, id) => completeLesson(state, id, T0), null)
-  assert.equal(last?.courseComplete, true)
-  assert.equal(last?.unlocked, null)
+  assert.equal(last?.courseComplete, true, 'every STUDY lesson mastered (the exam node never gates completion)')
+  assert.deepEqual(last?.unlocked, [])
   assert.equal(nextLesson(findCourse(state, courseId), ids[2]!), null)
 })
 
@@ -122,11 +146,35 @@ test('course summaries aggregate progress and due counts', () => {
   recordAnswer(state, `${courseId}:0:1`, true, undefined, T0)
   const [summary] = courseSummaries(state, T0)
   assert.equal(summary!.courseId, courseId)
-  assert.equal(summary!.total, 3)
-  assert.equal(summary!.completed, 1)
+  assert.equal(summary!.total, 4, 'three study lessons plus the S1 exam node')
+  assert.equal(summary!.mastered, 1)
   assert.equal(summary!.dueCount, 0)
   assert.equal(summary!.currentLessonId, `${courseId}:0:1`)
   assert.ok(summary!.avgMasteryPct! > 0)
+})
+
+test('v1 state migrates: completed→mastered, kind defaults, exam nodes backfilled', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lookatstudy-'))
+  try {
+    const path = join(dir, 'state.json')
+    const { state, courseId } = importedFixture()
+    // Degrade to a v1 shape: completed statuses, no kind fields.
+    state.version = 1 as never
+    const v1 = JSON.parse(JSON.stringify(state), (k, v) => k === 'kind' ? undefined : v) as typeof state
+    v1.courses[0]!.sections[0]!.lessons[0]!.status = 'completed' as never
+    v1.sections = undefined as never
+    writeFileSync(path, JSON.stringify(v1), 'utf8')
+    const migrated = loadState(path)
+    assert.equal(migrated.version, 2)
+    const section = migrated.courses[0]!.sections[0]!
+    assert.equal(section.lessons[0]!.status, 'mastered', 'completed renamed')
+    assert.equal(section.lessons[0]!.kind, 'study', 'kind defaults')
+    const exam = section.lessons.at(-1)!
+    assert.equal(exam.kind, 'exam', 'exam node backfilled at the section end')
+    assert.match(exam.id, new RegExp(`^${courseId}:0:[0-9]+$`))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('state persists and reloads identically', () => {

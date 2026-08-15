@@ -15,18 +15,21 @@ export interface StudyState {
   readonly courses: ReadonlyArray<{
     readonly courseId: string
     readonly title: string
-    readonly completed: number
+    readonly mastered: number
     readonly total: number
     readonly avgMasteryPct: number | null
     readonly sections: ReadonlyArray<{
       readonly title: string
+      readonly index: number
       readonly lessons: ReadonlyArray<{
         readonly id: string
         readonly title: string
+        readonly kind: 'study' | 'practice' | 'exam'
         readonly status: string
         readonly masteryPct: number | null
         readonly weakConcepts: number
         readonly frictionCount: number
+        readonly due: boolean
         readonly focus: boolean
       }>
     }>
@@ -134,6 +137,16 @@ class StudyStore {
     })
     this.refresh()
   }
+
+  /** Delete one course (and its proposals) from the host state. */
+  async deleteCourse(courseId: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/course/delete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ courseId }),
+    })
+    this.refresh()
+  }
 }
 
 /** The one shared store instance backing every study seat component. */
@@ -144,7 +157,13 @@ export function useStudy(): {
   data: StudyState | null
   setMode: (mode: StudyState['mode']) => Promise<void>
   setFocus: (lessonId: string) => Promise<void>
+  deleteCourse: (courseId: string) => Promise<void>
 } {
   const data = useSyncExternalStore(studyStore.subscribe, studyStore.getSnapshot, studyStore.getSnapshot)
-  return { data, setMode: studyStore.setMode.bind(studyStore), setFocus: studyStore.setFocus.bind(studyStore) }
+  return {
+    data,
+    setMode: studyStore.setMode.bind(studyStore),
+    setFocus: studyStore.setFocus.bind(studyStore),
+    deleteCourse: studyStore.deleteCourse.bind(studyStore),
+  }
 }

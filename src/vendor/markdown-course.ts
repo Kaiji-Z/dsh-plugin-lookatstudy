@@ -31,6 +31,8 @@ export interface ParsedSection {
   /** 两个世界: null=未定, "study"/"practice" 由子节点多数决定或 LLM 判 */
   world?: "study" | "practice" | null;
   lessons: ParsedLesson[];
+  /** 章节测验引子(考试内容始终由导师按本节课时即时生成,这里只放说明性开场;由 state 层消费) */
+  examBody?: string;
 }
 
 export interface ParsedCourse {

@@ -13,7 +13,9 @@ import type { UserMessage } from '@deepseek-ai/dsh-llm'
 import { renderMarkdown } from './markdown.ts'
 import {
   conceptViews,
+  deleteCourse,
   dueReviews,
+  findCourse,
   findLesson,
   learnerSnapshot,
   starterPrompts,
@@ -63,18 +65,21 @@ export interface ResponseLike {
 export interface WorkbenchCourse {
   courseId: string
   title: string
-  completed: number
+  mastered: number
   total: number
   avgMasteryPct: number | null
   sections: Array<{
     title: string
+    index: number
     lessons: Array<{
       id: string
       title: string
+      kind: string
       status: string
       masteryPct: number | null
       weakConcepts: number
       frictionCount: number
+      due: boolean
       focus: boolean
     }>
   }>
@@ -116,26 +121,30 @@ export interface WorkbenchState {
  */
 export function workbenchState(state: LearningState, now: Date): WorkbenchState {
   const focusId = state.focus?.lessonId ?? null
+  const dueIds = new Set(dueReviews(state, undefined, now).map(d => d.lessonId))
   const courses: WorkbenchCourse[] = state.courses.map((course) => {
     const lessons = course.sections.flatMap(s => s.lessons)
     const answered = lessons.filter(l => l.mastery !== null)
     return {
       courseId: course.id,
       title: course.title,
-      completed: lessons.filter(l => l.status === 'completed').length,
+      mastered: lessons.filter(l => l.status === 'mastered').length,
       total: lessons.length,
       avgMasteryPct: answered.length === 0
         ? null
         : Math.round(answered.reduce((sum, l) => sum + (l.mastery ?? 0), 0) / answered.length * 100),
-      sections: course.sections.map(section => ({
+      sections: course.sections.map((section, index) => ({
         title: section.title,
+        index,
         lessons: section.lessons.map(lesson => ({
           id: lesson.id,
           title: lesson.title,
+          kind: lesson.kind,
           status: lesson.status,
           masteryPct: lesson.mastery === null ? null : Math.round(lesson.mastery * 100),
           weakConcepts: (conceptViews(lesson) ?? []).filter(c => c.weak).length,
           frictionCount: lesson.friction.length,
+          due: dueIds.has(lesson.id),
           focus: lesson.id === focusId,
         })),
       })),
@@ -288,6 +297,26 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         sendJson(res, 200, { ok: true })
         return
       }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/course/delete') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.courseId !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'courseId (string) required' })
+          return
+        }
+        try {
+          const course = findCourse(deps.store.get(), body.courseId)
+          deleteCourse(deps.store.get(), course.id)
+          if (deps.store.get().focus?.lessonId.startsWith(`${course.id}:`)) {
+            deps.store.get().focus = null
+          }
+          deps.store.save()
+          sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
       if (req.method === 'POST' && pathname === '/lookatstudy/api/mode') {
         const body = await readJsonBodySafe(req, res)
         if (body === undefined) return
@@ -428,7 +457,7 @@ function render(state){
   var rail=document.getElementById('rail');
   var h='';
   if(course){
-    h+='<div class="course"><h3>'+esc(course.title)+' · '+course.completed+'/'+course.total+'</h3>';
+    h+='<div class="course"><h3>'+esc(course.title)+' · '+course.mastered+'/'+course.total+' 已掌握'+'</h3>';
     if(state.dueCount>0){
       h+='<div id="duebox">🔁 <b>'+state.dueCount+'</b> 项到期<div>';
       state.due.forEach(function(d){h+='<div class="d">'+esc(d.lessonTitle)+' — '+esc(d.courseTitle)+(d.overdueDays>0?(' · 超'+d.overdueDays+'天'):'')+'</div>'});
@@ -437,7 +466,7 @@ function render(state){
     course.sections.forEach(function(s){
       h+='<div class="sec">'+esc(s.title)+'</div>';
       s.lessons.forEach(function(l){
-        var g=l.status==='completed'?'✅':(l.status==='available'?'▶️':'🔒');
+        var g=l.kind==='exam'?'🎯':(l.status==='mastered'?'👑':(l.status==='in_progress'?'📖':(l.status==='available'?'⭐':'🔒')));
         h+='<div class="node '+(l.status==='locked'?'locked':'')+(l.focus?' focus':'')+'" data-id="'+esc(l.id)+'">'
           +'<span class="g">'+g+'</span><span class="t">'+esc(l.title)+'</span>'
           +(l.weakConcepts>0?'<span class="tag weak">⚡'+l.weakConcepts+'</span>':'')

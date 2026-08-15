@@ -19,12 +19,13 @@ export interface ImportValue {
 export interface MapValue {
   courseId: string
   title: string
-  counts: { total: number; completed: number; available: number }
+  counts: { total: number; mastered: number; available: number }
   tree: Array<{
     title: string
     lessons: Array<{
       id: string
       title: string
+      kind: string
       status: string
       masteryPct: number | null
       crown: number
@@ -62,19 +63,22 @@ export interface ReviewValue {
 /** Canonical value of `study_complete_lesson`. */
 export interface CompleteValue {
   lessonTitle: string
-  unlockedLessonTitle: string | null
+  unlockedLessonTitles: string[]
   reviewDueAt: string
   courseComplete: boolean
 }
 
 /**
- * Status glyph for one lesson line on the map.
+ * Status glyph for one lesson line on the map (LookatStudy's map icons).
+ * @param kind - lesson kind.
  * @param status - lesson status.
  * @returns the glyph prefix.
  */
-function statusGlyph(status: string): string {
-  if (status === 'completed') return '✅'
-  if (status === 'available') return '▶️'
+function statusGlyph(kind: string, status: string): string {
+  if (kind === 'exam') return '🎯'
+  if (status === 'mastered') return '👑'
+  if (status === 'in_progress') return '📖'
+  if (status === 'available') return '⭐'
   return '🔒'
 }
 
@@ -101,7 +105,7 @@ export function importLines(value: ImportValue): string[] {
  */
 export function mapLines(value: MapValue): string[] {
   const lines = [
-    `🗺 ${value.title} — ${value.counts.completed}/${value.counts.total} done`,
+    `🗺 ${value.title} — ${value.counts.mastered}/${value.counts.total} mastered`,
   ]
   for (const section of value.tree) {
     lines.push(`▍${section.title}`)
@@ -109,7 +113,7 @@ export function mapLines(value: MapValue): string[] {
       const mastery = lesson.masteryPct === null ? '' : ` · ${lesson.masteryPct}%${lesson.crown >= 4 ? ' 👑' : ''}`
       const weak = lesson.weakConcepts > 0 ? ` · ⚡${lesson.weakConcepts}` : ''
       const friction = lesson.frictionCount > 0 ? ` · 😣${lesson.frictionCount}` : ''
-      lines.push(`  ${statusGlyph(lesson.status)} ${lesson.title}${mastery}${weak}${friction}`)
+      lines.push(`  ${statusGlyph(lesson.kind, lesson.status)} ${lesson.title}${mastery}${weak}${friction}`)
     }
   }
   return lines
@@ -156,9 +160,9 @@ export function reviewLine(value: ReviewValue): string {
  * @returns card lines.
  */
 export function completeLines(value: CompleteValue): string[] {
-  const lines = [`🎓 Completed “${value.lessonTitle}”`]
-  if (value.unlockedLessonTitle !== null) {
-    lines.push(`🔓 Unlocked “${value.unlockedLessonTitle}”`)
+  const lines = [`🎓 Mastered “${value.lessonTitle}”`]
+  for (const title of value.unlockedLessonTitles) {
+    lines.push(`🔓 Unlocked “${title}”`)
   }
   lines.push(`🔁 First review due ${value.reviewDueAt.slice(0, 10)}`)
   if (value.courseComplete) lines.push('🏁 Course complete!')
