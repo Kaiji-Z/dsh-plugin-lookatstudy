@@ -88,6 +88,78 @@ export interface ChatRow {
   readonly key: string
   readonly role: 'user' | 'assistant' | 'tool' | 'error' | 'streaming'
   readonly text: string
+  /** The settled tool call head for `tool` rows; drives the learning-aware chip. */
+  readonly call?: { name: string; argsRaw: string } | null
+}
+
+/**
+ * Tooltip text for one course-tree status glyph. Pure.
+ * @param kind - lesson kind ('study' | 'practice' | 'exam').
+ * @param status - lesson status ('locked' | 'available' | 'in_progress' | 'mastered').
+ */
+export function statusTitle(kind: string, status: string): string {
+  if (kind === 'exam') return '章节测验:本节全部课时掌握度 ≥50% 后开放'
+  switch (status) {
+    case 'mastered': return '已毕业:掌握度 ≥90%(或你接受了掌握提案)'
+    case 'in_progress': return '学习中:已开课,掌握度从 50% 起步'
+    case 'available': return '可开始:已解锁,尚未学习'
+    default: return '未解锁:先完成前面的课时'
+  }
+}
+
+/**
+ * Extract the last quiz option block (2–4 consecutive `A. …` `B. …` lines,
+ * letters strictly consecutive from A) from an assistant reply — the raw text
+ * of the tutor's question becomes the clickable answer surface. Pure.
+ * @param text - one assistant reply's markdown.
+ * @returns the options of the last valid block, or [] when none.
+ */
+export function quizOptions(text: string): ReadonlyArray<{ letter: string; text: string }> {
+  const runs: Array<Array<{ letter: string; text: string }>> = []
+  let run: Array<{ letter: string; text: string }> = []
+  const flush = (): void => {
+    if (run.length >= 2) runs.push(run)
+    run = []
+  }
+  for (const line of text.split('\n')) {
+    const match = /^([A-D])[.、:)]\s+(.+)$/.exec(line.trim())
+    if (match === null) {
+      flush()
+      continue
+    }
+    const nextLetter = run.length === 0 ? 'A' : String.fromCharCode(run[run.length - 1]!.letter.charCodeAt(0) + 1)
+    if (match[1] === nextLetter) run.push({ letter: match[1], text: match[2]! })
+    else {
+      flush()
+      if (match[1] === 'A') run.push({ letter: match[1], text: match[2]! })
+    }
+  }
+  flush()
+  return runs.at(-1) ?? []
+}
+
+/**
+ * Learning-aware label for one settled tool call; null keeps the generic
+ * 🔧-name chip. Pure.
+ * @param name - tool call name.
+ * @param argsRaw - the call's raw JSON args.
+ */
+export function toolChipLabel(name: string, argsRaw: string): { label: string; tone: 'ok' | 'bad' } | null {
+  if (name === 'study_record_answer') {
+    let concept = '未归因'
+    let correct = false
+    try {
+      const args = JSON.parse(argsRaw) as { concept?: unknown; correct?: unknown }
+      if (typeof args.concept === 'string' && args.concept !== '') concept = args.concept
+      correct = args.correct === true
+    } catch { /* malformed argsRaw falls back to the unattributed/incorrect label */ }
+    return correct
+      ? { label: `✓ 答对 · ${concept}`, tone: 'ok' }
+      : { label: `✗ 答错 · ${concept}`, tone: 'bad' }
+  }
+  if (name === 'study_import_github' || name === 'study_import_markdown' || name === 'study_import_folder') return { label: '📦 导入课程', tone: 'ok' }
+  if (name === 'study_define_concepts') return { label: '🧠 提炼知识点', tone: 'ok' }
+  return null
 }
 
 function textOf(blocks: readonly { type: string; text?: string }[]): string {
@@ -121,7 +193,7 @@ export function transcriptRows(nodes: readonly ConversationNode[], partial: Part
         break
       }
       case 'tool-result':
-        rows.push({ key: `t${node.seq}`, role: 'tool', text: node.call?.name ?? node.callId })
+        rows.push({ key: `t${node.seq}`, role: 'tool', text: node.call?.name ?? node.callId, call: node.call })
         break
       case 'turn-error':
         rows.push({ key: `e${node.seq}`, role: 'error', text: node.message })
@@ -357,9 +429,7 @@ function CourseRail({ data, setFocus, deleteCourse, bindLessonSession, send, ctx
                 return createElement('div', {
                   key: lesson.id,
                   className: `lks-node${locked ? ' locked' : ''}${lesson.focus ? ' focus' : ''}`,
-                  title: locked
-                    ? lesson.kind === 'exam' ? '章节测验:本节全部课时掌握度 ≥50% 后开放' : '尚未解锁 — 先学前面的课时'
-                    : lesson.title,
+                  title: jumping === lesson.id ? '正在打开课时会话…' : statusTitle(lesson.kind, locked ? 'locked' : lesson.status),
                   onClick: () => {
                     if (locked) return
                     if (lesson.kind === 'exam') {
@@ -372,13 +442,13 @@ function CourseRail({ data, setFocus, deleteCourse, bindLessonSession, send, ctx
                 },
                 createElement('span', { className: 'lks-g' }, jumping === lesson.id ? '⏳' : glyph(lesson.kind, locked ? 'locked' : lesson.status)),
                 createElement('span', { className: 'lks-t' }, lesson.title),
-                lesson.due ? createElement('span', { className: 'lks-tag due' }, '🔁') : null,
-                lesson.weakConcepts > 0 ? createElement('span', { className: 'lks-tag weak' }, `⚡${lesson.weakConcepts}`) : null,
-                lesson.frictionCount > 0 ? createElement('span', { className: 'lks-tag fric' }, `😣${lesson.frictionCount}`) : null,
+                lesson.due ? createElement('span', { className: 'lks-tag due', title: '这课时的复习今天到期(SM-2)' }, '🔁') : null,
+                lesson.weakConcepts > 0 ? createElement('span', { className: 'lks-tag weak', title: `${lesson.weakConcepts} 个薄弱知识点,测验会优先考察` }, `⚡${lesson.weakConcepts}`) : null,
+                lesson.frictionCount > 0 ? createElement('span', { className: 'lks-tag fric', title: `${lesson.frictionCount} 次卡点记录(你说"不懂"时导师记下的)` }, `😣${lesson.frictionCount}`) : null,
                 lesson.masteryPct !== null
-                  ? createElement('span', { className: 'lks-bar' }, createElement('i', { style: { width: `${lesson.masteryPct}%` } }))
+                  ? createElement('span', { className: 'lks-bar', title: `课时掌握度 ${lesson.masteryPct}%(取最薄弱知识点)` }, createElement('i', { style: { width: `${lesson.masteryPct}%` } }))
                   : null,
-                lesson.masteryPct !== null ? createElement('span', { className: 'lks-pct' }, `${lesson.masteryPct}%`) : null,
+                lesson.masteryPct !== null ? createElement('span', { className: 'lks-pct', title: '课时掌握度 = 最薄弱知识点的掌握度' }, `${lesson.masteryPct}%`) : null,
                 )
               }),
             ]
@@ -398,23 +468,40 @@ function CourseRail({ data, setFocus, deleteCourse, bindLessonSession, send, ctx
   )
 }
 
-/** One transcript row's element. */
-function chatRowElement(row: ChatRow): ReactNode {
+/** One transcript row's element; `interactive` adds the quiz-answer buttons to an assistant row. */
+function chatRowElement(row: ChatRow, interactive?: { send: StudySend }): ReactNode {
   if (row.role === 'user') {
     return createElement('div', { key: row.key, className: 'lks-msg user' }, row.text)
   }
   if (row.role === 'tool') {
+    const chip = row.call === undefined || row.call === null ? null : toolChipLabel(row.call.name, row.call.argsRaw)
+    if (chip !== null) {
+      return createElement('div', { key: row.key, className: `lks-msg tool ${chip.tone}` }, chip.label)
+    }
     return createElement('div', { key: row.key, className: 'lks-msg tool' }, `🔧 ${row.text}`)
   }
   if (row.role === 'error') {
     return createElement('div', { key: row.key, className: 'lks-msg error' }, `⚠ ${row.text}`)
   }
   const cls = row.role === 'streaming' ? 'lks-msg assistant lks-prose streaming' : 'lks-msg assistant lks-prose'
-  return createElement('div', {
+  const body = createElement('div', {
     key: row.key,
     className: cls,
     dangerouslySetInnerHTML: { __html: renderMarkdown(row.text) },
   })
+  const options = interactive === undefined || row.role === 'streaming' ? [] : quizOptions(row.text)
+  if (options.length < 2) return body
+  return createElement('div', { key: row.key, className: 'lks-turn' },
+    body,
+    createElement('div', { className: 'lks-quiz', title: '点击选项作答,也可以直接打字回答' },
+      ...options.map(opt => createElement('button', {
+        key: opt.letter,
+        className: 'lks-opt',
+        onClick: () => { interactive.send(`选 ${opt.letter}:${opt.text}`) },
+      },
+        createElement('span', { className: 'lks-optletter' }, opt.letter),
+        createElement('span', null, opt.text))),
+  ))
 }
 
 /** Middle column: the tutor — transcript, proposal banner, pills, starters. Typing happens in the native composer below the tab. */
@@ -426,6 +513,9 @@ function TutorColumn({ data, setMode, send, snapshot }: {
 }): ReactNode {
   const [error, setError] = useState<string | null>(null)
   const rows = transcriptRows(snapshot.nodes, snapshot.partial)
+  // Quiz buttons only on the last settled assistant reply: older questions are
+  // already answered, and the streaming partial may cut an option mid-line.
+  const lastAssistant = rows.reduce((acc, row, i) => row.role === 'assistant' ? i : acc, -1)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const el = scrollRef.current
@@ -442,7 +532,7 @@ function TutorColumn({ data, setMode, send, snapshot }: {
     createElement('div', { className: 'lks-transcript', ref: scrollRef },
       rows.length === 0
         ? createElement('div', { className: 'lks-empty' }, '对话会出现在这里', createElement('br'), '在下方输入框和导师说话')
-        : rows.map(chatRowElement),
+        : rows.map((row, i) => chatRowElement(row, i === lastAssistant ? { send } : undefined)),
     ),
     proposal !== null
       ? createElement('div', { className: 'lks-banner' },

@@ -31,6 +31,8 @@ Works with any profile. In the `web` profile the plugin additionally serves the 
 | 中 · 老师 | A read-only mini transcript of the live tutor conversation (assistant replies rendered through the plugin's markdown pipeline, tool calls as chips, streaming included) plus the soul pills (直讲/引导/实战), the focus lesson's starters, and the mastery-proposal banner (接受/再练练). Typing happens in dsh's own composer below the tab — the plugin never ships its own input; every button lands its text in that native composer and submits through the same path as the Send button |
 | 右 · 黑板 | The focus lesson's 讲解 (server-sanitized markdown) and the Cornell 笔记 three zones |
 
+The tutor column is a learning surface, not a generic chat: the tutor's quiz options (A–D) render as clickable answer buttons under the latest reply (clicking sends the answer through the native composer), graded answers show as ✓/✗ chips with the tested concept, and every course-tree glyph, tag, and mastery bar carries a hover tooltip explaining its meaning. All content text runs at the dsh chat transcript's own 16 px.
+
 All study state comes from one shared 3 s poll over `/lookatstudy/api/state`; input is dsh's native composer from the first turn (no activation step). Columns stack below 1024 px.
 
 ## Tool surface (19)

@@ -56,6 +56,10 @@ gate('bundle', () => {
     [client, 'M2.871 13.1286', 'busy spinner icon (ic_ds_loading glyph)'],
     [client, 'lks-spin', 'spinner animation class'],
     [client, '章节测验', 'exam nodes'],
+    [client, 'lks-quiz', 'interactive quiz options'],
+    [client, 'lks-opt', 'quiz answer buttons'],
+    [client, 'font-size:16px', 'transcript at dsh chat size'],
+    [client, '课时掌握度', 'glyph tooltips'],
     [host, 'attemptLesson', 'attempt-unlock host path'],
     [host, 'in_progress', 'four-state machine'],
   ]

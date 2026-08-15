@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { pickPane, transcriptRows } from '../src/client/views.tsx'
+import { pickPane, quizOptions, statusTitle, toolChipLabel, transcriptRows } from '../src/client/views.tsx'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import { studyStore, type StudyState } from '../src/client/data.ts'
 
@@ -17,6 +17,44 @@ test('pickPane keeps only valid pane ids and defaults to the tutor', () => {
   assert.equal(pickPane(null), 'tutor', 'nothing stored falls back to 导师')
   assert.equal(pickPane('sidebar'), 'tutor', 'unknown stored values fall back')
   assert.equal(pickPane(''), 'tutor')
+})
+
+test('statusTitle explains every course-tree glyph state', () => {
+  assert.match(statusTitle('exam', 'locked'), /章节测验/)
+  assert.match(statusTitle('study', 'mastered'), /已毕业/)
+  assert.match(statusTitle('study', 'in_progress'), /学习中/)
+  assert.match(statusTitle('study', 'available'), /可开始/)
+  assert.match(statusTitle('study', 'locked'), /未解锁/)
+})
+
+test('quizOptions extracts the last consecutive A–D block and rejects noise', () => {
+  const question = '下面哪个是正确的?\n\nA. 梯度下降\nB. 反向传播\nC. 卷积\nD. 池化'
+  assert.deepEqual(quizOptions(question), [
+    { letter: 'A', text: '梯度下降' },
+    { letter: 'B', text: '反向传播' },
+    { letter: 'C', text: '卷积' },
+    { letter: 'D', text: '池化' },
+  ])
+  // second quiz in one reply wins (the pending question)
+  assert.equal(quizOptions(`${question}\n答错了,再来:\nA. 选项一\nB. 选项二`).length, 2)
+  // lone letters, non-consecutive runs, and single options do not count
+  assert.deepEqual(quizOptions('A. 只有一个'), [])
+  assert.deepEqual(quizOptions('B. 从B开始\nC. 不连续'), [])
+  assert.deepEqual(quizOptions('普通列表:\n- A. 不是选项'), [])
+})
+
+test('toolChipLabel turns record_answer calls into graded chips', () => {
+  assert.deepEqual(
+    toolChipLabel('study_record_answer', JSON.stringify({ correct: true, concept: '梯度下降' })),
+    { label: '✓ 答对 · 梯度下降', tone: 'ok' },
+  )
+  assert.deepEqual(
+    toolChipLabel('study_record_answer', JSON.stringify({ correct: false })),
+    { label: '✗ 答错 · 未归因', tone: 'bad' },
+  )
+  assert.deepEqual(toolChipLabel('study_import_github', '{}'), { label: '📦 导入课程', tone: 'ok' })
+  assert.equal(toolChipLabel('study_map', '{}'), null, 'unmapped tools keep the generic chip')
+  assert.equal(toolChipLabel('study_record_answer', 'not-json').label, '✗ 答错 · 未归因', 'malformed args fall back, not throw')
 })
 
 /** Synthesize one finalized conversation node (durable shapes, cast at the boundary). */
