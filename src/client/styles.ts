@@ -38,13 +38,13 @@ const CSS = `
 .lks-col-rail{flex:1 1 0;min-width:190px;overflow-y:auto;padding:2px 6px}
 .lks-col-tutor{flex:0 0 auto;width:min(100%,var(--dsh-composer-card-max-width,780px))}
 .lks-col-bb{flex:1 1 0;min-width:230px;overflow-y:auto;padding:2px 6px}
-/* narrow (<1220px): one composer-width pane at a time, chosen by a row of
-   pill-button labels (deliberately NOT tab-styled — the host's view tabs sit
-   right above and underline tabs would read as a second tab ring). */
-.lks-switch{display:none;flex:none;gap:8px;padding:2px 2px 10px}
-.lks-switch-btn{border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:3px 14px;font-size:12.5px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);transition:background .12s ease,color .12s ease,border-color .12s ease}
-.lks-switch-btn:hover{border-color:var(--dsw-alias-border-l3);color:var(--dsw-alias-label-primary)}
-.lks-switch-btn.on{background:var(--dsw-alias-state-business-tertiary);border-color:transparent;color:var(--dsw-alias-label-primary-bluish);font-weight:600}
+/* narrow (<1220px): one composer-width pane at a time, chosen by a centered
+   segmented pill group (joined buttons in one capsule — button language, not
+   tab language, against the host's view tabs right above). */
+.lks-switch{display:none;flex-direction:row;gap:2px;align-self:center;margin-bottom:10px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:3px}
+.lks-switch-btn{border-radius:999px;padding:4px 18px;font-size:12.5px;color:var(--dsw-alias-label-tertiary);background:transparent;transition:background .12s ease,color .12s ease}
+.lks-switch-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.lks-switch-btn.on{background:var(--dsw-alias-state-business-primary);color:#fff;font-weight:600}
 @container lksstudy (max-width: 1220px){
   .lks-body{flex-direction:column}
   .lks-switch{display:flex}
