@@ -65,8 +65,8 @@ LookatStudy's Electron-native experiences have no host surface in dsh: persisten
 pnpm exec tsdown        # build lib/ (host + client entries, peers external)
 pnpm test               # 48 node:test cases over the real source (no key needed)
 
-# iterate against a live dsh (from a deepseek-harness checkout):
-pnpm dsh web --patch ./lookatstudy-plugin/cordis.dev.yml
+# iterate against a live dsh (this repo lives beside a deepseek-harness checkout):
+pnpm dsh web --patch ../dsh-plugin-lookatstudy/cordis.dev.yml   # run from the harness checkout
 # then open http://127.0.0.1:3080/ and switch to the 学习 tab
 ```
 
