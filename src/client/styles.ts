@@ -38,8 +38,12 @@ const CSS = `
 .lks-col-bb{flex:1 1 0;min-width:230px;overflow-y:auto;padding:2px 6px}
 @container lksstudy (max-width: 1220px){
   .lks-study{flex-direction:column;overflow-y:auto}
+  /* Narrow = conversation first: the tutor column leads, course map and
+     blackboard follow as sections. */
+  .lks-col-tutor{order:-1}
   .lks-col{flex:none;overflow:visible;width:auto}
-  .lks-transcript{flex:none;min-height:160px;max-height:44vh}
+  .lks-col-rail,.lks-col-bb{border-top:1px solid var(--dsw-alias-border-l1);padding-top:12px}
+  .lks-transcript{flex:none;min-height:220px;max-height:60vh}
 }
 
 /* ── left column: course rail ── */
