@@ -1,6 +1,6 @@
 # dsh-plugin-lookatstudy
 
-Turn any markdown document, local folder, or GitHub learning repository into a guided course inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — your dsh agent becomes a full AI tutor with the interaction design of [LookatStudy](https://github.com/kaiji/LookatStudy): per-concept knowledge tracking, mastery-driven progression, spaced repetition, mastery proposals, friction awareness, learner memory, a Cornell notebook, an in-chat proposal card, and a self-served visual study workbench. Learning engine modules are vendored from LookatStudy (MIT).
+Turn any markdown document, local folder, or GitHub learning repository into a guided course inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — your dsh agent becomes a full AI tutor with the interaction design of [LookatStudy](https://github.com/kaiji/LookatStudy): per-concept knowledge tracking, mastery-driven progression, spaced repetition, mastery proposals, friction awareness, learner memory, a Cornell notebook, and an in-chat proposal card. Learning engine modules are vendored from LookatStudy (MIT).
 
 ## Install
 
@@ -10,9 +10,9 @@ dsh plugin add dsh-plugin-lookatstudy        # from npm
 dsh plugin add ./dsh-plugin-lookatstudy-0.2.1.tgz
 ```
 
-Works with any profile. In the `web` profile the plugin additionally serves the study workbench and loads its browser half (proposal card); headless profiles get the plain tool surface.
+Works with any profile. In the `web` profile the plugin additionally serves the study tab's HTTP API and loads its browser half; headless profiles get the plain tool surface.
 
-## The three surfaces
+## The two surfaces
 
 **1. The tutor (chat).** Talk to the agent: *"import https://github.com/microsoft/AI-For-Beginners and teach me lesson 1"*, *"what reviews are due today?"*. The tutor persona (stable core + one of three souls — `guide` 引导 / `direct` 精讲 / `practice` 实战) drives the full LookatStudy loop:
 
@@ -31,14 +31,12 @@ Works with any profile. In the `web` profile the plugin additionally serves the 
 | 中 · 老师 | A read-only mini transcript of the live tutor conversation (assistant replies rendered through the plugin's markdown pipeline, tool calls as chips, streaming included) plus the soul pills (直讲/引导/实战), the focus lesson's starters, and the mastery-proposal banner (接受/再练练). Typing happens in dsh's own composer below the tab — the plugin never ships its own input; every button lands its text in that native composer and submits through the same path as the Send button |
 | 右 · 黑板 | The focus lesson's 讲解 (server-sanitized markdown) and the Cornell 笔记 three zones |
 
-All study state comes from one shared 3 s poll over `/lookatstudy/api/state` (which also carries `agentReady`); until the tutor agent is bound — say one thing to it in the Chat tab, which the opening loop does automatically — the tab's input explains itself and stays disabled. Columns stack below 1024 px.
+All study state comes from one shared 3 s poll over `/lookatstudy/api/state`; input is dsh's native composer from the first turn (no activation step). Columns stack below 1024 px.
 
-**3. The standalone workbench page (browser tab).** With a webserver composed, `study_dashboard` returns a URL (also at `<host>/lookatstudy/`): the same content as a self-contained dark page for a second monitor or side-by-side browser window. It reads the same live state and uses the same reverse channel.
-
-## Tool surface (20)
+## Tool surface (19)
 
 Import: `study_import_markdown` / `study_import_folder` (9 doc + 30+ code formats; PDF/PPTX unsupported) / `study_import_github` (jsDelivr CDN, works where github.com is unreachable)
-Learn: `study_courses`, `study_map`, `study_lesson`, `study_dashboard`
+Learn: `study_courses`, `study_map`, `study_lesson`
 Progress: `study_define_concepts`, `study_record_answer`, `study_complete_lesson`
 Proposals: `study_propose_mastery`, `study_resolve_proposal`
 Reviews: `study_due_reviews`, `study_record_review`
@@ -67,10 +65,10 @@ pnpm test               # 48 node:test cases over the real source (no key needed
 
 # iterate against a live dsh (from a deepseek-harness checkout):
 pnpm dsh web --patch ./lookatstudy-plugin/cordis.dev.yml
-# then open http://127.0.0.1:3080/lookatstudy/
+# then open http://127.0.0.1:3080/ and switch to the 学习 tab
 ```
 
-Layout: persona + snapshot context in `src/index.ts`, tools in `src/tools.ts`, state transitions in `src/state.ts`, workbench routes + page in `src/dashboard.ts`, sanitized markdown in `src/markdown.ts` (shared by the host routes and the client bundle), the browser half in `src/client/` (`index.ts` tab registration, `views.tsx` the three-column tab plus the pure `transcriptRows` fold, `data.ts` shared poll store, `styles.ts` injected `--dsw-*` stylesheet), UI card projections in `src/cards.ts`, vendored zero-dependency engine in `src/vendor/` (see each file's provenance header; the one local modification to the folder scanner's dedup key is documented there).
+Layout: persona + snapshot context in `src/index.ts`, tools in `src/tools.ts`, state transitions in `src/state.ts`, the study tab's HTTP API in `src/dashboard.ts`, sanitized markdown in `src/markdown.ts` (shared by the host routes and the client bundle), the browser half in `src/client/` (`index.ts` tab registration, `views.tsx` the three-column tab plus the pure `transcriptRows` fold, `data.ts` shared poll store, `styles.ts` injected `--dsw-*` stylesheet), UI card projections in `src/cards.ts`, vendored zero-dependency engine in `src/vendor/` (see each file's provenance header; the one local modification to the folder scanner's dedup key is documented there).
 
 Publishing note: `exports` must keep `"./package.json": "./package.json"` — the web bundle's client-module scanner resolves it to discover the `dsh.client` browser half. When re-installing a rebuilt tarball into a profile, remove the old one first or bump the version (pnpm reuses same-spec tarballs).
 

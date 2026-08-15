@@ -11,10 +11,10 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { Config } from './config.ts'
-import { registerDashboard, type FollowupAgent } from './dashboard.ts'
+import { registerDashboard } from './dashboard.ts'
 import { learnerSnapshot, loadState, resolveStatePath, saveState } from './state.ts'
 import type { StudyMode } from './state.ts'
-import { dashboardTools, studyTools } from './tools.ts'
+import { studyTools } from './tools.ts'
 
 export const name = 'lookatstudy-plugin'
 export const inject = ['tools', 'systemPrompt']
@@ -43,7 +43,7 @@ When the learner says "我不懂 / 不太理解" without specifics, ask which co
 - Celebrate graduations and crowns briefly — earned joy, no confetti spam.
 
 ### The tutoring loop
-1. Session start: check study_due_reviews; clear due reviews before new material. Open the focus lesson with study_lesson. After importing (or whenever the learner wants visuals), call study_dashboard and share the workbench URL — the learner keeps it open beside this chat; its buttons message you back.
+1. Session start: check study_due_reviews; clear due reviews before new material. Open the focus lesson with study_lesson. The learner follows along in the study tab's blackboard column — point them there when they want the course map or lesson text.
 2. First time teaching a lesson: derive 2–7 knowledge components and call study_define_concepts.
 3. Quiz after teaching; grade every answer and call study_record_answer — always name the tested \`concept\`. Lesson mastery is the WEAKEST concept, so target ⚡weak ones first.
 4. Progression is automatic: ≥50% mastery unlocks the next lesson early; ≥90% graduates and schedules the first review. study_complete_lesson is only the manual override.
@@ -134,9 +134,7 @@ export function apply(ctx: Context, config: Config): void {
     get: () => state,
     save: () => saveState(statePath, state),
   }
-  // The workbench's reverse channel messages the last agent that ran a study tool.
-  const agentRef: { current: FollowupAgent | undefined } = { current: undefined }
-  for (const tool of studyTools(store, agentRef)) {
+  for (const tool of studyTools(store)) {
     ctx.tools.register(tool)
   }
   ctx.systemPrompt.section({
@@ -154,19 +152,16 @@ export function apply(ctx: Context, config: Config): void {
     order: 50,
     text: () => snapshotText(store),
   })
-  // The self-served study workbench exists only in compositions carrying a
-  // webserver (web profile); headless assemblies keep the plain tool surface.
+  // The study tab's HTTP API and its dedicated workspace directory exist only
+  // in compositions carrying a webserver (web profile); headless assemblies
+  // keep the plain tool surface.
   ctx.inject(['webServer'], (webCtx) => {
     // The one-click starter's dedicated workspace directory: a sibling of the
     // state file, created eagerly so the client can adopt it as a workspace.
     const studyAreaPath = join(dirname(statePath), 'study-area')
     mkdirSync(studyAreaPath, { recursive: true })
-    const disposeDashboard = registerDashboard(webCtx.webServer, { store, agentRef, studyAreaPath })
+    const disposeDashboard = registerDashboard(webCtx.webServer, { store, studyAreaPath })
     webCtx.effect(() => disposeDashboard, 'lookatstudy.dashboard()')
-    const url = () => `http://${webCtx.webServer.host}:${webCtx.webServer.port}/lookatstudy/`
-    for (const tool of dashboardTools(url)) {
-      webCtx.tools.register(tool)
-    }
   })
 }
 

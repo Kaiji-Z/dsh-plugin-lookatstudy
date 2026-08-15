@@ -1,7 +1,7 @@
 /**
- * The study workbench: state assembly (pure) and the HTTP route handlers
- * against structural request/response fakes — page, polling state API,
- * focus switching, and the reverse message channel.
+ * The study tab's HTTP API: state assembly (pure) and the route handlers
+ * against structural request/response fakes — polling state feed, focus
+ * switching, mode, lesson-session binding, and course deletion.
  */
 
 import test from 'node:test'
@@ -15,7 +15,6 @@ import {
   type RequestLike,
   type ResponseLike,
 } from '../src/dashboard.ts'
-import { dashboardTools } from '../src/tools.ts'
 
 const COURSE_MD = ['# Workbench Course', '## Part One', '### Reading', 'reading **body**', '### Writing', 'writing body', '## Part Two', '### Review', 'review body'].join('\n')
 
@@ -102,15 +101,13 @@ test('workbenchState assembles map, lesson html, notes, proposals, and due list'
   assert.equal(wb.dueCount, 0)
 })
 
-test('routes: page, state API, focus switching, and unknown paths', async () => {
+test('routes: state API, focus switching, and unknown paths', async () => {
   const { state, lessonId } = fixture()
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, agentRef: { current: undefined }, studyAreaPath: 'C:/study-area' })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area' })
 
   const page = await handle(routes, new FakeRequest('GET', '/lookatstudy/'), new FakeResponse())
-  assert.equal(page.status, 200)
-  assert.ok(page.body.includes('LookatStudy 学习台'))
-  assert.ok(page.body.includes('/lookatstudy/api/state'))
+  assert.equal(page.status, 404, 'the standalone workbench page is gone; only the API remains')
 
   const api = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
   assert.equal(api.status, 200)
@@ -118,7 +115,7 @@ test('routes: page, state API, focus switching, and unknown paths', async () => 
 
   let saved = 0
   const routes2: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes2.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, agentRef: { current: undefined }, studyAreaPath: 'C:/study-area' })
+  registerDashboard({ register: (route) => { routes2.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area' })
   const focus = await handle(routes2, new FakeRequest('POST', '/lookatstudy/api/focus', { lessonId: `${state.courses[0]!.id}:0:1` }), new FakeResponse())
   assert.equal(focus.status, 200)
   assert.equal(saved, 1)
@@ -137,7 +134,7 @@ test('mode route: switches and persists the soul mode; 400 on bad values', async
   assert.equal(state.mode, 'guide')
   let saved = 0
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, agentRef: { current: undefined } })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area' })
 
   const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/mode', { mode: 'practice' }), new FakeResponse())
   assert.equal(ok.status, 200)
@@ -149,62 +146,4 @@ test('mode route: switches and persists the soul mode; 400 on bad values', async
   assert.equal(bad.status, 400)
   assert.equal(state.mode, 'practice', 'rejected value leaves the mode untouched')
   assert.equal(saved, 1)
-})
-
-test('message route: 409 without an agent, followup with one, 400 on bad bodies', async () => {
-  const { state } = fixture()
-  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  const agentRef: { current: { followup(message: unknown): void } | undefined } = { current: undefined }
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, agentRef, studyAreaPath: 'C:/study-area' })
-
-  const noAgent = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/message', { text: 'hi' }), new FakeResponse())
-  assert.equal(noAgent.status, 409)
-
-  const sent: unknown[] = []
-  agentRef.current = { followup: (message) => { sent.push(message) } }
-  const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/message', { text: '开始上课' }), new FakeResponse())
-  assert.equal(ok.status, 200)
-  assert.equal(sent.length, 1)
-  const message = sent[0] as { role: string; content: Array<{ type: string; text: string }>; source: { kind: string } }
-  assert.equal(message.role, 'user')
-  assert.equal(message.content[0]!.text, '开始上课')
-  assert.equal(message.source.kind, 'user')
-
-  const empty = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/message', { text: '  ' }), new FakeResponse())
-  assert.equal(empty.status, 400)
-  const malformed = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/message', 'not-json'), new FakeResponse())
-  assert.ok([400, 500].includes(malformed.status))
-})
-
-
-
-test('lesson-session route records the thread mapping and persists', async () => {
-  const { state, lessonId } = fixture()
-  let saved = 0
-  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, agentRef: { current: undefined }, studyAreaPath: 'C:/study-area' })
-  const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId, sessionId: 'sess-1' }), new FakeResponse())
-  assert.equal(ok.status, 200)
-  assert.equal(saved, 1)
-  assert.equal(state.lessonSessions[lessonId], 'sess-1')
-  assert.equal(workbenchState(state, new Date()).lessonSessions[lessonId], 'sess-1', 'the mapping rides the state payload')
-  const bad = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId }), new FakeResponse())
-  assert.equal(bad.status, 400)
-})
-
-test('study-workspace route: returns the apply-created area path', async () => {
-  const { state } = fixture()
-  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, agentRef: { current: undefined }, studyAreaPath: 'D:/areas/study' })
-  const res = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/study-workspace'), new FakeResponse())
-  assert.equal(res.status, 200)
-  assert.deepEqual(res.json(), { ok: true, path: 'D:/areas/study' })
-})
-
-test('dashboardTools returns a working study_dashboard tool', async () => {
-  const [tool] = dashboardTools(() => 'http://127.0.0.1:3080/lookatstudy/')
-  assert.ok(tool)
-  assert.equal(tool.name, 'study_dashboard')
-  const value = await tool.execute({}, { signal: new AbortController().signal } as never)
-  assert.deepEqual(value, { url: 'http://127.0.0.1:3080/lookatstudy/' })
 })

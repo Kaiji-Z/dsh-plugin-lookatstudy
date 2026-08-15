@@ -27,7 +27,7 @@ pnpm dsh plugin add ./lookatstudy-plugin/dsh-plugin-lookatstudy-<ver>.tgz --prof
 
 - `src/state.ts` — the learning state machine (the source of truth for every rule below)
 - `src/tools.ts` — the 20 `study_*` tools; every mutation goes through the store and persists synchronously
-- `src/dashboard.ts` — `/lookatstudy/*` HTTP routes (state API, focus/mode/delete/lesson-session writes, standalone workbench page)
+- `src/dashboard.ts` — the study tab's HTTP API under `/lookatstudy/api/*` (state feed, focus/mode/delete/lesson-session writes, study-workspace path)
 - `src/index.ts` — host apply: tools, tutor prompt sections (stable core + dynamic soul + learner snapshot), dashboard
 - `src/cards.ts` — pure display projections shared by render and presenter cards
 - `src/client/` — browser half: `views.tsx` (the tab + `transcriptRows`), `starter.tsx` (hero one-click), `data.ts` (shared poll store), `styles.ts` (injected `--dsw-*` stylesheet)

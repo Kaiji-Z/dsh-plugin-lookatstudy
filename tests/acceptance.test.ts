@@ -29,7 +29,7 @@ function setup(): { byName: Map<string, ToolDefinition>; state: LearningState; d
   const path = join(dir, 'state.json')
   const state = loadState(path)
   const store = { get: () => state, save: () => saveState(path, state) }
-  const byName = new Map(studyTools(store, { current: undefined }).map(t => [t.name, t]))
+  const byName = new Map(studyTools(store).map(t => [t.name, t]))
   return { byName, state, dir }
 }
 

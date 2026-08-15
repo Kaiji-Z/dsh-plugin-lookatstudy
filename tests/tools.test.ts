@@ -22,7 +22,7 @@ const COURSE_MD = [
 function setup(): { byName: Map<string, ToolDefinition>; state: LearningState; saves: () => number } {
   const state = emptyState()
   let saves = 0
-  const tools = studyTools({ get: () => state, save: () => { saves += 1 } }, { current: undefined })
+  const tools = studyTools({ get: () => state, save: () => { saves += 1 } })
   const byName = new Map(tools.map(t => [t.name, t]))
   return { byName, state, saves: () => saves }
 }

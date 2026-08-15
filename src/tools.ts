@@ -20,7 +20,6 @@ import type { FetchedFile } from './vendor/repo-fetcher.ts'
 import type { ReviewQuality } from './vendor/sm2.ts'
 import { masteryToCrown } from './vendor/bkt.ts'
 import * as cards from './cards.ts'
-import type { FollowupAgent } from './dashboard.ts'
 import {
   NEAR_MASTERED_THRESHOLD,
   addFriction,
@@ -180,21 +179,14 @@ const textBlocks = (lines: readonly string[] | undefined | null): Array<{ type: 
 /**
  * Build the full study tool set over one store.
  * @param store - state store owned by `apply`.
- * @param agentRef - where the last agent that ran a study tool is recorded,
- * so the workbench's reverse channel can message it.
  * @returns tool definitions ready for `ctx.tools.register`.
  */
-export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent | undefined }): ToolDefinition[] {
+export function studyTools(store: StudyStore): ToolDefinition[] {
   /** Run a mutating state operation and persist. */
   const mutate = <T>(fn: (state: LearningState) => T): T => {
     const result = fn(store.get())
     store.save()
     return result
-  }
-
-  /** Remember the owning agent so workbench buttons can follow up to it. */
-  const note = (exec: { agent?: unknown }): void => {
-    if (exec.agent !== undefined && exec.agent !== null) agentRef.current = exec.agent as FollowupAgent
   }
 
   const importOutput = {
@@ -236,8 +228,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
           + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}).`,
       }],
     },
-    async execute(args, exec) {
-      note(exec)
+    async execute(args) {
       const parsed = parseMarkdownToCourse(args.markdown)
       if (args.title !== undefined) parsed.title = args.title
       requireParsedLessons(parsed)
@@ -524,8 +515,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
           + `${value.nextLessonId === null ? '\n\n(this is the last lesson)' : `\n\n(next lesson: ${value.nextLessonId})`}`,
       }],
     },
-    async execute(args, exec) {
-      note(exec)
+    async execute(args) {
       return mutate((state) => {
         // Opening IS attempting (LookatStudy markNodeAttempted): first open
         // marks in_progress, seeds mastery 0.5, and runs the dual-track unlock.
@@ -585,8 +575,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
           + (value.unlockedLessonIds.length === 0 ? '' : `\n🔓 unlocked: ${value.unlockedLessonIds.join(', ')}`),
       }],
     },
-    async execute(args, exec) {
-      note(exec)
+    async execute(args) {
       return mutate((state) => {
         const r = recordAnswer(state, args.lessonId, args.correct, args.concept, new Date())
         if (args.question !== undefined) {
@@ -657,8 +646,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
         text: cards.completeLines(value).join('\n'),
       }],
     },
-    async execute(args, exec) {
-      note(exec)
+    async execute(args) {
       return mutate((state) => {
         const r = completeLesson(state, args.lessonId, new Date())
         return {
@@ -707,8 +695,7 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
       },
       render: (_args, value) => textBlocks(cards.dueLines(value)),
     },
-    async execute(args, exec) {
-      note(exec)
+    async execute(args) {
       const due = dueReviews(store.get(), args.courseId, new Date())
       return {
         total: due.length,
@@ -1148,41 +1135,5 @@ export function studyTools(store: StudyStore, agentRef: { current: FollowupAgent
     noteSaveTool,
     notesTool,
     setModeTool,
-  ]
-}
-
-/**
- * The workbench-link tool, registered only in compositions that carry a
- * webserver (the URL needs its live host and port).
- * @param getUrl - resolves the absolute workbench URL.
- * @returns the `study_dashboard` tool.
- */
-export function dashboardTools(getUrl: () => string): ToolDefinition[] {
-  return [
-    defineTool({
-      name: 'study_dashboard',
-      description:
-        'Get the learner\'s study workbench URL — the course map, lesson reader, Cornell notebook, and '
-        + 'pending proposals in one page. Share it after importing a course and whenever the learner wants '
-        + 'visuals; buttons there send messages back to this chat.',
-      parameters: {},
-      output: {
-        schema: {
-          type: 'object',
-          additionalProperties: false,
-          properties: { url: { type: 'string', required: true } },
-        },
-        render: (_args, value) => [{
-          type: 'text',
-          text: `Study workbench: ${value.url}
-Suggest the learner open it in a browser tab beside this chat.`,
-        }],
-      },
-      async execute() {
-        return { url: getUrl() }
-      },
-      isConcurrencySafe: () => true,
-      presentCall: () => ({ card: 'generic', title: 'Study workbench link', kind: 'other' }),
-    }),
   ]
 }

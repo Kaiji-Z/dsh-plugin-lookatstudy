@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-lookatstudy",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Turn any markdown, local folder, or GitHub learning repo into a guided course inside DeepSeek Harness: gated skill-tree progression, BKT mastery tracking, SM-2 spaced repetition.",
   "type": "module",
   "main": "lib/index.mjs",
