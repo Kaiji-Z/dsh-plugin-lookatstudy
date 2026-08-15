@@ -103,6 +103,7 @@ const CSS = `
 .lks-msg.user{align-self:flex-end;white-space:pre-wrap;background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish)}
 .lks-msg.assistant{align-self:flex-start;background:var(--dsw-alias-bg-layer-2)}
 .lks-msg.streaming{opacity:.7}
+.lks-msg.thinking{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--dsw-alias-label-tertiary);background:none;border-radius:0;padding:2px}
 .lks-msg.tool{align-self:flex-start;font-size:12px;color:var(--dsw-alias-label-tertiary);background:none;border-radius:0;padding:1px 2px}
 .lks-msg.tool.ok{color:var(--dsw-alias-state-success-primary)}
 .lks-msg.tool.bad{color:var(--dsw-alias-state-error-primary)}

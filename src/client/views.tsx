@@ -13,7 +13,7 @@
 
 import { createElement, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
-import { IconDownloadOutline16 } from './icons.tsx'
+import { IconDownloadOutline16, IconLoadingOutline16 } from './icons.tsx'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
@@ -86,7 +86,7 @@ function ImportRow({ send }: { send: StudySend }): ReactNode {
 /** One rendered transcript row (pure fold of the conversation snapshot). */
 export interface ChatRow {
   readonly key: string
-  readonly role: 'user' | 'assistant' | 'tool' | 'error' | 'streaming'
+  readonly role: 'user' | 'assistant' | 'tool' | 'error' | 'streaming' | 'thinking'
   readonly text: string
   /** The settled tool call head for `tool` rows; drives the learning-aware chip. */
   readonly call?: { name: string; argsRaw: string } | null
@@ -205,6 +205,9 @@ export function transcriptRows(nodes: readonly ConversationNode[], partial: Part
   if (partial !== null) {
     const text = assistantText(partial.blocks)
     if (text !== '') rows.push({ key: 'streaming', role: 'streaming', text })
+    // No text yet means the tutor is reasoning (or lining up tool calls) —
+    // without this row the column sits dead silent through the whole phase.
+    else rows.push({ key: 'thinking', role: 'thinking', text: '导师思考中…' })
   }
   return rows
 }
@@ -482,6 +485,11 @@ function chatRowElement(row: ChatRow, interactive?: { send: StudySend }): ReactN
   }
   if (row.role === 'error') {
     return createElement('div', { key: row.key, className: 'lks-msg error' }, `⚠ ${row.text}`)
+  }
+  if (row.role === 'thinking') {
+    return createElement('div', { key: row.key, className: 'lks-msg thinking', title: '导师正在推理,回复马上就来' },
+      createElement(IconLoadingOutline16, { size: 14, className: 'lks-spin' }),
+      row.text)
   }
   const cls = row.role === 'streaming' ? 'lks-msg assistant lks-prose streaming' : 'lks-msg assistant lks-prose'
   const body = createElement('div', {

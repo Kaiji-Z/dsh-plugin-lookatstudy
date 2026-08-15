@@ -94,6 +94,19 @@ test('transcriptRows condenses tool results to chips, skips noise, and appends t
   ], 'image-only user rows skip; the partial lands last')
 })
 
+test('a text-less partial shows the thinking row instead of dead air', () => {
+  const thinking = transcriptRows([], { turn: 1, step: 1, blocks: [
+    { kind: 'reasoning', text: '先看这一课的概念…' },
+    { kind: 'tool-call', callId: 'c1', name: 'study_lesson', argsRaw: '{}' },
+  ] })
+  assert.deepEqual(thinking.map(r => [r.role, r.text]), [['thinking', '导师思考中…']], 'reasoning/tool-only phases surface a thinking indicator')
+  const streaming = transcriptRows([], { turn: 1, step: 2, blocks: [
+    { kind: 'reasoning', text: '想好了' },
+    { kind: 'text', text: '我们开始' },
+  ] })
+  assert.deepEqual(streaming.map(r => r.role), ['streaming'], 'once text arrives the streaming row replaces thinking')
+})
+
 /** Minimal server payload the poll path accepts. */
 function statePayload(mode: StudyState['mode']): StudyState {
   return {

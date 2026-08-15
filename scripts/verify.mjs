@@ -60,6 +60,7 @@ gate('bundle', () => {
     [client, 'lks-opt', 'quiz answer buttons'],
     [client, 'font-size:16px', 'transcript at dsh chat size'],
     [client, '课时掌握度', 'glyph tooltips'],
+    [client, '导师思考中', 'thinking indicator'],
     [host, 'attemptLesson', 'attempt-unlock host path'],
     [host, 'in_progress', 'four-state machine'],
   ]
