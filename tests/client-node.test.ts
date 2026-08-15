@@ -6,9 +6,18 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { transcriptRows } from '../src/client/views.tsx'
+import { pickPane, transcriptRows } from '../src/client/views.tsx'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import { studyStore, type StudyState } from '../src/client/data.ts'
+
+test('pickPane keeps only valid pane ids and defaults to the tutor', () => {
+  assert.equal(pickPane('rail'), 'rail')
+  assert.equal(pickPane('tutor'), 'tutor')
+  assert.equal(pickPane('bb'), 'bb')
+  assert.equal(pickPane(null), 'tutor', 'nothing stored falls back to 导师')
+  assert.equal(pickPane('sidebar'), 'tutor', 'unknown stored values fall back')
+  assert.equal(pickPane(''), 'tutor')
+})
 
 /** Synthesize one finalized conversation node (durable shapes, cast at the boundary). */
 function node(shape: Record<string, unknown>): ConversationNode {

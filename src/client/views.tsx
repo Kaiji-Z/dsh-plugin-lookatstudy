@@ -111,11 +111,28 @@ export type StudySend = (text: string) => void
 /** Narrow-mode pane selector: which of the three columns is the main display. */
 type StudyPane = 'rail' | 'tutor' | 'bb'
 
+/** sessionStorage key keeping the narrow-mode pane across view remounts (tab switches) and reloads. */
+const PANE_KEY = 'dsh-plugin-lookatstudy:pane'
+
+/** Narrow the stored value back to a pane id; anything else (or nothing stored) falls back to 导师. Pure, unit-testable. */
+export function pickPane(stored: string | null): StudyPane {
+  return stored === 'rail' || stored === 'tutor' || stored === 'bb' ? stored : 'tutor'
+}
+
+/** Read the persisted pane; the try swallows only the SecurityError privacy modes throw on storage access — the fallback is the default pane. */
+function storedPane(): StudyPane {
+  try {
+    return pickPane(sessionStorage.getItem(PANE_KEY))
+  } catch {
+    return 'tutor'
+  }
+}
+
 /** The whole study tab. Wide = three columns (课程 | 导师 | 黑板); narrow (<1220px) = one composer-width pane with a three-way switcher. */
 export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNode {
   const { data, setMode, setFocus } = useStudy()
   const snapshot = useSession((s: ConversationSnapshot) => s)
-  const [pane, setPane] = useState<StudyPane>('tutor')
+  const [pane, setPane] = useState<StudyPane>(storedPane)
   const send: StudySend = (text) => {
     inputActions.setDraft(text)
     inputActions.submit()
@@ -137,7 +154,14 @@ export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNod
       ...panes.map(p => createElement('button', {
         key: p.id,
         className: `lks-switch-btn${pane === p.id ? ' on' : ''}`,
-        onClick: () => { setPane(p.id) },
+        onClick: () => {
+        setPane(p.id)
+        try {
+          sessionStorage.setItem(PANE_KEY, p.id)
+        } catch {
+          // Privacy modes forbid storage writes; the in-memory choice still holds this page.
+        }
+      },
       }, p.label)),
     ),
     createElement(CourseRail, { data, setFocus, send }),
