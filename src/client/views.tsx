@@ -14,6 +14,7 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
   AssistantBlock, ConversationNode, ConversationSnapshot, PartialAssistant,
 } from '@deepseek-ai/dsh-client-runtime/client'
@@ -169,8 +170,15 @@ function storedPane(): StudyPane {
 }
 
 /** The whole study tab. Wide = three columns (课程 | 导师 | 黑板); narrow (<1220px) = one composer-width pane with a three-way switcher. */
-export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNode {
-  const { data, setMode, setFocus, deleteCourse } = useStudy()
+export function studyView(ctx: ClientContext): (props: ConvViewProps) => ReactNode {
+  return function StudyView(props: ConvViewProps): ReactNode {
+    return createElement(StudyTab, { ...props, ctx, key: 'tab' })
+  }
+}
+
+/** Tab body: the factory-bound ctx carries workspaces/sessions for the per-lesson session jumps. */
+function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: ClientContext }): ReactNode {
+  const { data, setMode, setFocus, deleteCourse, bindLessonSession } = useStudy()
   const snapshot = useSession((s: ConversationSnapshot) => s)
   const [pane, setPane] = useState<StudyPane>(storedPane)
   const send: StudySend = (text) => {
@@ -204,7 +212,7 @@ export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNod
       },
       }, p.label)),
     ),
-    createElement(CourseRail, { data, setFocus, deleteCourse, send }),
+    createElement(CourseRail, { data, setFocus, deleteCourse, bindLessonSession, send, ctx, currentSessionId: snapshot.sessionId }),
     createElement(TutorColumn, { data, setMode, send, snapshot }),
     createElement(BlackboardColumn, { data }),
   ),
@@ -214,12 +222,50 @@ export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNod
 type StudyData = ReturnType<typeof useStudy>['data']
 
 /** Left column: course management (pick/delete/search/import), lesson tree, due box. */
-function CourseRail({ data, setFocus, deleteCourse, send }: {
+function CourseRail({ data, setFocus, deleteCourse, bindLessonSession, send, ctx, currentSessionId }: {
   data: StudyData
   setFocus: (id: string) => Promise<void>
   deleteCourse: (courseId: string) => Promise<void>
+  bindLessonSession: (lessonId: string, sessionId: string) => Promise<void>
   send: StudySend
+  ctx: ClientContext
+  currentSessionId: string
 }): ReactNode {
+  const [jumping, setJumping] = useState<string | null>(null)
+  /** Open (or mint) the lesson's own session — the simplified thread system. */
+  const openLessonThread = (lesson: { id: string; title: string }): void => {
+    if (jumping !== null) return
+    const mapped = data?.lessonSessions[lesson.id]
+    if (mapped === currentSessionId) {
+      void setFocus(lesson.id).catch(reportError)
+      return
+    }
+    if (mapped !== undefined && ctx.sessions.binding(mapped as never) !== undefined) {
+      void setFocus(lesson.id).catch(reportError)
+      ctx.sessions.open(mapped as never)
+      return
+    }
+    setJumping(lesson.id)
+    void setFocus(lesson.id).then(() => (async () => {
+      const area = await fetch('/lookatstudy/api/study-workspace')
+      if (!area.ok) throw new Error(`study area unavailable (HTTP ${area.status})`)
+      const { path } = await area.json() as { path: string }
+      const workspace = await ctx.workspaces.create({ path })
+      // connectWorkspace mints a fresh blank session once the workspace's
+      // previous blank is used — each lesson thereby gets its own thread.
+      const sessionId = await ctx.workspaces.connectWorkspace(workspace.workspaceId)
+      const actx = ctx.sessions.scope(sessionId)
+      const face = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
+      if (face === undefined) throw new Error('lesson session is not addressable yet')
+      const result = await face.prompt([{ type: 'text', text: `学习「${lesson.title}」:用 study_lesson 打开这一课开始学习。` }], 'queue')
+      if (!result.ok) throw new Error(`lesson prompt rejected: ${result.error.code}: ${result.error.message}`)
+      await bindLessonSession(lesson.id, sessionId)
+      ctx.sessions.open(sessionId)
+    })()).then(
+      () => { setJumping(null) },
+      (err: unknown) => { reportError(err); setJumping(null) },
+    )
+  }
   const [selectedCourse, setSelectedCourse] = useState('')
   const [query, setQuery] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -315,11 +361,15 @@ function CourseRail({ data, setFocus, deleteCourse, send }: {
                     : lesson.title,
                   onClick: () => {
                     if (locked) return
-                    void setFocus(lesson.id).catch(reportError)
-                    if (lesson.kind === 'exam') send(`开始「${section.title}」的章节测验:按本节课时出题,答完逐题判分`)
+                    if (lesson.kind === 'exam') {
+                      void setFocus(lesson.id).catch(reportError)
+                      send(`开始「${section.title}」的章节测验:按本节课时出题,答完逐题判分`)
+                      return
+                    }
+                    openLessonThread(lesson)
                   },
                 },
-                createElement('span', { className: 'lks-g' }, glyph(lesson.kind, locked ? 'locked' : lesson.status)),
+                createElement('span', { className: 'lks-g' }, jumping === lesson.id ? '⏳' : glyph(lesson.kind, locked ? 'locked' : lesson.status)),
                 createElement('span', { className: 'lks-t' }, lesson.title),
                 lesson.due ? createElement('span', { className: 'lks-tag due' }, '🔁') : null,
                 lesson.weakConcepts > 0 ? createElement('span', { className: 'lks-tag weak' }, `⚡${lesson.weakConcepts}`) : null,

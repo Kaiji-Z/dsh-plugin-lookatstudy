@@ -112,6 +112,8 @@ export interface WorkbenchState {
   due: Array<{ lessonId: string; lessonTitle: string; courseTitle: string; overdueDays: number }>
   pendingProposals: Array<{ id: string; lessonTitle: string; rationale: string }>
   memory: { global: string | null; lesson: string | null; pattern: string | null }
+  /** Lesson id → dsh session id (one session per lesson node). */
+  lessonSessions: Record<string, string>
 }
 
 /**
@@ -201,6 +203,7 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
       const snap = learnerSnapshot(state, now)
       return { global: snap.memoryGlobal, lesson: snap.memoryLesson, pattern: snap.memoryPattern }
     })(),
+    lessonSessions: state.lessonSessions,
   }
 }
 
@@ -321,6 +324,18 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         } catch (error) {
           sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
         }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/lesson-session') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string' || typeof body.sessionId !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'lessonId and sessionId (strings) required' })
+          return
+        }
+        deps.store.get().lessonSessions[body.lessonId] = body.sessionId
+        deps.store.save()
+        sendJson(res, 200, { ok: true })
         return
       }
       if (req.method === 'POST' && pathname === '/lookatstudy/api/mode') {

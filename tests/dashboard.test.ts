@@ -177,6 +177,21 @@ test('message route: 409 without an agent, followup with one, 400 on bad bodies'
 })
 
 
+
+test('lesson-session route records the thread mapping and persists', async () => {
+  const { state, lessonId } = fixture()
+  let saved = 0
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, agentRef: { current: undefined }, studyAreaPath: 'C:/study-area' })
+  const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId, sessionId: 'sess-1' }), new FakeResponse())
+  assert.equal(ok.status, 200)
+  assert.equal(saved, 1)
+  assert.equal(state.lessonSessions[lessonId], 'sess-1')
+  assert.equal(workbenchState(state, new Date()).lessonSessions[lessonId], 'sess-1', 'the mapping rides the state payload')
+  const bad = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId }), new FakeResponse())
+  assert.equal(bad.status, 400)
+})
+
 test('study-workspace route: returns the apply-created area path', async () => {
   const { state } = fixture()
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []

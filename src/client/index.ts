@@ -12,10 +12,10 @@
 
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { ensureStudyStyles } from './styles.ts'
-import { StudyView } from './views.tsx'
+import { studyView } from './views.tsx'
 import { studyStartButton } from './starter.tsx'
 
-export { StudyView, transcriptRows } from './views.tsx'
+export { studyView, transcriptRows } from './views.tsx'
 export type { ChatRow } from './views.tsx'
 
 export const inject = ['slots', 'workspaces', 'sessions']
@@ -31,7 +31,7 @@ export function apply(ctx: ClientContext): void {
   ensureStudyStyles()
   ctx.slots.inject('conversation.view', () => ctx.slots.register(
     { name: 'conversation.view', id: 'lookatstudy-study', order: 15, label: '学习' },
-    StudyView,
+    studyView(ctx),
   ))
   ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
     { name: 'conversation.input.left', id: 'lookatstudy-start', order: 10 },

@@ -52,6 +52,7 @@ export interface StudyState {
   readonly due: ReadonlyArray<{ lessonId: string; lessonTitle: string; courseTitle: string; overdueDays: number }>
   readonly pendingProposals: ReadonlyArray<{ id: string; lessonTitle: string; rationale: string }>
   readonly memory: { global: string | null; lesson: string | null; pattern: string | null }
+  readonly lessonSessions: Readonly<Record<string, string>>
 }
 
 /** Poll cadence for the shared store; one cycle serves every mounted seat. */
@@ -138,6 +139,16 @@ class StudyStore {
     this.refresh()
   }
 
+  /** Record the dsh session backing one lesson (the simplified thread system). */
+  async bindLessonSession(lessonId: string, sessionId: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/lesson-session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId, sessionId }),
+    })
+    this.refresh()
+  }
+
   /** Delete one course (and its proposals) from the host state. */
   async deleteCourse(courseId: string): Promise<void> {
     await fetchJson('/lookatstudy/api/course/delete', {
@@ -158,6 +169,7 @@ export function useStudy(): {
   setMode: (mode: StudyState['mode']) => Promise<void>
   setFocus: (lessonId: string) => Promise<void>
   deleteCourse: (courseId: string) => Promise<void>
+  bindLessonSession: (lessonId: string, sessionId: string) => Promise<void>
 } {
   const data = useSyncExternalStore(studyStore.subscribe, studyStore.getSnapshot, studyStore.getSnapshot)
   return {
@@ -165,5 +177,6 @@ export function useStudy(): {
     setMode: studyStore.setMode.bind(studyStore),
     setFocus: studyStore.setFocus.bind(studyStore),
     deleteCourse: studyStore.deleteCourse.bind(studyStore),
+    bindLessonSession: studyStore.bindLessonSession.bind(studyStore),
   }
 }

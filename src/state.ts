@@ -138,6 +138,8 @@ export interface LearningState {
   memoryPatterns: Record<string, string>
   /** Mastery proposals across courses. */
   proposals: MasteryProposal[]
+  /** Lesson id → dsh session id (the simplified thread system: one session per lesson node). */
+  lessonSessions: Record<string, string>
 }
 
 /** A lesson located inside its course, for mutation results. */
@@ -160,7 +162,7 @@ const FRICTION_CAP = 10
 
 /** Fresh empty state for a first run. */
 export function emptyState(): LearningState {
-  return { version: 2, courses: [], mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, proposals: [] }
+  return { version: 2, courses: [], mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, proposals: [], lessonSessions: {} }
 }
 
 /**
@@ -232,6 +234,7 @@ export function loadState(path: string): LearningState {
     memoryGlobal: raw.memoryGlobal ?? null,
     memoryPatterns: raw.memoryPatterns ?? {},
     proposals: raw.proposals ?? [],
+    lessonSessions: raw.lessonSessions ?? {},
   }
 }
 
