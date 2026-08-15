@@ -1,0 +1,25 @@
+Self-test of the LookatStudy study plugin. Execute every step autonomously with the study_* tools, in order. Do not ask questions; simulate both tutor and learner. End your final message with the exact line: LIVETEST DONE
+
+1. Call study_import_markdown with EXACTLY this markdown (verbatim, do not rewrite it):
+
+# GraphQL Basics
+## Core Concepts
+### Queries
+A GraphQL query reads fields from a graph of types. The client selects exactly the fields it needs in a nested shape that mirrors the response. Nothing is returned that was not asked for, which avoids over-fetching.
+### Mutations
+A mutation writes data and returns a selection of the changed fields. Mutations run one at a time in order, while queries in the same document may run in parallel. A mutation can fail partially, so it should return an errors field.
+## Advanced
+### Fragments
+A fragment is a reusable named selection set shared between queries. Fragments keep field lists in one place when a type appears in many queries. Colocating fragments next to their type definition is the recommended style.
+
+2. Call study_define_concepts on the FIRST lesson ("Queries"): between 2 and 4 concepts with short titles.
+
+3. Call study_lesson on the first lesson.
+
+4. Simulate a quiz of THREE questions about the first lesson, graded honestly: questions 1 and 2 are answered CORRECTLY, question 3 is answered INCORRECTLY. For each question, write the question and the learner's answer in your reply, then immediately call study_record_answer with lessonId, correct, the tested concept title, the question text, and the learner's answer.
+
+5. After the three answers, if the first lesson's mastery shown by study_record_answer is at or above 85 percent, call study_propose_mastery with a one-line rationale, then resolve it with study_resolve_proposal as accepted (the simulated learner accepts). If mastery is below 85 percent, skip this step.
+
+6. Call study_due_reviews once, and study_courses once.
+
+Then write a two-sentence summary of the recorded learning state and finish with the LIVETEST DONE line.

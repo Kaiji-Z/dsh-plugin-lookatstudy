@@ -1,0 +1,23 @@
+# Livetest overlay: point the deepseek adapter at LookatStudy's GLM (z.ai,
+# OpenAI-compatible) endpoint and mount the plugin with an isolated state file.
+# Key comes from LookatStudy's .env (Z_AI_API_KEY) exported in the run shell.
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    baseURL: 'https://api.z.ai/api/coding/paas/v4'
+    apiKeyEnv: Z_AI_API_KEY
+    maxTokens: 65536
+    models:
+      - id: glm-5.2
+        contextWindow: 128000
+- id: agent-default-model
+  name: '@deepseek-ai/dsh-agent-default-model'
+  config:
+    provider: deepseek-official
+    model: glm-5.2
+- insert:
+    - id: lookatstudy
+      name: 'file:///D:/Users/kaiji/vibecodingKJ/projects/deepseek-harness/lookatstudy-plugin/src/index.ts'
+      config:
+        mode: guide
+        statePath: 'D:/Users/kaiji/vibecodingKJ/projects/deepseek-harness/lookatstudy-plugin/livetest-state.json'

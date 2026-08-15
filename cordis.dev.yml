@@ -1,0 +1,7 @@
+# Dev overlay for local iteration (pnpm dsh web --patch ./lookatstudy-plugin/cordis.dev.yml).
+# On Windows the module specifier must be a file:// URL (Node ESM requirement):
+# bare 'D:/...' paths fail with ERR_UNSUPPORTED_ESM_URL_SCHEME (protocol 'd:').
+# Real path on this machine is D:\... (C:\Users\kaiji\... maps onto it).
+- insert:
+    - id: lookatstudy
+      name: 'file:///D:/Users/kaiji/vibecodingKJ/projects/deepseek-harness/lookatstudy-plugin/src/index.ts'

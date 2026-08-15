@@ -1,0 +1,59 @@
+{
+  "name": "dsh-plugin-lookatstudy",
+  "version": "0.4.2",
+  "description": "Turn any markdown, local folder, or GitHub learning repo into a guided course inside DeepSeek Harness: gated skill-tree progression, BKT mastery tracking, SM-2 spaced repetition.",
+  "type": "module",
+  "main": "lib/index.mjs",
+  "types": "lib/index.d.mts",
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsdown --config tsdown.config.ts",
+    "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "learning",
+    "tutor",
+    "spaced-repetition"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "conversationEvents",
+        "slots"
+      ],
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=0.1.0-rc.0",
+    "@deepseek-ai/dsh-client-runtime": ">=0.1.0-rc.0",
+    "@deepseek-ai/dsh-client-ui-conversation": ">=0.1.0-rc.0",
+    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.0",
+    "@deepseek-ai/schemastery": ">=0.1.0-rc.0",
+    "react": ">=18"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.mts",
+      "default": "./lib/index.mjs"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "devDependencies": {
+    "@types/react": "~18.3.31",
+    "react": "^18.3.1"
+  }
+}

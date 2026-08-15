@@ -1,0 +1,5 @@
+# Bundle patch: references the package by NAME (not a source path) so Node
+# module resolution finds the installed code. See dsh docs/user/develop/basic/publish.md.
+- insert:
+    - id: lookatstudy
+      name: dsh-plugin-lookatstudy
