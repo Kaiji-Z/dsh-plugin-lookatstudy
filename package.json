@@ -12,7 +12,8 @@
   ],
   "scripts": {
     "build": "tsdown --config tsdown.config.ts",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "verify": "node scripts/verify.mjs"
   },
   "keywords": [
     "dsh-plugin",
