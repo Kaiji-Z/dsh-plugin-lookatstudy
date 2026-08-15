@@ -30,7 +30,7 @@ pnpm dsh plugin add ./lookatstudy-plugin/dsh-plugin-lookatstudy-<ver>.tgz --prof
 - `src/dashboard.ts` — the study tab's HTTP API under `/lookatstudy/api/*` (state feed, focus/mode/delete/lesson-session writes, study-workspace path)
 - `src/index.ts` — host apply: tools, tutor prompt sections (stable core + dynamic soul + learner snapshot), dashboard
 - `src/cards.ts` — pure display projections shared by render and presenter cards
-- `src/client/` — browser half: `views.tsx` (the tab + `transcriptRows`), `starter.tsx` (hero one-click), `data.ts` (shared poll store), `styles.ts` (injected `--dsw-*` stylesheet)
+- `src/client/` — browser half: `views.tsx` (the tab + `transcriptRows`), `starter.tsx` (hero one-click), `data.ts` (shared poll store), `styles.ts` (injected `--dsw-*` stylesheet), `icons.tsx` (ic_ds glyphs vendored byte-exact from ui-primitives)
 - `src/vendor/` — LookatStudy pure modules, vendored verbatim (provenance headers inside; the scanner dedup-key patch is documented there)
 - `tests/` — see Verification system
 

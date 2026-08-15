@@ -108,11 +108,15 @@ const CSS = `
 
 /* soul pills (native tool-row trigger language: 28px transparent, tinted active) */
 .lks-pills{display:inline-flex;align-items:center;height:28px}
-.lks-pill{height:28px;padding:0 10px;border:none;border-radius:24px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px;font-weight:500;transition:background .12s ease,color .12s ease}
+.lks-pill{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:none;border-radius:24px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px;font-weight:500;transition:background .12s ease,color .12s ease}
 .lks-pill:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 .lks-pill:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none}
 .lks-pill.on{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish)}
 .lks-pill.on:hover{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish)}
+
+/* ic_ds_* glyph carriers + busy spinner (native .8s linear spin) */
+@keyframes lks-spin{to{transform:rotate(360deg)}}
+.lks-spin{animation:lks-spin .8s linear infinite}
 
 /* starter chips */
 .lks-dock{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:0 2px 6px;flex:none}
@@ -122,7 +126,7 @@ const CSS = `
 /* proposal banner + shared buttons */
 .lks-banner{display:flex;align-items:center;gap:10px;background:var(--dsw-alias-state-warn-tertiary);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 14px;margin:8px 0;font-size:13px;flex:none}
 .lks-banner .lks-why{flex:1;color:var(--dsw-alias-label-secondary)}
-.lks-btn{border-radius:8px;padding:5px 14px;font-size:12.5px;font-weight:600;flex:none}
+.lks-btn{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:5px 14px;font-size:12.5px;font-weight:600;flex:none}
 .lks-btn.primary{background:var(--dsw-alias-state-business-primary);color:#fff}
 .lks-btn.primary:hover{filter:brightness(1.1)}
 .lks-btn.primary:disabled{opacity:.5;cursor:default;filter:none}

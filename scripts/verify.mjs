@@ -52,12 +52,16 @@ gate('bundle', () => {
     [client, 'lks-body', 'container-query direction wrapper'],
     [client, 'lesson-session', 'per-lesson thread binding'],
     [client, '开始学习', 'hero starter button'],
+    [client, 'M8.00192 6.64454', 'starter icon (ic_ds_think glyph)'],
+    [client, 'M2.871 13.1286', 'busy spinner icon (ic_ds_loading glyph)'],
+    [client, 'lks-spin', 'spinner animation class'],
     [client, '章节测验', 'exam nodes'],
     [host, 'attemptLesson', 'attempt-unlock host path'],
     [host, 'in_progress', 'four-state machine'],
   ]
   const forbidden = [
     [client, 'agentReady', 'stale agentReady gate (removed in 0.4.1)'],
+    [client, '📚', 'emoji icon on starter/import buttons (replaced by ic_ds glyphs in 0.7.1)'],
   ]
   const checks = [
     ...required.map(([src, needle, label]) => ({ ok: src.includes(needle), label: `bundle contains ${label} (${JSON.stringify(needle)})` })),

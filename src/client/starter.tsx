@@ -11,6 +11,7 @@
 
 import { createElement, useState } from 'react'
 import type { ReactNode } from 'react'
+import { IconLoadingOutline16, IconThinkOutline16 } from './icons.tsx'
 import type { InputZone } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 
@@ -62,7 +63,11 @@ function Inner({ ctx }: { ctx: ClientContext }): ReactNode {
       title: '一键准备学习:建立学习工作区、开启会话并让导师就位',
       disabled: busy,
       onClick: start,
-    }, busy ? '正在准备学习区…' : '📚 开始学习'),
+    },
+      busy
+        ? createElement(IconLoadingOutline16, { className: 'lks-spin' })
+        : createElement(IconThinkOutline16, null),
+      busy ? '正在准备学习区…' : '开始学习'),
     error !== null ? createElement('span', { className: 'lks-propcard-err', style: { marginTop: 0 } }, error) : null,
   )
 }

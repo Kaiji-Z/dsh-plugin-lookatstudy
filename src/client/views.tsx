@@ -13,6 +13,7 @@
 
 import { createElement, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import { IconDownloadOutline16 } from './icons.tsx'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
@@ -281,7 +282,7 @@ function CourseRail({ data, setFocus, deleteCourse, bindLessonSession, send, ctx
           className: 'lks-btn primary',
           style: { margin: '10px 0' },
           onClick: () => { send('导入课程:用 study_import_github 抓取 https://github.com/microsoft/AI-For-Beginners') },
-        }, '📚 导入示例课程'),
+        }, createElement(IconDownloadOutline16, null), '导入示例课程'),
         createElement(ImportRow, { send }),
       )
       : (() => {
