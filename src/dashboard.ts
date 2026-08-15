@@ -39,6 +39,8 @@ export interface DashboardDeps {
   store: DashboardStore
   /** The last agent that executed a study tool; buttons message it. */
   agentRef: { current: FollowupAgent | undefined }
+  /** Directory the one-click starter adopts as the study workspace (apply ensures it exists). */
+  studyAreaPath: string
 }
 
 /** Structural slice of the dsh `webServer` service, for testability. */
@@ -295,6 +297,10 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         }
         agent.followup(createUserMessage({ content: [{ type: 'text', text: body.text }], source: { kind: 'user' } }))
         sendJson(res, 200, { ok: true })
+        return
+      }
+      if (req.method === 'GET' && pathname === '/lookatstudy/api/study-workspace') {
+        sendJson(res, 200, { ok: true, path: deps.studyAreaPath })
         return
       }
       if (req.method === 'POST' && pathname === '/lookatstudy/api/course/delete') {

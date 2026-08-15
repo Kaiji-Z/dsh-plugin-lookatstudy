@@ -13,16 +13,18 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import { ensureStudyStyles } from './styles.ts'
 import { StudyView } from './views.tsx'
+import { studyStartButton } from './starter.tsx'
 
 export { StudyView, transcriptRows } from './views.tsx'
 export type { ChatRow } from './views.tsx'
 
-export const inject = ['slots']
+export const inject = ['slots', 'workspaces', 'sessions']
 
 /**
- * Register the study tab: styles inject once, the single `conversation.view`
- * entry rides the slot service's effect wrapper, so plugin unload removes
- * the whole surface.
+ * Register the study surfaces: styles inject once; the single
+ * `conversation.view` tab carries the whole plugin; the hero starter button
+ * (`conversation.input.left`, blank sessions only) automates the onboarding —
+ * study workspace + session + kickoff prompt in one click.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -30,5 +32,9 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('conversation.view', () => ctx.slots.register(
     { name: 'conversation.view', id: 'lookatstudy-study', order: 15, label: '学习' },
     StudyView,
+  ))
+  ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
+    { name: 'conversation.input.left', id: 'lookatstudy-start', order: 10 },
+    studyStartButton(ctx),
   ))
 }

@@ -105,7 +105,7 @@ test('workbenchState assembles map, lesson html, notes, proposals, and due list'
 test('routes: page, state API, focus switching, and unknown paths', async () => {
   const { state, lessonId } = fixture()
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, agentRef: { current: undefined } })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, agentRef: { current: undefined }, studyAreaPath: 'C:/study-area' })
 
   const page = await handle(routes, new FakeRequest('GET', '/lookatstudy/'), new FakeResponse())
   assert.equal(page.status, 200)
@@ -118,7 +118,7 @@ test('routes: page, state API, focus switching, and unknown paths', async () => 
 
   let saved = 0
   const routes2: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes2.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, agentRef: { current: undefined } })
+  registerDashboard({ register: (route) => { routes2.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, agentRef: { current: undefined }, studyAreaPath: 'C:/study-area' })
   const focus = await handle(routes2, new FakeRequest('POST', '/lookatstudy/api/focus', { lessonId: `${state.courses[0]!.id}:0:1` }), new FakeResponse())
   assert.equal(focus.status, 200)
   assert.equal(saved, 1)
@@ -155,7 +155,7 @@ test('message route: 409 without an agent, followup with one, 400 on bad bodies'
   const { state } = fixture()
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
   const agentRef: { current: { followup(message: unknown): void } | undefined } = { current: undefined }
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, agentRef })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, agentRef, studyAreaPath: 'C:/study-area' })
 
   const noAgent = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/message', { text: 'hi' }), new FakeResponse())
   assert.equal(noAgent.status, 409)
@@ -174,6 +174,16 @@ test('message route: 409 without an agent, followup with one, 400 on bad bodies'
   assert.equal(empty.status, 400)
   const malformed = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/message', 'not-json'), new FakeResponse())
   assert.ok([400, 500].includes(malformed.status))
+})
+
+
+test('study-workspace route: returns the apply-created area path', async () => {
+  const { state } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, agentRef: { current: undefined }, studyAreaPath: 'D:/areas/study' })
+  const res = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/study-workspace'), new FakeResponse())
+  assert.equal(res.status, 200)
+  assert.deepEqual(res.json(), { ok: true, path: 'D:/areas/study' })
 })
 
 test('dashboardTools returns a working study_dashboard tool', async () => {

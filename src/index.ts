@@ -7,7 +7,8 @@
  * @module dsh-plugin-lookatstudy
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { Config } from './config.ts'
 import { registerDashboard, type FollowupAgent } from './dashboard.ts'
@@ -156,7 +157,11 @@ export function apply(ctx: Context, config: Config): void {
   // The self-served study workbench exists only in compositions carrying a
   // webserver (web profile); headless assemblies keep the plain tool surface.
   ctx.inject(['webServer'], (webCtx) => {
-    const disposeDashboard = registerDashboard(webCtx.webServer, { store, agentRef })
+    // The one-click starter's dedicated workspace directory: a sibling of the
+    // state file, created eagerly so the client can adopt it as a workspace.
+    const studyAreaPath = join(dirname(statePath), 'study-area')
+    mkdirSync(studyAreaPath, { recursive: true })
+    const disposeDashboard = registerDashboard(webCtx.webServer, { store, agentRef, studyAreaPath })
     webCtx.effect(() => disposeDashboard, 'lookatstudy.dashboard()')
     const url = () => `http://${webCtx.webServer.host}:${webCtx.webServer.port}/lookatstudy/`
     for (const tool of dashboardTools(url)) {
