@@ -130,16 +130,20 @@ export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNod
     'data-conversation-composer-overlay': '',
     'data-pane': pane,
   },
-  createElement('div', { className: 'lks-switch' },
-    ...panes.map(p => createElement('button', {
-      key: p.id,
-      className: `lks-switch-btn${pane === p.id ? ' on' : ''}`,
-      onClick: () => { setPane(p.id) },
-    }, p.label)),
+  // .lks-body carries the row/column direction so the container query can
+  // flip it — a container query cannot style the container element itself.
+  createElement('div', { className: 'lks-body' },
+    createElement('div', { className: 'lks-switch' },
+      ...panes.map(p => createElement('button', {
+        key: p.id,
+        className: `lks-switch-btn${pane === p.id ? ' on' : ''}`,
+        onClick: () => { setPane(p.id) },
+      }, p.label)),
+    ),
+    createElement(CourseRail, { data, setFocus, send }),
+    createElement(TutorColumn, { data, setMode, send, snapshot }),
+    createElement(BlackboardColumn, { data }),
   ),
-  createElement(CourseRail, { data, setFocus, send }),
-  createElement(TutorColumn, { data, setMode, send, snapshot }),
-  createElement(BlackboardColumn, { data }),
   )
 }
 

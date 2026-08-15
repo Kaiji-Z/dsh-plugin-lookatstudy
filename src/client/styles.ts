@@ -30,20 +30,23 @@ const CSS = `
    (--dsh-composer-card-max-width inherits from ConversationRoot's root), so
    the tutor transcript is exactly as wide as the native composer; the
    flanking columns absorb the remaining width and scroll independently. */
-.lks-study{height:100%;min-height:0;width:100%;box-sizing:border-box;overflow:hidden;display:flex;gap:16px;padding:10px 14px calc(var(--dsh-composer-height, 152px) + 12px);color:var(--dsw-alias-label-primary);container:lksstudy/inline-size}
+.lks-study{height:100%;min-height:0;width:100%;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;padding:10px 14px calc(var(--dsh-composer-height, 152px) + 12px);color:var(--dsw-alias-label-primary);container:lksstudy/inline-size}
+/* Direction carrier (a container query cannot style the container itself). */
+.lks-body{flex:1;min-height:0;min-width:0;display:flex;gap:16px}
 .lks-col{display:flex;flex-direction:column;min-width:0}
 .lks-colhead{flex:none;font-size:11px;font-weight:600;color:var(--dsw-alias-label-tertiary);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
 .lks-col-rail{flex:1 1 0;min-width:190px;overflow-y:auto;padding:2px 6px}
 .lks-col-tutor{flex:0 0 auto;width:min(100%,var(--dsh-composer-card-max-width,780px))}
 .lks-col-bb{flex:1 1 0;min-width:230px;overflow-y:auto;padding:2px 6px}
-/* narrow (<1220px): one composer-width pane at a time, chosen by the switcher
-   bar; the two inactive columns unmount from layout entirely. */
-.lks-switch{display:none;flex:none;gap:16px;border-bottom:1px solid var(--dsw-alias-border-l1);padding:0 2px 0}
-.lks-switch-btn{padding:6px 2px;font-size:13px;color:var(--dsw-alias-label-tertiary);border-bottom:2px solid transparent;margin-bottom:-1px}
-.lks-switch-btn:hover{color:var(--dsw-alias-label-secondary)}
-.lks-switch-btn.on{color:var(--dsw-alias-state-business-primary);border-bottom-color:var(--dsw-alias-state-business-primary);font-weight:600}
+/* narrow (<1220px): one composer-width pane at a time, chosen by a row of
+   pill-button labels (deliberately NOT tab-styled — the host's view tabs sit
+   right above and underline tabs would read as a second tab ring). */
+.lks-switch{display:none;flex:none;gap:8px;padding:2px 2px 10px}
+.lks-switch-btn{border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:3px 14px;font-size:12.5px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);transition:background .12s ease,color .12s ease,border-color .12s ease}
+.lks-switch-btn:hover{border-color:var(--dsw-alias-border-l3);color:var(--dsw-alias-label-primary)}
+.lks-switch-btn.on{background:var(--dsw-alias-state-business-tertiary);border-color:transparent;color:var(--dsw-alias-label-primary-bluish);font-weight:600}
 @container lksstudy (max-width: 1220px){
-  .lks-study{flex-direction:column;overflow:hidden}
+  .lks-body{flex-direction:column}
   .lks-switch{display:flex}
   .lks-colhead{display:none}
   .lks-col{flex:1 1 auto;min-height:0;width:auto;overflow-y:auto}
