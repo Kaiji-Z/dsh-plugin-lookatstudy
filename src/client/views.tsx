@@ -108,18 +108,38 @@ function ActionError({ error }: { error: string | null }): ReactNode {
  */
 export type StudySend = (text: string) => void
 
-/** The whole study tab. */
+/** Narrow-mode pane selector: which of the three columns is the main display. */
+type StudyPane = 'rail' | 'tutor' | 'bb'
+
+/** The whole study tab. Wide = three columns (课程 | 导师 | 黑板); narrow (<1220px) = one composer-width pane with a three-way switcher. */
 export function StudyView({ useSession, inputActions }: ConvViewProps): ReactNode {
   const { data, setMode, setFocus } = useStudy()
   const snapshot = useSession((s: ConversationSnapshot) => s)
+  const [pane, setPane] = useState<StudyPane>('tutor')
   const send: StudySend = (text) => {
     inputActions.setDraft(text)
     inputActions.submit()
   }
-  return createElement('div', { className: 'lks-root lks-study', 'data-conversation-composer-overlay': '' },
-    createElement(CourseRail, { data, setFocus, send }),
-    createElement(TutorColumn, { data, setMode, send, snapshot }),
-    createElement(BlackboardColumn, { data }),
+  const panes: ReadonlyArray<{ id: StudyPane; label: string }> = [
+    { id: 'rail', label: '课程' },
+    { id: 'tutor', label: '导师' },
+    { id: 'bb', label: '黑板' },
+  ]
+  return createElement('div', {
+    className: 'lks-root lks-study',
+    'data-conversation-composer-overlay': '',
+    'data-pane': pane,
+  },
+  createElement('div', { className: 'lks-switch' },
+    ...panes.map(p => createElement('button', {
+      key: p.id,
+      className: `lks-switch-btn${pane === p.id ? ' on' : ''}`,
+      onClick: () => { setPane(p.id) },
+    }, p.label)),
+  ),
+  createElement(CourseRail, { data, setFocus, send }),
+  createElement(TutorColumn, { data, setMode, send, snapshot }),
+  createElement(BlackboardColumn, { data }),
   )
 }
 
@@ -243,7 +263,7 @@ function TutorColumn({ data, setMode, send, snapshot }: {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
   }
   return createElement('div', { className: 'lks-col lks-col-tutor' },
-    createElement('div', { className: 'lks-colhead' }, '老师'),
+    createElement('div', { className: 'lks-colhead' }, '导师'),
     createElement('div', { className: 'lks-transcript', ref: scrollRef },
       rows.length === 0
         ? createElement('div', { className: 'lks-empty' }, '对话会出现在这里', createElement('br'), '在下方输入框和导师说话')
