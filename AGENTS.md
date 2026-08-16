@@ -1,6 +1,6 @@
 # dsh-plugin-lookatstudy · Agent Development Guide
 
-A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) community plugin: LookatStudy ported as ONE `conversation.view` tab (「学习」) — a simplified LookatStudy in three columns (课程 | 导师 | 黑板) — plus a host tool surface of 20 `study_*` tools, a tutor persona with three souls, and a vendored zero-dependency learning engine (SM-2, BKT, markdown/course parsers).
+A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) community plugin: LookatStudy ported as ONE `conversation.view` tab (「学习」) — a simplified LookatStudy in three columns (课程 | 导师 | 黑板) — plus an on-demand host surface (19 `study_*` tools + a three-soul tutor persona, dormant until the learner clicks 开始学习) and a vendored zero-dependency learning engine (SM-2, BKT, markdown/course parsers).
 
 **Before developing any feature, read the verification protocol in [VERIFICATION.md](VERIFICATION.md)** — its operative ideas are wired into this repo: `pnpm run verify` is the single machine-checkable gate (§6), the regression suite freezes acceptance paths, and the schema-conformance test mirrors the real tool-call path's output validation. Claims of "done" cite command output, not impressions.
 
@@ -27,9 +27,10 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 ## Layout
 
 - `src/state.ts` — the learning state machine (the source of truth for every rule below)
-- `src/tools.ts` — the 20 `study_*` tools; every mutation goes through the store and persists synchronously
-- `src/dashboard.ts` — the study tab's HTTP API under `/lookatstudy/api/*` (state feed, focus/mode/delete/lesson-session writes, study-workspace path)
-- `src/index.ts` — host apply: tools, tutor prompt sections (stable core + dynamic soul + learner snapshot), dashboard
+- `src/tools.ts` — the 19 `study_*` tools; every mutation goes through the store and persists synchronously
+- `src/dashboard.ts` — the study tab's HTTP API under `/lookatstudy/api/*` (state feed, activation/focus/mode/delete/lesson-session writes, study-workspace path)
+- `src/surface.ts` — the activation gate: persona texts render empty and the tools stay unregistered while `state.active` is false
+- `src/index.ts` — host apply: the activation-gated surface (tools + tutor prompt sections), dashboard
 - `src/cards.ts` — pure display projections shared by render and presenter cards
 - `src/client/` — browser half: `views.tsx` (the tab + `transcriptRows`), `starter.tsx` (hero one-click), `data.ts` (shared poll store), `styles.ts` (injected `--dsw-*` stylesheet), `icons.tsx` (ic_ds glyphs vendored byte-exact from ui-primitives)
 - `src/vendor/` — LookatStudy pure modules, vendored verbatim (provenance headers inside; the scanner dedup-key patch is documented there)
@@ -42,6 +43,7 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 - `recordAnswer` refuses locked lessons; lesson mastery = min over knowledge components; proposal-apply floors to 0.95 without lowering.
 - Exam nodes (`kind: 'exam'`) are always `available` in state and gated only in the UI (all sibling study lessons ≥50%); they never gate course completion.
 - Course ids are title slugs; re-importing the same source returns the existing course (idempotent).
+- Activation (`state.active`) gates the whole model-facing surface: fresh states are dormant, pre-flag files load active; tools register/unregister with the flag (registration disposers), dormant prompt texts render empty and empty sections are dropped at assembly. The dashboard's `POST /api/active` syncs the tool registry BEFORE responding, so a client awaiting it can safely queue a prompt right after; `Config.active: on|off` is the headless escape hatch.
 - Persisted format is versioned; `loadState` migrates forward (v1 `completed`→`mastered`, kind defaults, exam backfill) and refuses newer files. Every mutation saves atomically (tmp + rename).
 
 ## Verification system

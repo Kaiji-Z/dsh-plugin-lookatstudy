@@ -31,6 +31,8 @@ export interface DashboardDeps {
   store: DashboardStore
   /** Directory the one-click starter adopts as the study workspace (apply ensures it exists). */
   studyAreaPath: string
+  /** Applies an activation flip to the host surface (tool registry sync). */
+  onActiveChange: (active: boolean) => void
 }
 
 /** Structural slice of the dsh `webServer` service, for testability. */
@@ -94,6 +96,8 @@ export interface WorkbenchLesson {
 
 /** Whole workbench state for the page. */
 export interface WorkbenchState {
+  /** Whether the study surface (tools + tutor persona) is currently exposed. */
+  active: boolean
   mode: string
   courses: WorkbenchCourse[]
   focusLessonId: string | null
@@ -174,6 +178,7 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
   }
   const due = dueReviews(state, undefined, now)
   return {
+    active: state.active,
     mode: state.mode,
     courses,
     focusLessonId: focusId,
@@ -253,6 +258,22 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
       const pathname = new URL(req.url ?? '/', 'http://x').pathname
       if (req.method === 'GET' && pathname === '/lookatstudy/api/state') {
         sendJson(res, 200, workbenchState(deps.store.get(), new Date()))
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/active') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.active !== 'boolean') {
+          sendJson(res, 400, { ok: false, error: 'active (boolean) required' })
+          return
+        }
+        deps.store.get().active = body.active
+        deps.store.save()
+        // Sync the host surface (tool registry) BEFORE responding so the
+        // client's awaiting fetch guarantees the tools exist by the time it
+        // queues the kickoff prompt.
+        deps.onActiveChange(body.active)
+        sendJson(res, 200, { ok: true, active: body.active })
         return
       }
       if (req.method === 'POST' && pathname === '/lookatstudy/api/focus') {

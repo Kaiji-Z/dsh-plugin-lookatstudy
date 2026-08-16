@@ -254,12 +254,18 @@ export function studyView(ctx: ClientContext): (props: ConvViewProps) => ReactNo
 
 /** Tab body: the factory-bound ctx carries workspaces/sessions for the per-lesson session jumps. */
 function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: ClientContext }): ReactNode {
-  const { data, setMode, setFocus, deleteCourse, bindLessonSession } = useStudy()
+  const { data, activate, setMode, setFocus, deleteCourse, bindLessonSession } = useStudy()
   const snapshot = useSession((s: ConversationSnapshot) => s)
   const [pane, setPane] = useState<StudyPane>(storedPane)
   const send: StudySend = (text) => {
-    inputActions.setDraft(text)
-    inputActions.submit()
+    void (async () => {
+      // Dormant installs activate first: the host registers the study tools
+      // before the activation POST resolves, so the prompt meets a model that
+      // can already call them.
+      if (data?.active !== true) await activate(true)
+      inputActions.setDraft(text)
+      inputActions.submit()
+    })()
   }
   const panes: ReadonlyArray<{ id: StudyPane; label: string }> = [
     { id: 'rail', label: '课程' },
@@ -271,6 +277,17 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
     'data-conversation-composer-overlay': '',
     'data-pane': pane,
   },
+  // Always-visible activation bar: the tab is the fallback entry when another
+  // plugin's composer takeover hides the starter pill.
+  createElement('div', { className: 'lks-actbar' },
+    data === null ? null : createElement('button', {
+      className: `lks-btn ${data.active ? 'ghost' : 'primary'}`,
+      title: data.active
+        ? '注销 study 工具与导师人格;学习进度保留,可随时重新开启'
+        : '注册 study 工具并载入导师人格,之后普通对话和现在一样',
+      onClick: () => { void activate(!data.active) },
+    }, data.active ? '⏻ 退出学习模式' : '▶ 开始学习'),
+  ),
   // .lks-body carries the row/column direction so the container query can
   // flip it — a container query cannot style the container element itself.
   createElement('div', { className: 'lks-body' },
@@ -288,7 +305,7 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
       },
       }, p.label)),
     ),
-    createElement(CourseRail, { data, setFocus, deleteCourse, bindLessonSession, send, ctx, currentSessionId: snapshot.sessionId }),
+    createElement(CourseRail, { data, activate, setFocus, deleteCourse, bindLessonSession, send, ctx, currentSessionId: snapshot.sessionId }),
     createElement(TutorColumn, { data, setMode, send, snapshot }),
     createElement(BlackboardColumn, { data }),
   ),
@@ -298,8 +315,9 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
 type StudyData = ReturnType<typeof useStudy>['data']
 
 /** Left column: course management (pick/delete/search/import), lesson tree, due box. */
-function CourseRail({ data, setFocus, deleteCourse, bindLessonSession, send, ctx, currentSessionId }: {
+function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession, send, ctx, currentSessionId }: {
   data: StudyData
+  activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
   deleteCourse: (courseId: string) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string) => Promise<void>
@@ -323,6 +341,9 @@ function CourseRail({ data, setFocus, deleteCourse, bindLessonSession, send, ctx
     }
     setJumping(lesson.id)
     void setFocus(lesson.id).then(() => (async () => {
+      // Minting a lesson session prompts directly (not through `send`), so
+      // activation happens here too — same dormant-install guarantee.
+      if (data?.active !== true) await activate(true)
       const area = await fetch('/lookatstudy/api/study-workspace')
       if (!area.ok) throw new Error(`study area unavailable (HTTP ${area.status})`)
       const { path } = await area.json() as { path: string }

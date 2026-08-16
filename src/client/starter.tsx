@@ -12,6 +12,7 @@
 import { createElement, useState } from 'react'
 import type { ReactNode } from 'react'
 import { IconLoadingOutline16, IconThinkOutline16 } from './icons.tsx'
+import { useStudy } from './data.ts'
 import type { InputZone } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 
@@ -32,6 +33,7 @@ export function studyStartButton(ctx: ClientContext): (props: InputZone) => Reac
 
 /** Button body in its own component so hook order stays constant. */
 function Inner({ ctx }: { ctx: ClientContext }): ReactNode {
+  const { data, activate } = useStudy()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const start = (): void => {
@@ -40,6 +42,10 @@ function Inner({ ctx }: { ctx: ClientContext }): ReactNode {
     setError(null)
     void (async () => {
       try {
+        // Dormant installs activate first: the host registers the study tools
+        // before this POST resolves, so the kickoff prompt below meets a model
+        // that can already call them.
+        if (data?.active !== true) await activate(true)
         const area = await fetch('/lookatstudy/api/study-workspace')
         if (!area.ok) throw new Error(`study area unavailable (HTTP ${area.status})`)
         const { path } = await area.json() as { path: string }
@@ -67,7 +73,7 @@ function Inner({ ctx }: { ctx: ClientContext }): ReactNode {
       busy
         ? createElement(IconLoadingOutline16, { className: 'lks-spin' })
         : createElement(IconThinkOutline16, null),
-      busy ? '正在准备学习区…' : '开始学习'),
+      busy ? '正在准备学习区…' : data?.active === true ? '进入学习' : '开始学习'),
     error !== null ? createElement('span', { className: 'lks-propcard-err', style: { marginTop: 0 } }, error) : null,
   )
 }

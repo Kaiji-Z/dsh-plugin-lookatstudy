@@ -96,6 +96,7 @@ const CSS = `
 .lks-pct{font-size:12px;color:var(--dsw-alias-label-tertiary);flex:none;width:32px;text-align:right}
 
 .lks-empty{color:var(--dsw-alias-label-tertiary);text-align:center;padding:48px 8px;font-size:14px;line-height:2}
+.lks-actbar{display:flex;flex-direction:row;justify-content:flex-end;flex:none;padding-bottom:8px}
 
 /* ── middle column: the tutor ── */
 .lks-transcript{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px}

@@ -51,6 +51,8 @@ gate('bundle', () => {
     [client, 'dsh-composer-card-max-width', 'composer-width center strip'],
     [client, 'lks-body', 'container-query direction wrapper'],
     [client, 'lesson-session', 'per-lesson thread binding'],
+    [client, '/lookatstudy/api/active', 'activation route wired into the client'],
+    [client, '退出学习模式', 'in-tab activation toggle'],
     [client, '开始学习', 'hero starter button'],
     [client, 'M8.00192 6.64454', 'starter icon (ic_ds_think glyph)'],
     [client, 'M2.871 13.1286', 'busy spinner icon (ic_ds_loading glyph)'],
@@ -63,6 +65,7 @@ gate('bundle', () => {
     [client, '导师思考中', 'thinking indicator'],
     [host, 'attemptLesson', 'attempt-unlock host path'],
     [host, 'in_progress', 'four-state machine'],
+    [host, 'createStudySurface', 'activation-gated tool surface'],
   ]
   const forbidden = [
     [client, 'agentReady', 'stale agentReady gate (removed in 0.4.1)'],

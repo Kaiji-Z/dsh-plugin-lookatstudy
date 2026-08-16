@@ -191,6 +191,25 @@ test('state persists and reloads identically', () => {
   }
 })
 
+test('activation defaults: fresh states dormant, pre-active files stay on', () => {
+  assert.equal(emptyState().active, false, 'fresh installs start dormant until 开始学习')
+  const dir = mkdtempSync(join(tmpdir(), 'lookatstudy-'))
+  try {
+    const path = join(dir, 'state.json')
+    const { state } = importedFixture()
+    const legacy = JSON.parse(JSON.stringify(state)) as Record<string, unknown>
+    delete legacy.active
+    writeFileSync(path, JSON.stringify(legacy), 'utf8')
+    assert.equal(loadState(path).active, true, 'files predating the flag keep the tutor working')
+
+    state.active = false
+    saveState(path, state)
+    assert.equal(loadState(path).active, false, 'an explicit off round-trips')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('a corrupt state file fails loud', () => {
   const dir = mkdtempSync(join(tmpdir(), 'lookatstudy-'))
   try {

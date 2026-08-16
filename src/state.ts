@@ -128,6 +128,8 @@ export interface CourseState {
 export interface LearningState {
   version: 2
   courses: CourseState[]
+  /** Whether the study surface (tools + tutor persona) is exposed to the model. */
+  active: boolean
   /** Active tutoring soul. */
   mode: StudyMode
   /** Lesson the learner last opened (snapshot focus), or null. */
@@ -160,9 +162,9 @@ export const NEAR_MASTERED_THRESHOLD = 0.85
 export const WEAK_CONCEPT_THRESHOLD = 0.7
 const FRICTION_CAP = 10
 
-/** Fresh empty state for a first run. */
+/** Fresh empty state for a first run: dormant until the learner clicks 开始学习. */
 export function emptyState(): LearningState {
-  return { version: 2, courses: [], mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, proposals: [], lessonSessions: {} }
+  return { version: 2, courses: [], active: false, mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, proposals: [], lessonSessions: {} }
 }
 
 /**
@@ -229,6 +231,9 @@ export function loadState(path: string): LearningState {
   return {
     version: 2,
     courses,
+    // Pre-`active` files predate on-demand activation: keep those learners'
+    // tutor working (default true), while fresh installs start dormant.
+    active: raw.active ?? true,
     mode: raw.mode ?? 'guide',
     focus: raw.focus ?? null,
     memoryGlobal: raw.memoryGlobal ?? null,

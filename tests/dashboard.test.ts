@@ -85,7 +85,9 @@ test('workbenchState assembles map, lesson html, notes, proposals, and due list'
   recordAnswer(state, lessonId, true, undefined, new Date('2026-08-15T10:00:00Z'))
   addNote(state, lessonId, 'understand', 'map', '```mermaid\nflowchart TD\n```', 'ai', null, new Date())
   proposeMastery(state, lessonId, 'great recap', new Date('2026-08-15T10:00:00Z'))
+  state.active = true
   const wb = workbenchState(state, new Date('2026-08-15T10:00:00Z'))
+  assert.equal(wb.active, true, 'the activation flag rides the state feed')
   assert.equal(wb.mode, 'guide')
   assert.equal(wb.courses.length, 1)
   assert.equal(wb.courses[0]!.courseId, courseId)
@@ -104,7 +106,7 @@ test('workbenchState assembles map, lesson html, notes, proposals, and due list'
 test('routes: state API, focus switching, and unknown paths', async () => {
   const { state, lessonId } = fixture()
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area' })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', onActiveChange: () => {} })
 
   const page = await handle(routes, new FakeRequest('GET', '/lookatstudy/'), new FakeResponse())
   assert.equal(page.status, 404, 'the standalone workbench page is gone; only the API remains')
@@ -115,7 +117,7 @@ test('routes: state API, focus switching, and unknown paths', async () => {
 
   let saved = 0
   const routes2: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes2.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area' })
+  registerDashboard({ register: (route) => { routes2.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', onActiveChange: () => {} })
   const focus = await handle(routes2, new FakeRequest('POST', '/lookatstudy/api/focus', { lessonId: `${state.courses[0]!.id}:0:1` }), new FakeResponse())
   assert.equal(focus.status, 200)
   assert.equal(saved, 1)
@@ -134,7 +136,7 @@ test('mode route: switches and persists the soul mode; 400 on bad values', async
   assert.equal(state.mode, 'guide')
   let saved = 0
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area' })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', onActiveChange: () => {} })
 
   const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/mode', { mode: 'practice' }), new FakeResponse())
   assert.equal(ok.status, 200)
@@ -146,4 +148,36 @@ test('mode route: switches and persists the soul mode; 400 on bad values', async
   assert.equal(bad.status, 400)
   assert.equal(state.mode, 'practice', 'rejected value leaves the mode untouched')
   assert.equal(saved, 1)
+})
+
+test('active route: flips activation, persists, and syncs the surface before responding', async () => {
+  const { state } = fixture()
+  assert.equal(state.active, false, 'fixture starts dormant')
+  let saved = 0
+  const flips: boolean[] = []
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, {
+    store: { get: () => state, save: () => { saved += 1 } },
+    studyAreaPath: 'C:/study-area',
+    onActiveChange: (active) => { flips.push(active) },
+  })
+
+  const feed = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  assert.equal((feed.json() as { active: boolean }).active, false, 'the state feed carries the flag')
+
+  const on = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/active', { active: true }), new FakeResponse())
+  assert.equal(on.status, 200)
+  assert.equal((on.json() as { active: boolean }).active, true)
+  assert.equal(state.active, true)
+  assert.equal(saved, 1)
+  assert.deepEqual(flips, [true], 'the surface sync fired by the time the response landed')
+
+  const off = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/active', { active: false }), new FakeResponse())
+  assert.equal((off.json() as { active: boolean }).active, false)
+  assert.deepEqual(flips, [true, false], 'each flip fires exactly one sync')
+
+  const bad = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/active', { active: 'yes' }), new FakeResponse())
+  assert.equal(bad.status, 400)
+  assert.equal(state.active, false, 'a rejected value leaves activation untouched')
+  assert.equal(saved, 2)
 })

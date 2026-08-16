@@ -11,6 +11,7 @@ import { useSyncExternalStore } from 'react'
 
 /** Wire shape of `GET /lookatstudy/api/state` (structural mirror of the host's WorkbenchState). */
 export interface StudyState {
+  readonly active: boolean
   readonly mode: 'direct' | 'guide' | 'practice'
   readonly courses: ReadonlyArray<{
     readonly courseId: string
@@ -129,6 +130,19 @@ class StudyStore {
     this.refresh()
   }
 
+  /**
+   * Flip learning mode. The host syncs its tool registry before responding,
+   * so awaiting this guarantees the `study_*` tools exist for the next prompt.
+   */
+  async activate(active: boolean): Promise<void> {
+    await fetchJson('/lookatstudy/api/active', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ active }),
+    })
+    this.refresh()
+  }
+
   /** Point the tutor's focus at one lesson. */
   async setFocus(lessonId: string): Promise<void> {
     await fetchJson('/lookatstudy/api/focus', {
@@ -166,6 +180,7 @@ export const studyStore = new StudyStore()
 /** React binding: live snapshot plus the write actions. */
 export function useStudy(): {
   data: StudyState | null
+  activate: (active: boolean) => Promise<void>
   setMode: (mode: StudyState['mode']) => Promise<void>
   setFocus: (lessonId: string) => Promise<void>
   deleteCourse: (courseId: string) => Promise<void>
@@ -174,6 +189,7 @@ export function useStudy(): {
   const data = useSyncExternalStore(studyStore.subscribe, studyStore.getSnapshot, studyStore.getSnapshot)
   return {
     data,
+    activate: studyStore.activate.bind(studyStore),
     setMode: studyStore.setMode.bind(studyStore),
     setFocus: studyStore.setFocus.bind(studyStore),
     deleteCourse: studyStore.deleteCourse.bind(studyStore),
