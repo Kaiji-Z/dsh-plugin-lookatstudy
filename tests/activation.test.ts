@@ -26,6 +26,7 @@ test('active states render the tutor core, the chosen soul, and the snapshot', (
   const course = importCourse(state, parseMarkdownToCourse('# Course\n## Part\n### Lesson\nbody'), 'markdown', 'fixture')
   state.focus = { lessonId: `${course.id}:0:0` }
   assert.ok(tutorCoreText(state).includes('Study tutor'))
+  assert.ok(tutorCoreText(state).includes("learner's own language"), 'the output-language directive rides the tutor core')
   assert.ok(soulText(state).includes('Soul: practice'))
   assert.ok(snapshotSectionText(state).includes('【学习者当前状态】'), 'a focused active state renders the learner snapshot')
   // The texts are the real prompt surfaces, not copies: they react to the

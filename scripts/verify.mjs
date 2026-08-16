@@ -66,6 +66,9 @@ gate('bundle', () => {
     [host, 'attemptLesson', 'attempt-unlock host path'],
     [host, 'in_progress', 'four-state machine'],
     [host, 'createStudySurface', 'activation-gated tool surface'],
+    [host, 'data.jsdelivr.com', 'jsdelivr data API tree fallback (upstream 2026-08-16 port)'],
+    [host, 'deadlineMs', 'httpsGet hard deadline plumbing'],
+    [host, "learner's own language", 'output-language directive'],
   ]
   const forbidden = [
     [client, 'agentReady', 'stale agentReady gate (removed in 0.4.1)'],

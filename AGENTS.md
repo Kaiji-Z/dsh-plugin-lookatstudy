@@ -33,7 +33,7 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 - `src/index.ts` — host apply: the activation-gated surface (tools + tutor prompt sections), dashboard
 - `src/cards.ts` — pure display projections shared by render and presenter cards
 - `src/client/` — browser half: `views.tsx` (the tab + `transcriptRows`), `starter.tsx` (hero one-click), `data.ts` (shared poll store), `styles.ts` (injected `--dsw-*` stylesheet), `icons.tsx` (ic_ds glyphs vendored byte-exact from ui-primitives)
-- `src/vendor/` — LookatStudy pure modules, vendored verbatim (provenance headers inside; the scanner dedup-key patch is documented there)
+- `src/vendor/` — LookatStudy pure modules, vendored verbatim (provenance headers inside; the scanner dedup-key patch and the repo-fetcher network-hardening port — deadline/abort/jsDelivr tree fallback, upstream 2026-08-16 — are documented there)
 - `tests/` — see Verification system
 
 ## State-machine invariants (asserted by tests/invariants.test.ts)
