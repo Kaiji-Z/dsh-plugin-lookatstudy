@@ -1,4 +1,4 @@
-// Vendored from LookatStudy src/main/services/pure/file-classifier.ts (MIT License, https://github.com/kaiji/LookatStudy).
+// Vendored from LookatStudy src/main/services/pure/file-classifier.ts (MIT License, https://github.com/Kaiji-Z/LookatStudy).
 // Unmodified except this provenance header. PDF/PPTX branches resolve unavailable optional libs and are skipped per upstream try/catch.
 /**
  * 课时文件分类器 —— 规则引擎 + LLM 兜底两阶段分类。

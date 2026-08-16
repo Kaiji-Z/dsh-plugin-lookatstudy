@@ -1,4 +1,4 @@
-// Vendored from LookatStudy src/main/services/pure/sm2.ts (MIT License, https://github.com/kaiji/LookatStudy).
+// Vendored from LookatStudy src/main/services/pure/sm2.ts (MIT License, https://github.com/Kaiji-Z/LookatStudy).
 // Unmodified except this provenance header. PDF/PPTX branches resolve unavailable optional libs and are skipped per upstream try/catch.
 /**
  * SM-2 间隔重复算法 —— 纯函数，零依赖（不 import DB / electron / @shared）。

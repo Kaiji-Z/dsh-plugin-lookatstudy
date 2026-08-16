@@ -1,4 +1,4 @@
-// Vendored from LookatStudy src/main/services/pure/markdown-course.ts (MIT License, https://github.com/kaiji/LookatStudy).
+// Vendored from LookatStudy src/main/services/pure/markdown-course.ts (MIT License, https://github.com/Kaiji-Z/LookatStudy).
 // Unmodified except this provenance header. PDF/PPTX branches resolve unavailable optional libs and are skipped per upstream try/catch.
 /**
  * Markdown → 课程树 纯解析器（M4 Course Generator 阶段 A 的可测核心）。

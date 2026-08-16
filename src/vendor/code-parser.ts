@@ -1,4 +1,4 @@
-// Vendored from LookatStudy src/main/services/pure/code-parser.ts (MIT License, https://github.com/kaiji/LookatStudy).
+// Vendored from LookatStudy src/main/services/pure/code-parser.ts (MIT License, https://github.com/Kaiji-Z/LookatStudy).
 // Unmodified except this provenance header. PDF/PPTX branches resolve unavailable optional libs and are skipped per upstream try/catch.
 /**
  * 代码文件解析器 —— 把 .py/.js/.go 等源代码文件转成可学习的 markdown。

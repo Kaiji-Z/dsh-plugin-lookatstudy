@@ -1,4 +1,4 @@
-// Vendored from LookatStudy src/main/services/pure/bkt.ts (MIT License, https://github.com/kaiji/LookatStudy).
+// Vendored from LookatStudy src/main/services/pure/bkt.ts (MIT License, https://github.com/Kaiji-Z/LookatStudy).
 // Unmodified except this provenance header. PDF/PPTX branches resolve unavailable optional libs and are skipped per upstream try/catch.
 /**
  * Bayesian Knowledge Tracing (BKT) —— 掌握度概率的贝叶斯更新。

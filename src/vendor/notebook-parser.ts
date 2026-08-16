@@ -1,4 +1,4 @@
-// Vendored from LookatStudy src/main/services/pure/notebook-parser.ts (MIT License, https://github.com/kaiji/LookatStudy).
+// Vendored from LookatStudy src/main/services/pure/notebook-parser.ts (MIT License, https://github.com/Kaiji-Z/LookatStudy).
 // Unmodified except this provenance header. PDF/PPTX branches resolve unavailable optional libs and are skipped per upstream try/catch.
 /**
  * Jupyter Notebook (.ipynb) 解析器 —— 把 JSON 格式的 notebook 转成 markdown + 图片。

@@ -1,4 +1,4 @@
-// Vendored from LookatStudy src/main/services/pure/local-folder-scanner.ts (MIT License, https://github.com/kaiji/LookatStudy).
+// Vendored from LookatStudy src/main/services/pure/local-folder-scanner.ts (MIT License, https://github.com/Kaiji-Z/LookatStudy).
 // Local modification (documented): dedupKey() includes the file's directory so
 // per-lesson README.md files in different directories are NOT collapsed into one
 // (upstream keys on basename alone, dropping every nested README after the first —
