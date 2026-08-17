@@ -15,12 +15,11 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { parseMarkdownToCourse } from './vendor/markdown-course.ts'
 import type { ParsedCourse } from './vendor/markdown-course.ts'
 import { scanFolder } from './vendor/local-folder-scanner.ts'
-import { buildCourseFromFiles } from './vendor/repo-fetcher.ts'
 import { fetchFileOutlines, fetchRepoInventory, fetchSingleFileContent } from './vendor/repo-fetcher.ts'
-import type { FetchedFile } from './vendor/repo-fetcher.ts'
 import {
   buildCourseFromDesign,
   buildPendingDesign,
+  buildPendingDesignFromFolder,
   renderDesignBrief,
   validateDesign,
   type PendingDesign,
@@ -261,38 +260,95 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     ...importPresent,
   })
 
+  /** Shared output for the two design-protocol import tools: already imported, or a brief is pending. */
+  const designOrImportedOutput = {
+    schema: {
+      oneOf: [
+        {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            status: { type: 'string', enum: ['imported'], required: true },
+            courseId: { type: 'string', required: true },
+            title: { type: 'string', required: true },
+            sections: { type: 'integer', required: true },
+            lessons: { type: 'integer', required: true },
+            firstLessonId: { type: 'string', required: true },
+            firstLessonTitle: { type: 'string', required: true },
+          },
+        },
+        {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            status: { type: 'string', enum: ['design_required'], required: true },
+            repo: { type: 'string', required: true },
+            branch: { type: 'string', required: true },
+            courseTitle: { type: 'string', required: true },
+            fileCount: { type: 'integer', required: true },
+            fullTreeCount: { type: 'integer', required: true },
+          },
+        },
+      ],
+    },
+  }
+  /** Shared render: the brief rides the design_required branch; imported stays the old summary. */
+  const designOrImportedRender = (_args: unknown, value: { status: string; title?: string; sections?: number; lessons?: number; firstLessonId?: string; firstLessonTitle?: string }) => [{
+    type: 'text' as const,
+    text: value.status === 'design_required'
+      ? (pendingDesign === null
+          ? 'Course design required — the brief is no longer pending; call the import tool again to re-fetch it.'
+          : renderDesignBrief(pendingDesign))
+      : `Imported course “${value.title}” (${value.sections} sections, ${value.lessons} lessons). `
+        + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}).`,
+  }]
+  const designOrImportedPresent = {
+    presentationMeta: (_args: unknown, value: { status: string }) =>
+      value.status === 'design_required' ? cards.designBriefLines(value as cards.DesignBriefValue) : cards.importLines(value as cards.ImportValue),
+    presentResult: (_args: unknown, result: { meta: unknown }) => ({
+      card: 'generic',
+      content: textBlocks(result.meta as string[]),
+    }),
+  }
+
   const importFolder = defineTool({
     name: 'study_import_folder',
     description:
-      'Import a local folder as a course: markdown, txt, html, Jupyter notebooks, rst/Rmd/org/adoc, '
-      + 'and 30+ code file types become lessons grouped into sections by directory (code is teaching material too). '
-      + 'PDF/PPTX are not supported in this edition.',
+      'Start importing a local folder: scans markdown, txt, html, Jupyter notebooks, rst/Rmd/org/adoc, and 30+ '
+      + 'code file types (PDF/PPTX unsupported), then returns a design brief — the TUTOR designs the course '
+      + 'structure from it and applies the result with study_apply_design (fully offline). Re-importing an '
+      + 'already-imported path returns the existing course directly.',
     parameters: {
       path: { type: 'string', required: true, description: 'Absolute path of the folder to scan.' },
-      title: { type: 'string', description: 'Optional course title overriding the folder name.' },
+      title: { type: 'string', description: 'Optional course title overriding the folder name / README H1.' },
     },
-    output: {
-      ...importOutput,
-      render: (_args, value) => [{
-        type: 'text',
-        text: `Imported folder course “${value.title}” (${value.sections} sections, ${value.lessons} lessons). `
-          + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}).`,
-      }],
-    },
+    output: { ...designOrImportedOutput, render: designOrImportedRender },
     async execute(args) {
       if (!existsSync(args.path)) {
         throw new Error(`lookatstudy-plugin: folder does not exist: ${args.path}`)
       }
+      const existing = store.get().courses.find(c => c.source === 'folder' && c.sourceRef === args.path)
+      if (existing !== undefined) {
+        return { status: 'imported' as const, ...toImportValue(existing) }
+      }
       const docs = await scanFolder(args.path)
-      const files: FetchedFile[] = docs.map(doc => ({ path: doc.path, title: doc.title, md: doc.content }))
+      if (docs.length === 0) {
+        throw new Error(`lookatstudy-plugin: no importable files found in ${args.path}`)
+      }
       const title = args.title ?? basename(args.path.replaceAll('\\', '/'))
-      const parsed = buildCourseFromFiles(title, files)
-      requireParsedLessons(parsed)
-      return mutate(state => toImportValue(importCourse(state, parsed, 'folder', args.path)))
+      pendingDesign = buildPendingDesignFromFolder(args.path, title, docs)
+      return {
+        status: 'design_required' as const,
+        repo: pendingDesign.repo,
+        branch: pendingDesign.branch,
+        courseTitle: pendingDesign.courseTitle,
+        fileCount: pendingDesign.files.length,
+        fullTreeCount: pendingDesign.fullTreeCount,
+      }
     },
     timeoutMs: 60_000,
     presentCall: args => ({ card: 'generic', title: `Scan folder: ${args.path}`, kind: 'read', rawInput: args.path }),
-    ...importPresent,
+    ...designOrImportedPresent,
   })
 
   const importGithub = defineTool({
@@ -307,54 +363,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       url: { type: 'string', required: true, description: 'Repository URL, e.g. https://github.com/microsoft/AI-For-Beginners.' },
       branch: { type: 'string', description: 'Branch to read (main tried, then master); defaults to main.' },
     },
-    output: {
-      schema: {
-        oneOf: [
-          {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              status: { type: 'string', enum: ['imported'], required: true },
-              courseId: { type: 'string', required: true },
-              title: { type: 'string', required: true },
-              sections: { type: 'integer', required: true },
-              lessons: { type: 'integer', required: true },
-              firstLessonId: { type: 'string', required: true },
-              firstLessonTitle: { type: 'string', required: true },
-            },
-          },
-          {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              status: { type: 'string', enum: ['design_required'], required: true },
-              repo: { type: 'string', required: true },
-              branch: { type: 'string', required: true },
-              courseTitle: { type: 'string', required: true },
-              fileCount: { type: 'integer', required: true },
-              fullTreeCount: { type: 'integer', required: true },
-            },
-          },
-        ],
-      },
-      render: (_args, value) => {
-        if (value.status === 'design_required') {
-          // The brief rides the render — the only channel into the tutor's
-          // context. After apply consumes the pending design (or a restart
-          // clears it) a replay renders the pointer instead.
-          const brief = pendingDesign === null ? null : renderDesignBrief(pendingDesign)
-          return [{
-            type: 'text',
-            text: brief ?? 'Course design required — the brief is no longer pending; call study_import_github to re-fetch it.',
-          }]
-        }
-        return [{
-          type: 'text',
-          text: `Imported GitHub course “${value.title}” (${value.sections} sections, ${value.lessons} lessons). `
-            + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}).`,
-        }]
-      },
-    },
+    output: { ...designOrImportedOutput, render: designOrImportedRender },
     async execute(args, exec) {
       const { owner, repo } = parseGithubUrl(args.url)
       const branch = args.branch ?? 'main'
@@ -380,19 +389,17 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     },
     timeoutMs: 180_000,
     presentCall: args => ({ card: 'generic', title: `Import GitHub course: ${args.url}`, kind: 'fetch' }),
-    presentationMeta: (_args, value) => value.status === 'design_required'
-      ? cards.designBriefLines(value)
-      : cards.importLines(value),
-    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+    ...designOrImportedPresent,
   })
 
   const applyDesign = defineTool({
     name: 'study_apply_design',
     description:
-      'Apply the tutor-designed course structure to the pending GitHub import (the one study_import_github '
-      + 'returned design_required for). Every lesson\'s file must come from the design brief — unknown paths '
-      + 'are dropped (anti-hallucination); lesson bodies are sliced by their anchor heading and the course '
-      + 'is imported. On a validation or fetch error the tutor fixes the design and simply calls again.',
+      'Apply the tutor-designed course structure to the pending import (the one study_import_github or '
+      + 'study_import_folder returned design_required for). Every lesson\'s file must come from the design '
+      + 'brief — unknown paths are dropped (anti-hallucination); lesson bodies are sliced by their anchor '
+      + 'heading and the course is imported. On a validation or fetch error the tutor fixes the design and '
+      + 'simply calls again.',
     parameters: {
       sections: {
         type: 'array',
@@ -445,32 +452,43 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     async execute(args, exec) {
       const pd = pendingDesign
       if (pd === null) {
-        throw new Error('lookatstudy-plugin: no pending course design — call study_import_github first (a dsh restart also clears it)')
+        throw new Error('lookatstudy-plugin: no pending course design — call study_import_github or study_import_folder first (a dsh restart also clears it)')
       }
       const validated = validateDesign(args, new Set(pd.files.map(f => f.path)))
-      // Fetch each designed file exactly once, five in flight, abort-aware.
       const uniqueFiles = [...new Set(validated.sections.flatMap(s => s.lessons.map(l => l.file)))]
       const contents = new Map<string, string>()
-      const failed: string[] = []
-      const fetchFn = signalFetch(exec.signal, baseFetch)
-      for (let i = 0; i < uniqueFiles.length; i += 5) {
-        if (exec.signal.aborted) throw new Error('lookatstudy-plugin: import aborted')
-        const batch = uniqueFiles.slice(i, i + 5)
-        const texts = await Promise.all(batch.map(f => fetchSingleFileContent(f, pd.owner, pd.repo, pd.branch, fetchFn)))
-        for (let j = 0; j < batch.length; j++) {
-          if (texts[j] === null) failed.push(batch[j]!)
-          else contents.set(batch[j]!, texts[j]!)
+      if (pd.localContents !== undefined) {
+        // Folder imports carry their bodies inline — apply is fully offline.
+        for (const file of uniqueFiles) {
+          const text = pd.localContents.get(file)
+          if (text === undefined) {
+            throw new Error(`lookatstudy-plugin: designed file ${JSON.stringify(file)} is not in the scanned folder — use only paths from the design brief`)
+          }
+          contents.set(file, text)
         }
-      }
-      if (contents.size === 0) {
-        throw new Error(`lookatstudy-plugin: every designed file failed to fetch (${failed.length}) — the CDN path is unreachable; retry or re-import`)
-      }
-      if (failed.length > 0) {
-        throw new Error(`lookatstudy-plugin: ${failed.length} designed file(s) failed to fetch: ${failed.join(', ')} — drop or fix them and call study_apply_design again`)
+      } else {
+        // GitHub imports fetch each designed file exactly once, five in flight, abort-aware.
+        const failed: string[] = []
+        const fetchFn = signalFetch(exec.signal, baseFetch)
+        for (let i = 0; i < uniqueFiles.length; i += 5) {
+          if (exec.signal.aborted) throw new Error('lookatstudy-plugin: import aborted')
+          const batch = uniqueFiles.slice(i, i + 5)
+          const texts = await Promise.all(batch.map(f => fetchSingleFileContent(f, pd.owner, pd.repo, pd.branch, fetchFn)))
+          for (let j = 0; j < batch.length; j++) {
+            if (texts[j] === null) failed.push(batch[j]!)
+            else contents.set(batch[j]!, texts[j]!)
+          }
+        }
+        if (contents.size === 0) {
+          throw new Error(`lookatstudy-plugin: every designed file failed to fetch (${failed.length}) — the CDN path is unreachable; retry or re-import`)
+        }
+        if (failed.length > 0) {
+          throw new Error(`lookatstudy-plugin: ${failed.length} designed file(s) failed to fetch: ${failed.join(', ')} — drop or fix them and call study_apply_design again`)
+        }
       }
       const parsed = buildCourseFromDesign(pd.courseTitle, validated, contents)
       requireParsedLessons(parsed)
-      const value = mutate(state => toImportValue(importCourse(state, parsed, 'github', pd.url)))
+      const value = mutate(state => toImportValue(importCourse(state, parsed, pd.source, pd.url)))
       pendingDesign = null
       return { ...value, droppedLessons: validated.droppedLessons }
     },

@@ -6,6 +6,9 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { studyTools } from '../src/tools.ts'
 import { emptyState, type LearningState } from '../src/state.ts'
@@ -475,5 +478,44 @@ test('apply design: fetch failures block loudly with the pending design retained
   assert.equal(fixed.lessons, 1, 'the single surviving study lesson lands; a one-lesson section gets no exam node')
   } finally {
     setHttpsGetOverride(null)
+  }
+})
+
+test('the design protocol covers folder imports: scan → brief → apply, fully offline', async () => {
+  const state = emptyState()
+  let saves = 0
+  const dir = mkdtempSync(join(tmpdir(), 'lks-folder-'))
+  try {
+    mkdirSync(join(dir, 'part1'), { recursive: true })
+    writeFileSync(join(dir, 'part1', 'a.md'), '# File A\npreface\n## Setup\nsetup body\n## Deep\ndeep body\n')
+    writeFileSync(join(dir, 'part1', 'b.md'), '# File B\n\nlab body\n')
+    const tools = studyTools({ get: () => state, save: () => { saves += 1 } })
+    const byName = new Map(tools.map(t => [t.name, t]))
+
+    const brief = await run(byName, 'study_import_folder', { path: dir }) as { status: string; fileCount: number; courseTitle: string }
+    assert.equal(brief.status, 'design_required')
+    assert.equal(brief.fileCount, 2)
+    assert.match(brief.courseTitle, /^lks-folder-/, 'the folder name is the fallback title')
+    assert.equal(conforms(brief, byName.get('study_import_folder')!.output.schema as Schema, 'folder'), null)
+    assert.equal(saves, 0, 'scanning writes no state')
+
+    const applied = await run(byName, 'study_apply_design', { sections: [
+      { title: 'One', lessons: [{ title: 'A intro', file: 'part1/a.md', anchor: '## Setup' }] },
+      { title: 'Labs', lessons: [{ title: 'B lab', file: 'part1/b.md', world: 'practice' }] },
+    ] }) as { lessons: number; droppedLessons: number }
+    assert.equal(applied.lessons, 2, 'one study lesson (no exam — single-lesson section) plus the practice lesson')
+    assert.equal(applied.droppedLessons, 0)
+    assert.equal(saves, 1)
+    const course = state.courses[0]!
+    assert.equal(course.source, 'folder')
+    assert.equal(course.sourceRef, dir)
+    assert.ok(course.sections[0]!.lessons[0]!.body.includes('preface'), 'local content is sliced by anchor')
+    assert.equal(course.sections[1]!.lessons[0]!.kind, 'practice')
+
+    const again = await run(byName, 'study_import_folder', { path: dir }) as { status: string; courseId: string }
+    assert.equal(again.status, 'imported', 're-scanning an imported path short-circuits')
+    assert.equal(again.courseId, course.id)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
 })

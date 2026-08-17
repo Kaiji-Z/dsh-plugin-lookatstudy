@@ -14,7 +14,9 @@
  */
 
 import type { ParsedCourse, ParsedLesson, ParsedSection } from './vendor/markdown-course.ts'
+import { extractOutlineWithCharCounts } from './vendor/repo-fetcher.ts'
 import type { FileOutline, RepoInventory } from './vendor/repo-fetcher.ts'
+import type { ScannedDoc } from './vendor/local-folder-scanner.ts'
 
 /** One file entry of the design brief, as rendered to the tutor. */
 export interface DesignFile {
@@ -24,8 +26,10 @@ export interface DesignFile {
   outline: FileOutline
 }
 
-/** In-memory state between study_import_github and study_apply_design. */
+/** In-memory state between an import tool and study_apply_design. */
 export interface PendingDesign {
+  /** What the import ran over; apply uses it for sourceRef. */
+  source: 'github' | 'folder'
   url: string
   owner: string
   repo: string
@@ -34,6 +38,8 @@ export interface PendingDesign {
   readmeExcerpt: string
   files: DesignFile[]
   fullTreeCount: number
+  /** Folder imports carry their file contents inline — apply never hits the network. */
+  localContents?: ReadonlyMap<string, string>
 }
 
 /** The tutor's JSON as declared by study_apply_design's parameters. */
@@ -84,6 +90,7 @@ export function buildPendingDesign(url: string, owner: string, repo: string, inv
   }
   const courseTitle = inventory.readmeMd.match(/^#\s+(.+)$/m)?.[1]?.trim() || repo
   return {
+    source: 'github',
     url,
     owner,
     repo,
@@ -92,6 +99,37 @@ export function buildPendingDesign(url: string, owner: string, repo: string, inv
     readmeExcerpt: inventory.readmeMd.slice(0, 4000),
     files,
     fullTreeCount: inventory.fullTree.length,
+  }
+}
+
+/**
+ * Build the pending design from a local folder scan — the same brief, but the
+ * bodies ride along (localContents), so apply is fully offline.
+ * @param path - the absolute folder path (becomes sourceRef).
+ * @param title - fallback course title (the folder's name).
+ * @param docs - scanFolder output (relative paths + content).
+ * @returns the pending design.
+ */
+export function buildPendingDesignFromFolder(path: string, title: string, docs: ScannedDoc[]): PendingDesign {
+  const files: DesignFile[] = docs.map(doc => ({
+    path: doc.path,
+    role: doc.kind === 'ipynb' ? 'practice' : 'original',
+    outline: extractOutlineWithCharCounts(doc.content, doc.path),
+  }))
+  const readme = docs.find(doc => /^readme\.md$/i.test(doc.path.split('/').pop() ?? ''))?.content ?? ''
+  const courseTitle = readme.match(/^#\s+(.+)$/m)?.[1]?.trim() || title
+  const localContents = new Map(docs.map(doc => [doc.path, doc.content]))
+  return {
+    source: 'folder',
+    url: path,
+    owner: '',
+    repo: title,
+    branch: 'local',
+    courseTitle,
+    readmeExcerpt: readme.slice(0, 4000),
+    files,
+    fullTreeCount: docs.length,
+    localContents,
   }
 }
 
@@ -107,7 +145,9 @@ export function buildPendingDesign(url: string, owner: string, repo: string, inv
 export function renderDesignBrief(pending: PendingDesign): string {
   const lines: string[] = []
   lines.push(`## Course design brief: ${pending.courseTitle}`)
-  lines.push(`Repo ${pending.owner}/${pending.repo}@${pending.branch} (${pending.fullTreeCount} paths in tree; ${pending.files.length} course files below).`)
+  lines.push(pending.source === 'folder'
+    ? `Folder import (${pending.fullTreeCount} files; ${pending.files.length} course files below).`
+    : `Repo ${pending.owner}/${pending.repo}@${pending.branch} (${pending.fullTreeCount} paths in tree; ${pending.files.length} course files below).`)
   lines.push('')
   lines.push('### Repository README (first 4000 chars)')
   lines.push(pending.readmeExcerpt.trim() === '' ? '(empty)' : pending.readmeExcerpt)
