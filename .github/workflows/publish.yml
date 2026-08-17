@@ -1,0 +1,35 @@
+# Publish to npm via Trusted Publishing (OIDC) — no stored tokens anywhere.
+# The npm-side trusted-publisher binding MUST match this file exactly:
+#   repository: Kaiji-Z/dsh-plugin-lookatstudy
+#   workflow filename: publish.yml        (this file's name, not the workflow's `name`)
+#   environment: npm                      (the job's environment below; optional on the npm side
+#                                          but recommended — protection rules there restore the
+#                                          human gate manual publishing used to provide)
+# Trigger: the Actions "Run workflow" button, or publishing a GitHub Release.
+# The job re-runs the full local verify gate (tests → build → bundle
+# assertions) and only then publishes, with provenance attestation.
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # required for the OIDC token npm's trusted publishing exchanges
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable # activates the packageManager-pinned pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run verify
+      - run: npm install -g npm@latest # trusted publishing needs npm >= 11.5.1
+      - run: npm publish --provenance
