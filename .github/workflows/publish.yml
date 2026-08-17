@@ -2,18 +2,17 @@
 # The npm-side trusted-publisher binding MUST match this file exactly:
 #   repository: Kaiji-Z/dsh-plugin-lookatstudy
 #   workflow filename: publish.yml        (this file's name, not the workflow's `name`)
-#   environment: npm                      (the job's environment below; optional on the npm side
-#                                          but recommended — protection rules there restore the
-#                                          human gate manual publishing used to provide)
-# Trigger: the Actions "Run workflow" button, or publishing a GitHub Release.
+#   environment: LEAVE EMPTY on the npm side — this workflow declares none.
+# Trigger: pushing a v* tag (e.g. `git push origin v0.9.0`), or the Actions
+# "Run workflow" button. Plain branch pushes NEVER publish.
 # The job re-runs the full local verify gate (tests → build → bundle
 # assertions) and only then publishes, with provenance attestation.
 name: Publish to npm
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+  push:
+    tags: ['v*']
 
 permissions:
   contents: read
@@ -22,7 +21,6 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: npm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
