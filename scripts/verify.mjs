@@ -69,6 +69,9 @@ gate('bundle', () => {
     [host, 'data.jsdelivr.com', 'jsdelivr data API tree fallback (upstream 2026-08-16 port)'],
     [host, 'deadlineMs', 'httpsGet hard deadline plumbing'],
     [host, "learner's own language", 'output-language directive'],
+    [host, 'study_apply_design', 'tutor-design apply tool'],
+    [host, 'design_required', 'import design protocol status'],
+    [host, '3000-8000', 'lesson pacing rule rides the brief and prompt'],
   ]
   const forbidden = [
     [client, 'agentReady', 'stale agentReady gate (removed in 0.4.1)'],

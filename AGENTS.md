@@ -1,6 +1,6 @@
 # dsh-plugin-lookatstudy · Agent Development Guide
 
-A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) community plugin: LookatStudy ported as ONE `conversation.view` tab (「学习」) — a simplified LookatStudy in three columns (课程 | 导师 | 黑板) — plus an on-demand host surface (19 `study_*` tools + a three-soul tutor persona, dormant until the learner clicks 开始学习) and a vendored zero-dependency learning engine (SM-2, BKT, markdown/course parsers).
+A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) community plugin: LookatStudy ported as ONE `conversation.view` tab (「学习」) — a simplified LookatStudy in three columns (课程 | 导师 | 黑板) — plus an on-demand host surface (20 `study_*` tools + a three-soul tutor persona, dormant until the learner clicks 开始学习) and a vendored zero-dependency learning engine (SM-2, BKT, markdown/course parsers).
 
 **Before developing any feature, read the verification protocol in [VERIFICATION.md](VERIFICATION.md)** — its operative ideas are wired into this repo: `pnpm run verify` is the single machine-checkable gate (§6), the regression suite freezes acceptance paths, and the schema-conformance test mirrors the real tool-call path's output validation. Claims of "done" cite command output, not impressions.
 
@@ -27,7 +27,8 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 ## Layout
 
 - `src/state.ts` — the learning state machine (the source of truth for every rule below)
-- `src/tools.ts` — the 19 `study_*` tools; every mutation goes through the store and persists synchronously
+- `src/tools.ts` — the 20 `study_*` tools; every mutation goes through the store and persists synchronously
+- `src/import-design.ts` — the tutor-design import protocol: design brief, anchor slicing, anti-hallucination validation (GitHub imports)
 - `src/dashboard.ts` — the study tab's HTTP API under `/lookatstudy/api/*` (state feed, activation/focus/mode/delete/lesson-session writes, study-workspace path)
 - `src/surface.ts` — the activation gate: persona texts render empty and the tools stay unregistered while `state.active` is false
 - `src/index.ts` — host apply: the activation-gated surface (tools + tutor prompt sections), dashboard
@@ -62,7 +63,7 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 
 ## Design rationale (the whys that outlived the code)
 
-- **Import is zero-LLM by design.** jsDelivr fetch + local heading parse + idempotent state write — structure comes from the repo's own markdown hierarchy (the author's organization IS ground truth), and all intelligence (concepts/quizzes/memory) is deferred to lesson time where the tutor IS the LLM. LookatStudy's minutes-long import (LLM file classification + LLM structure design + three network sweeps) was deliberately not replicated. Trade-off accepted: messy repos without sane heading hierarchy won't import.
+- **GitHub import is tutor-designed (a two-tool protocol), not plugin-LLM'd.** LookatStudy's import runs its own model client (file classification + structure design + a JSON-salvage/bisection/watchdog stack to keep it alive). This plugin has no model client — the tutor IS the LLM — so `study_import_github` returns a design brief (files, heading outlines with char counts, the upstream design rules: study/practice/attached classification, 3000-8000-char pacing, sub-1000 merging) and `study_apply_design` validates + applies the tutor's structure JSON (anchor slicing, anti-hallucination file filtering). Failure recovery is the agent loop itself: a rejected design returns as a tool error and the tutor fixes it conversationally — none of upstream's salvage machinery is needed. Folder/markdown imports stay zero-LLM (heading hierarchy only); the fetching and slicing beneath every import remain deterministic jsDelivr + local parse.
 - **One session per lesson node** (`lessonSessions` map) because `sessions.create` is not plugin-exposed — workspace-scoped `connectWorkspace` minting is the plugin's session-creation primitive.
 - **Releases are manual by decision** (CI trusted publishing was considered and declined): verify green → bump version → commit + push → the OWNER runs `npm publish` (npm passkey 2FA, browser confirmation — npm removed TOTP authenticators in 2025) → `dsh plugin --profile web add dsh-plugin-lookatstudy@<ver>`.
 

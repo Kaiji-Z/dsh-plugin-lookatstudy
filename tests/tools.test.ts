@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { studyTools } from '../src/tools.ts'
 import { emptyState, type LearningState } from '../src/state.ts'
+import { setHttpsGetOverride } from '../src/vendor/repo-fetcher.ts'
 
 const COURSE_MD = [
   '# Tool Fixture',
@@ -365,4 +366,114 @@ test('answers auto-graduate at 90% and early-unlock at 50%', async () => {
   assert.equal(graduated.status, 'mastered')
   assert.ok(graduated.dueAt !== null, 'graduation seeds the first review')
   assert.notEqual(l2, undefined)
+})
+
+/* ── the tutor design protocol (GitHub import) ────────────────────────── */
+
+const REPO_README = '# Repo Course\n\nLessons:\n\n- [A](lessons/a.md)\n- [B](lessons/b.md)\n'
+const REPO_FILE_A = [
+  '# File A', 'preface prose',
+  '## Setup', 'setup body', '### Sub detail', 'sub body',
+  '## Deep', 'deep body',
+].join('\n')
+const REPO_FILE_B = '# File B\n\nlab body\n'
+
+/** jsDelivr stub serving repo files by path; everything else (tree APIs included) 404s. */
+function repoFetchStub(files: Record<string, string>): typeof fetch {
+  return (async (input: RequestInfo | URL) => {
+    const url = String(input)
+    const marker = '@main/'
+    const at = url.indexOf(marker)
+    if (url.startsWith('https://cdn.jsdelivr.net/gh/') && at !== -1) {
+      const text = files[url.slice(at + marker.length)]
+      if (text !== undefined) return new Response(text, { status: 200 })
+    }
+    return new Response('not found', { status: 404 })
+  }) as unknown as typeof fetch
+}
+
+test('the tutor design protocol: import returns a brief, apply lands the designed course', async () => {
+  const state = emptyState()
+  let saves = 0
+  setHttpsGetOverride(async () => ({ ok: false, error: 'offline test' }))
+  try {
+    const tools = studyTools({ get: () => state, save: () => { saves += 1 } }, {
+      fetch: repoFetchStub({ 'README.md': REPO_README, 'lessons/a.md': REPO_FILE_A, 'lessons/b.md': REPO_FILE_B }),
+    })
+    const byName = new Map(tools.map(t => [t.name, t]))
+
+    const brief = await run(byName, 'study_import_github', { url: 'https://github.com/o/r' }) as {
+      status: string; courseTitle: string; fileCount: number
+    }
+    assert.equal(brief.status, 'design_required')
+    assert.equal(brief.courseTitle, 'Repo Course')
+    assert.equal(brief.fileCount, 2)
+    assert.equal(saves, 0, 'fetching the brief must not touch persisted state')
+  assert.equal(conforms(brief, byName.get('study_import_github')!.output.schema as Schema, 'github'), null,
+    'the design_required branch satisfies the oneOf schema')
+
+  const applied = await run(byName, 'study_apply_design', { sections: [
+    { title: 'Part One', lessons: [
+      { title: 'A intro', file: 'lessons/a.md', anchor: '## Setup' },
+      { title: 'A deep', file: 'lessons/a.md', anchor: '## Deep' },
+    ] },
+    { title: 'Labs', lessons: [{ title: 'B lab', file: 'lessons/b.md', world: 'practice' }] },
+  ] }) as { lessons: number; droppedLessons: number; firstLessonId: string }
+  assert.equal(applied.lessons, 4, 'three designed lessons plus the study section\'s exam node')
+  assert.equal(applied.droppedLessons, 0)
+  assert.equal(saves, 1)
+  assert.equal(conforms(applied, byName.get('study_apply_design')!.output.schema as Schema, 'apply'), null)
+
+  const course = state.courses[0]!
+  assert.equal(course.source, 'github')
+  assert.equal(course.sourceRef, 'https://github.com/o/r')
+  assert.deepEqual(course.sections.flatMap(s => s.lessons).map(l => l.kind), ['study', 'study', 'exam', 'practice'])
+  assert.ok(course.sections[0]!.lessons[0]!.body.includes('preface prose'), 'the file\'s first designed lesson absorbs its header')
+  assert.ok(!course.sections[0]!.lessons[1]!.body.includes('setup body'), 'the second lesson slices from its own anchor')
+
+  await assert.rejects(
+    () => run(byName, 'study_apply_design', { sections: [{ title: 'x', lessons: [{ title: 'y', file: 'lessons/a.md' }] }] }),
+    /no pending course design/, 'a successful apply consumes the pending design',
+  )
+
+  const again = await run(byName, 'study_import_github', { url: 'https://github.com/o/r' }) as { status: string; courseId: string }
+  assert.equal(again.status, 'imported', 're-importing the same URL short-circuits to the existing course')
+  assert.equal(again.courseId, course.id)
+  assert.equal(conforms(again, byName.get('study_import_github')!.output.schema as Schema, 'github'), null,
+    'the imported branch satisfies the oneOf schema')
+  } finally {
+    setHttpsGetOverride(null)
+  }
+})
+
+test('apply design: fetch failures block loudly with the pending design retained; hallucinations drop', async () => {
+  const state = emptyState()
+  let saves = 0
+  const files: Record<string, string> = { 'README.md': REPO_README, 'lessons/a.md': REPO_FILE_A, 'lessons/b.md': REPO_FILE_B }
+  setHttpsGetOverride(async () => ({ ok: false, error: 'offline test' }))
+  try {
+    const tools = studyTools({ get: () => state, save: () => { saves += 1 } }, { fetch: repoFetchStub(files) })
+    const byName = new Map(tools.map(t => [t.name, t]))
+
+    await run(byName, 'study_import_github', { url: 'https://github.com/o/r' })
+    delete files['lessons/b.md'], 'the file dies between the outline stage and the apply stage'
+
+    await assert.rejects(
+      () => run(byName, 'study_apply_design', { sections: [{ title: 'x', lessons: [
+        { title: 'A', file: 'lessons/a.md' },
+        { title: 'B', file: 'lessons/b.md' },
+      ] }] }),
+      /failed to fetch: lessons\/b\.md/, 'a dead file blocks the whole apply with a named recovery hint',
+    )
+    assert.equal(saves, 0, 'a failed apply leaves persisted state untouched')
+
+    const fixed = await run(byName, 'study_apply_design', { sections: [{ title: 'x', lessons: [
+      { title: 'A', file: 'lessons/a.md' },
+      { title: 'ghost', file: 'made/up.md' },
+    ] }] }) as { droppedLessons: number; lessons: number }
+  assert.equal(fixed.droppedLessons, 1, 'the hallucinated path drops while the course still lands')
+  assert.equal(fixed.lessons, 1, 'the single surviving study lesson lands; a one-lesson section gets no exam node')
+  } finally {
+    setHttpsGetOverride(null)
+  }
 })

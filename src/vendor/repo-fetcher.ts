@@ -1,7 +1,8 @@
 // Vendored from LookatStudy src/main/services/pure/repo-fetcher.ts (MIT License, https://github.com/Kaiji-Z/LookatStudy).
 // Ported upstream network hardening (upstream 036d449 + 7c597f0 + a66cd3b, 2026-08-16): httpsGet gains deadlineMs +
 // AbortSignal with a single-settle guard, the GitHub tree scan gets a 240s deadline, and a jsDelivr data API full-tree
-// fallback covers Tree API failures. Everything else verbatim from upstream main.
+// fallback covers Tree API failures. Plus one plugin-side test seam (setHttpsGetOverride) keeping tree-API calls
+// offline in tests. Everything else verbatim from upstream main.
 /**
  * 仓库导入器 —— 从学习型 GitHub 仓库构建课程结构。
  *
@@ -569,12 +570,24 @@ export function docsToDiscoveredFiles(docs: { path: string; title?: string }[]):
  * 对这一个获取公开文件树的请求用 rejectUnauthorized:false 绕过。
  * 风险可控：获取的是公开文件路径列表（无敏感数据），且只用于此请求。
  */
+// Plugin-side test seam (documented divergence from upstream): the tree APIs
+// ride this internal httpsGet, which a stubbed `fetch` cannot intercept —
+// tests swap the transport to keep those calls offline. Production never
+// touches the override.
+export type HttpsGetFn = (
+  url: string,
+  opts: { rejectUnauthorized?: boolean; headers?: Record<string, string>; deadlineMs?: number; signal?: AbortSignal },
+) => Promise<{ ok: boolean; status?: number; body?: string; error?: string }>;
+export let httpsGetOverride: HttpsGetFn | null = null;
+export function setHttpsGetOverride(fn: HttpsGetFn | null): void { httpsGetOverride = fn; }
+
 export function httpsGet(
   url: string,
   opts: { rejectUnauthorized?: boolean; headers?: Record<string, string>; deadlineMs?: number; signal?: AbortSignal } = {},
 ): Promise<{ ok: boolean; status?: number; body?: string; error?: string }> {
   // 预先中止:不建连接直接返回(调用方循环靠 error:"aborted" 识别取消)
   if (opts.signal?.aborted) return Promise.resolve({ ok: false, error: "aborted" });
+  if (httpsGetOverride !== null) return httpsGetOverride(url, opts);
   return new Promise((resolve) => {
     let settled = false;
     const done = (r: { ok: boolean; status?: number; body?: string; error?: string }) => {

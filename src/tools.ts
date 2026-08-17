@@ -15,8 +15,16 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { parseMarkdownToCourse } from './vendor/markdown-course.ts'
 import type { ParsedCourse } from './vendor/markdown-course.ts'
 import { scanFolder } from './vendor/local-folder-scanner.ts'
-import { buildCourseFromFiles, importRepoToParsedCourse } from './vendor/repo-fetcher.ts'
+import { buildCourseFromFiles } from './vendor/repo-fetcher.ts'
+import { fetchFileOutlines, fetchRepoInventory, fetchSingleFileContent } from './vendor/repo-fetcher.ts'
 import type { FetchedFile } from './vendor/repo-fetcher.ts'
+import {
+  buildCourseFromDesign,
+  buildPendingDesign,
+  renderDesignBrief,
+  validateDesign,
+  type PendingDesign,
+} from './import-design.ts'
 import type { ReviewQuality } from './vendor/sm2.ts'
 import { masteryToCrown } from './vendor/bkt.ts'
 import * as cards from './cards.ts'
@@ -168,20 +176,35 @@ function parseGithubUrl(url: string): { owner: string; repo: string } {
   return { owner: match[1]!, repo: match[2]! }
 }
 
-/** Wrap `fetch` so cancellation of the tool call aborts in-flight repo fetches. */
-function signalFetch(signal: AbortSignal): typeof fetch {
-  return (input, init) => fetch(input, { ...init, signal })
+/** Wrap a fetch transport so cancellation of the tool call aborts in-flight repo fetches. */
+function signalFetch(signal: AbortSignal, baseFetch: typeof fetch): typeof fetch {
+  return (input, init) => baseFetch(input, { ...init, signal })
 }
 
 /** Total over a missing `meta` (events logged before a presentationMeta existed): renders nothing instead of throwing into the presenter fallback. */
 const textBlocks = (lines: readonly string[] | undefined | null): Array<{ type: 'text'; text: string }> => (lines ?? []).map(text => ({ type: 'text', text }) as const)
 
+/** Optional wiring for tests: a stubbable network transport. */
+export interface StudyToolsDeps {
+  /** Fetch transport for repo fetches; defaults to the global fetch. */
+  fetch?: typeof fetch
+}
+
 /**
  * Build the full study tool set over one store.
  * @param store - state store owned by `apply`.
+ * @param deps - test seams (fetch stub); production leaves it default.
  * @returns tool definitions ready for `ctx.tools.register`.
  */
-export function studyTools(store: StudyStore): ToolDefinition[] {
+export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDefinition[] {
+  const baseFetch: typeof fetch = deps.fetch ?? fetch
+  /**
+   * The pending course design between study_import_github (design_required)
+   * and study_apply_design. Memory-only on purpose: it is cheap to re-fetch
+   * and state.json should not carry bulk inventories; a later import
+   * replaces an unconsumed one.
+   */
+  let pendingDesign: PendingDesign | null = null
   /** Run a mutating state operation and persist. */
   const mutate = <T>(fn: (state: LearningState) => T): T => {
     const result = fn(store.get())
@@ -275,31 +298,189 @@ export function studyTools(store: StudyStore): ToolDefinition[] {
   const importGithub = defineTool({
     name: 'study_import_github',
     description:
-      'Import a GitHub learning repository as a course. Discovery follows the README outline, files are '
-      + 'fetched through the jsDelivr CDN (works where github.com is unreachable). Best for curated '
-      + 'curricula (e.g. microsoft/AI-For-Beginners); awesome-lists are rejected.',
+      'Start importing a GitHub learning repository: fetches the README outline and every course file\'s '
+      + 'heading outline (with char counts) through the jsDelivr CDN, then returns a design brief — '
+      + 'the TUTOR designs the course structure (sections/lessons/anchors/worlds) from it and applies '
+      + 'the result with study_apply_design. Re-importing an already-imported URL returns the existing '
+      + 'course directly. Awesome-lists are rejected.',
     parameters: {
       url: { type: 'string', required: true, description: 'Repository URL, e.g. https://github.com/microsoft/AI-For-Beginners.' },
       branch: { type: 'string', description: 'Branch to read (main tried, then master); defaults to main.' },
     },
     output: {
-      ...importOutput,
-      render: (_args, value) => [{
-        type: 'text',
-        text: `Imported GitHub course “${value.title}” (${value.sections} sections, ${value.lessons} lessons). `
-          + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}).`,
-      }],
+      schema: {
+        oneOf: [
+          {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              status: { type: 'string', enum: ['imported'], required: true },
+              courseId: { type: 'string', required: true },
+              title: { type: 'string', required: true },
+              sections: { type: 'integer', required: true },
+              lessons: { type: 'integer', required: true },
+              firstLessonId: { type: 'string', required: true },
+              firstLessonTitle: { type: 'string', required: true },
+            },
+          },
+          {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              status: { type: 'string', enum: ['design_required'], required: true },
+              repo: { type: 'string', required: true },
+              branch: { type: 'string', required: true },
+              courseTitle: { type: 'string', required: true },
+              fileCount: { type: 'integer', required: true },
+              fullTreeCount: { type: 'integer', required: true },
+            },
+          },
+        ],
+      },
+      render: (_args, value) => {
+        if (value.status === 'design_required') {
+          // The brief rides the render — the only channel into the tutor's
+          // context. After apply consumes the pending design (or a restart
+          // clears it) a replay renders the pointer instead.
+          const brief = pendingDesign === null ? null : renderDesignBrief(pendingDesign)
+          return [{
+            type: 'text',
+            text: brief ?? 'Course design required — the brief is no longer pending; call study_import_github to re-fetch it.',
+          }]
+        }
+        return [{
+          type: 'text',
+          text: `Imported GitHub course “${value.title}” (${value.sections} sections, ${value.lessons} lessons). `
+            + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}).`,
+        }]
+      },
     },
     async execute(args, exec) {
       const { owner, repo } = parseGithubUrl(args.url)
       const branch = args.branch ?? 'main'
-      const result = await importRepoToParsedCourse(owner, repo, branch, signalFetch(exec.signal))
-      requireParsedLessons(result.course)
-      return mutate(state => toImportValue(importCourse(state, result.course, 'github', args.url)))
+      const fetchFn = signalFetch(exec.signal, baseFetch)
+      const existing = store.get().courses.find(c => c.source === 'github' && c.sourceRef === args.url)
+      if (existing !== undefined) {
+        return { status: 'imported' as const, ...toImportValue(existing) }
+      }
+      const inventory = await fetchRepoInventory(owner, repo, branch, fetchFn, undefined, exec.signal)
+      const outlines = await fetchFileOutlines(inventory.fileList.map(f => f.path), owner, repo, inventory.branch, fetchFn, undefined, exec.signal)
+      pendingDesign = buildPendingDesign(args.url, owner, repo, inventory, outlines)
+      if (pendingDesign.files.length === 0) {
+        throw new Error('lookatstudy-plugin: course files were discovered but no outlines could be fetched (CDN unreachable?)')
+      }
+      return {
+        status: 'design_required' as const,
+        repo: `${owner}/${repo}`,
+        branch: pendingDesign.branch,
+        courseTitle: pendingDesign.courseTitle,
+        fileCount: pendingDesign.files.length,
+        fullTreeCount: pendingDesign.fullTreeCount,
+      }
     },
     timeoutMs: 180_000,
     presentCall: args => ({ card: 'generic', title: `Import GitHub course: ${args.url}`, kind: 'fetch' }),
-    ...importPresent,
+    presentationMeta: (_args, value) => value.status === 'design_required'
+      ? cards.designBriefLines(value)
+      : cards.importLines(value),
+    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+  })
+
+  const applyDesign = defineTool({
+    name: 'study_apply_design',
+    description:
+      'Apply the tutor-designed course structure to the pending GitHub import (the one study_import_github '
+      + 'returned design_required for). Every lesson\'s file must come from the design brief — unknown paths '
+      + 'are dropped (anti-hallucination); lesson bodies are sliced by their anchor heading and the course '
+      + 'is imported. On a validation or fetch error the tutor fixes the design and simply calls again.',
+    parameters: {
+      sections: {
+        type: 'array',
+        required: true,
+        description: 'Designed sections in learning order.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            title: { type: 'string', required: true, description: 'Section title (in the learner\'s language).' },
+            lessons: {
+              type: 'array',
+              required: true,
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  title: { type: 'string', required: true, description: 'Lesson title.' },
+                  file: { type: 'string', required: true, description: 'Exact file path from the design brief.' },
+                  anchor: { type: 'string', description: 'Full H2/H3 heading text the lesson body starts at; omit for whole-file lessons.' },
+                  world: { type: 'string', description: '"study" (explanation) or "practice" (exercise/lab/notebook); anything else is treated as study.' },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          courseId: { type: 'string', required: true },
+          title: { type: 'string', required: true },
+          sections: { type: 'integer', required: true },
+          lessons: { type: 'integer', required: true },
+          firstLessonId: { type: 'string', required: true },
+          firstLessonTitle: { type: 'string', required: true },
+          droppedLessons: { type: 'integer', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Imported designed course “${value.title}” (${value.sections} sections, ${value.lessons} lessons`
+          + `${value.droppedLessons > 0 ? `, ${value.droppedLessons} hallucinated lesson(s) dropped` : ''}). `
+          + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}). Present the course map to the learner.`,
+      }],
+    },
+    async execute(args, exec) {
+      const pd = pendingDesign
+      if (pd === null) {
+        throw new Error('lookatstudy-plugin: no pending course design — call study_import_github first (a dsh restart also clears it)')
+      }
+      const validated = validateDesign(args, new Set(pd.files.map(f => f.path)))
+      // Fetch each designed file exactly once, five in flight, abort-aware.
+      const uniqueFiles = [...new Set(validated.sections.flatMap(s => s.lessons.map(l => l.file)))]
+      const contents = new Map<string, string>()
+      const failed: string[] = []
+      const fetchFn = signalFetch(exec.signal, baseFetch)
+      for (let i = 0; i < uniqueFiles.length; i += 5) {
+        if (exec.signal.aborted) throw new Error('lookatstudy-plugin: import aborted')
+        const batch = uniqueFiles.slice(i, i + 5)
+        const texts = await Promise.all(batch.map(f => fetchSingleFileContent(f, pd.owner, pd.repo, pd.branch, fetchFn)))
+        for (let j = 0; j < batch.length; j++) {
+          if (texts[j] === null) failed.push(batch[j]!)
+          else contents.set(batch[j]!, texts[j]!)
+        }
+      }
+      if (contents.size === 0) {
+        throw new Error(`lookatstudy-plugin: every designed file failed to fetch (${failed.length}) — the CDN path is unreachable; retry or re-import`)
+      }
+      if (failed.length > 0) {
+        throw new Error(`lookatstudy-plugin: ${failed.length} designed file(s) failed to fetch: ${failed.join(', ')} — drop or fix them and call study_apply_design again`)
+      }
+      const parsed = buildCourseFromDesign(pd.courseTitle, validated, contents)
+      requireParsedLessons(parsed)
+      const value = mutate(state => toImportValue(importCourse(state, parsed, 'github', pd.url)))
+      pendingDesign = null
+      return { ...value, droppedLessons: validated.droppedLessons }
+    },
+    timeoutMs: 180_000,
+    presentCall: () => ({ card: 'generic', title: 'Apply course design', kind: 'edit' }),
+    presentationMeta: (_args, value) => [
+      ...cards.importLines(value),
+      ...(value.droppedLessons > 0 ? [`${value.droppedLessons} dropped (files outside the brief)`] : []),
+    ],
+    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
   })
 
   const listCourses = defineTool({
@@ -1119,6 +1300,7 @@ export function studyTools(store: StudyStore): ToolDefinition[] {
     importMarkdown,
     importFolder,
     importGithub,
+    applyDesign,
     listCourses,
     courseMap,
     lessonContent,

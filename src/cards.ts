@@ -98,6 +98,28 @@ export function importLines(value: ImportValue): string[] {
   return lines
 }
 
+/** Canonical value of study_import_github's design_required branch. */
+export interface DesignBriefValue {
+  repo: string
+  branch: string
+  courseTitle: string
+  fileCount: number
+  fullTreeCount: number
+}
+
+/**
+ * Display lines for the design-required branch of a GitHub import.
+ * @param value - the design_required branch value.
+ * @returns card lines.
+ */
+export function designBriefLines(value: DesignBriefValue): string[] {
+  return [
+    `📐 Designing: ${value.courseTitle}`,
+    `${value.repo}@${value.branch} · ${value.fileCount} course files · ${value.fullTreeCount} paths in tree`,
+    'The tutor designs the structure, then study_apply_design imports it',
+  ]
+}
+
 /**
  * Display lines for the skill-tree map.
  * @param value - map tool value.
