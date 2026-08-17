@@ -1,0 +1,13 @@
+Live self-test of the LookatStudy study plugin's tutor-designed import. Execute every step autonomously with the study_* tools, in order. Do not ask questions; simulate both tutor and learner. End your final message with the exact line: LIVETEST DONE
+
+1. Call study_import_github with url https://github.com/microsoft/AI-For-Beginners (no branch argument).
+
+2. The tool returns status design_required plus a course design brief: files with heading outlines and per-heading char counts, and the design rules. Design the full course structure following the brief's rules exactly — sections across the curriculum, study/practice lesson classification, 3000-8000-char lesson pacing, attached quiz/summary/review content absorbed into the adjacent study lesson's anchor range instead of becoming its own lesson, and anchors as the full heading text. Use ONLY file paths that appear in the brief.
+
+3. Call study_apply_design with your complete design JSON.
+
+4. If study_apply_design returns an error, read the error, fix the design accordingly, and call it again (up to three retries).
+
+5. After the course lands, call study_map once, then study_lesson on the first lesson.
+
+6. Write a three-sentence summary of the imported course (sections, lesson count, the pacing choices you made and any dropped lessons), then finish with the LIVETEST DONE line.
