@@ -35,9 +35,15 @@ const CSS = `
 .lks-body{flex:1;min-height:0;min-width:0;display:flex;gap:16px}
 .lks-col{display:flex;flex-direction:column;min-width:0}
 .lks-colhead{flex:none;font-size:12px;font-weight:600;color:var(--dsw-alias-label-tertiary);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
-.lks-col-rail{flex:1 1 0;min-width:190px;overflow-y:auto;padding:2px 6px}
+.lks-col-rail{flex:0 1 260px;min-width:180px;overflow-y:auto;padding:2px 6px}
 .lks-col-tutor{flex:0 0 auto;width:min(100%,var(--dsh-composer-card-max-width,780px))}
 .lks-col-bb{flex:1 1 0;min-width:230px;overflow-y:auto;padding:2px 6px}
+/* While the study view is mounted in wide mode, the host composer card is
+   shifted under the tutor column (the transcript's width axis) instead of the
+   scroll body's center — views.tsx measures the offset, sets the variable and
+   toggles the class, and removes both whenever the shift collapses (narrow
+   pane, hidden view) so the host's natural centering comes back. */
+[data-composer-card].lks-composer-follow{align-self:flex-start;margin-left:var(--lks-composer-shift,0px)}
 /* narrow (<1220px): one composer-width pane at a time, chosen by a centered
    segmented pill group (joined buttons in one capsule — button language, not
    tab language, against the host's view tabs right above). */
@@ -66,7 +72,7 @@ const CSS = `
 .lks-masterybar i{display:block;height:100%;background:var(--dsw-alias-state-business-primary);transition:width .3s ease}
 .lks-masterybar.gold i{background:var(--dsw-alias-state-warn-primary)}
 .lks-search{width:100%;box-sizing:border-box;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13.5px;padding:5px 9px;margin-bottom:4px}
-.lks-search:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
+.lks-search:focus{outline:none;border-color:var(--dsw-alias-state-business-primary);box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}
 .lks-sec-num{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:50%;background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-label);font-size:11px;font-weight:700;margin-right:4px}
 .lks-tag.due{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-label)}
 .lks-import{margin-top:8px}
@@ -81,13 +87,25 @@ const CSS = `
 .lks-duebox .lks-over{color:var(--dsw-alias-state-warn-label);flex:none}
 
 .lks-sec{font-size:12px;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 4px}
-.lks-node{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:8px;margin:1px 0;cursor:pointer}
+/* Collapsible section head: a real button (keyboard can toggle it), sticky so
+   the current chapter stays identified while 4000px of nodes scroll under it. */
+.lks-sechead{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;font-size:12px;font-weight:600;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.05em;text-align:left;padding:6px 4px;margin:14px 0 4px;border-radius:6px;position:sticky;top:0;z-index:1;background:var(--dsw-alias-bg-base)}
+.lks-sechead:hover{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg-hover)}
+.lks-sechead:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none}
+.lks-sechead-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-sechead-c{flex:none;font-size:10px}
+.lks-sechead-n{flex:none;font-size:11px;text-transform:none;letter-spacing:0}
+.lks-node{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 9px;border-radius:8px;margin:1px 0;cursor:pointer}
 .lks-node:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.lks-node:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none}
 .lks-node.focus{background:var(--dsw-alias-bg-layer-3);outline:1px solid var(--dsw-alias-border-l2)}
 .lks-node .lks-g{width:18px;text-align:center;flex:none}
 .lks-node .lks-t{flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lks-node.locked{opacity:.45;cursor:not-allowed}
-.lks-node.locked:hover{background:none}
+/* aria-disabled (not the disabled attribute): the row stays focusable so the
+   status tooltip can explain WHY it is locked — Firefox drops titles on truly
+   disabled form controls. */
+.lks-node[aria-disabled='true']{opacity:.45;cursor:not-allowed}
+.lks-node[aria-disabled='true']:hover{background:none}
 .lks-tag{font-size:11px;border-radius:4px;padding:0 4px;flex:none}
 .lks-tag.weak{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-label)}
 .lks-tag.fric{background:var(--dsw-alias-state-error-primary);color:#fff}
@@ -135,7 +153,9 @@ const CSS = `
 .lks-starter:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary)}
 
 /* proposal banner + shared buttons */
-.lks-banner{display:flex;align-items:center;gap:10px;background:var(--dsw-alias-state-warn-tertiary);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 14px;margin:8px 0;font-size:14px;flex:none}
+/* A mastery proposal is a positive, informational moment — business tint, not
+   the warn tint it previously wore (a reviewer flagged the semantic mismatch). */
+.lks-banner{display:flex;align-items:center;gap:10px;background:var(--dsw-alias-state-business-tertiary);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 14px;margin:8px 0;font-size:14px;flex:none}
 .lks-banner .lks-why{flex:1;color:var(--dsw-alias-label-secondary)}
 .lks-btn{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:6px 14px;font-size:13.5px;font-weight:600;flex:none}
 .lks-btn.primary{background:var(--dsw-alias-state-business-primary);color:#fff}
@@ -170,7 +190,7 @@ const CSS = `
 .lks-zone{margin-bottom:14px}
 .lks-zone h4{font-size:14px;color:var(--dsw-alias-label-secondary);margin:0 0 8px;font-weight:600}
 .lks-note{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 14px;margin-bottom:8px}
-.lks-note .lks-note-src{float:right;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.lks-note .lks-note-src{float:right;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
 .lks-note .lks-note-title{font-weight:600;font-size:13px}
 .lks-note .lks-note-text{margin-top:4px;white-space:pre-wrap;font-size:13px;color:var(--dsw-alias-label-secondary)}
 .lks-note .lks-note-q{margin-top:6px;color:var(--dsw-alias-label-tertiary);font-size:12px;border-left:2px solid var(--dsw-alias-state-warn-primary);padding-left:8px}

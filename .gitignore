@@ -5,3 +5,5 @@ livetest-output.md
 livetest-design-output.md
 livetest-design-state.json
 livetest-design-err.log
+.zcode/
+lks-*.png

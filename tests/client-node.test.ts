@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { pickPane, quizOptions, statusTitle, toolChipLabel, transcriptRows } from '../src/client/views.tsx'
+import { pickPane, quizOptions, sectionDefaultOpen, statusTitle, toolChipLabel, transcriptRows } from '../src/client/views.tsx'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import { studyStore, type StudyState } from '../src/client/data.ts'
 
@@ -25,6 +25,31 @@ test('statusTitle explains every course-tree glyph state', () => {
   assert.match(statusTitle('study', 'in_progress'), /学习中/)
   assert.match(statusTitle('study', 'available'), /可开始/)
   assert.match(statusTitle('study', 'locked'), /未解锁/)
+})
+
+test('sectionDefaultOpen keeps only the frontier and focus sections expanded', () => {
+  const sec = (lessons: ReadonlyArray<{ kind: string; status: string; focus?: boolean }>) =>
+    sectionDefaultOpen({ lessons: lessons.map(l => ({ ...l, focus: l.focus ?? false })) })
+  // All mastered + locked (a finished or far-ahead chapter) collapses.
+  assert.equal(sec([
+    { kind: 'study', status: 'mastered' },
+    { kind: 'study', status: 'locked' },
+  ]), false, 'mastered+locked collapses')
+  // Any available / in-progress study lesson keeps the section open.
+  assert.equal(sec([
+    { kind: 'study', status: 'mastered' },
+    { kind: 'study', status: 'in_progress' },
+  ]), true, 'frontier stays open')
+  assert.equal(sec([{ kind: 'study', status: 'available' }]), true)
+  // The focus lesson pins its section open even when fully mastered.
+  assert.equal(sec([{ kind: 'study', status: 'mastered', focus: true }]), true, 'focus pins open')
+  // Exam nodes are gated in the UI and never force a section open.
+  assert.equal(sec([
+    { kind: 'study', status: 'mastered' },
+    { kind: 'exam', status: 'available' },
+  ]), false, 'exam does not force open')
+  // Empty sections (defensive; imports drop them) collapse.
+  assert.equal(sec([]), false)
 })
 
 test('quizOptions extracts the last consecutive A–D block and rejects noise', () => {

@@ -56,6 +56,18 @@ function titleMatches(title: string, query: string): boolean {
   return keys.every(k => title.toLowerCase().includes(k))
 }
 
+/**
+ * Default expansion for one rail section: collapsed when every study lesson is
+ * done (mastered) or not yet reachable (locked) — long courses otherwise scroll
+ * 5× their viewport. The active frontier and the focus lesson's section stay
+ * open; exam nodes never force a section open (they are gated separately).
+ * Pure.
+ * @param section - one course section projection with lesson kinds/statuses.
+ */
+export function sectionDefaultOpen(section: { lessons: ReadonlyArray<{ kind: string; status: string; focus: boolean }> }): boolean {
+  return section.lessons.some(l => l.focus || (l.kind !== 'exam' && l.status !== 'mastered' && l.status !== 'locked'))
+}
+
 /** The rail's import row: a GitHub URL input plus the paste/folder hints. */
 function ImportRow({ send }: { send: StudySend }): ReactNode {
   const [url, setUrl] = useState('')
@@ -257,6 +269,49 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
   const { data, activate, setMode, setFocus, deleteCourse, bindLessonSession } = useStudy()
   const snapshot = useSession((s: ConversationSnapshot) => s)
   const [pane, setPane] = useState<StudyPane>(storedPane)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  // The wide layout puts the tutor column left of the scroll body's center
+  // (fixed rail + flexible blackboard), so the floating composer would sit
+  // mid-screen under nothing. While this view is mounted and measurable, shift
+  // the host composer card ([data-composer-card], a stable host anchor) under
+  // the tutor column; any collapsed shift (narrow single-pane mode, hidden
+  // view, no room) removes the class and restores the host's natural
+  // centering. ResizeObserver on the study root catches mount/show/hide/resize.
+  useEffect(() => {
+    const root = rootRef.current
+    const card = document.querySelector<HTMLElement>('[data-composer-card]')
+    const seat = card?.parentElement ?? null
+    if (root === null || card === null || seat === null) return
+    const clear = (): void => {
+      card.classList.remove('lks-composer-follow')
+      card.style.removeProperty('--lks-composer-shift')
+    }
+    const apply = (): void => {
+      const tutor = root.querySelector<HTMLElement>('.lks-col-tutor')
+      const rail = root.querySelector<HTMLElement>('.lks-col-rail')
+      if (tutor === null || rail === null || getComputedStyle(rail).display === 'none') return clear()
+      const seatRect = seat.getBoundingClientRect()
+      const tutorRect = tutor.getBoundingClientRect()
+      if (seatRect.width === 0 || tutorRect.width === 0) return clear()
+      const pad = parseFloat(getComputedStyle(seat).paddingLeft) || 0
+      const cardW = card.getBoundingClientRect().width
+      const max = seatRect.width - 2 * pad - cardW
+      const shift = Math.round(Math.max(0, Math.min(tutorRect.left - (seatRect.left + pad), max)))
+      if (shift < 2) return clear()
+      card.style.setProperty('--lks-composer-shift', `${shift}px`)
+      card.classList.add('lks-composer-follow')
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(root)
+    ro.observe(seat)
+    window.addEventListener('resize', apply)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', apply)
+      clear()
+    }
+  }, [])
   const send: StudySend = (text) => {
     void (async () => {
       // Dormant installs activate first: the host registers the study tools
@@ -273,6 +328,7 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
     { id: 'bb', label: '黑板' },
   ]
   return createElement('div', {
+    ref: rootRef,
     className: 'lks-root lks-study',
     'data-conversation-composer-overlay': '',
     'data-pane': pane,
@@ -367,6 +423,8 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
   const [query, setQuery] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  /** Per-section open overrides (courseId/sectionTitle → open?), on top of the frontier default. */
+  const [secOpen, setSecOpen] = useState<Record<string, boolean>>({})
   const [error, setError] = useState<string | null>(null)
   const reportError = (err: unknown): void => { setError(err instanceof Error ? err.message : String(err)) }
   const body: ReactNode = data === null
@@ -427,6 +485,22 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
               }
             },
           }),
+          course.sections.some(s => s.lessons.some(l => l.focus))
+            ? createElement('button', {
+              className: 'lks-btn ghost',
+              style: { margin: '0 0 6px', padding: '3px 8px', fontSize: '13px' },
+              title: '在课程树中定位当前焦点课时(自动展开所在章节)',
+              onClick: () => {
+                const focusSection = course.sections.find(s => s.lessons.some(l => l.focus))
+                if (focusSection === undefined) return
+                setSecOpen(m => ({ ...m, [`${courseId}/${focusSection.title}`]: true }))
+                // One frame past the React commit, so the freshly-expanded node exists to scroll to.
+                window.setTimeout(() => {
+                  document.querySelector('.lks-col-rail .lks-node.focus')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+                }, 60)
+              },
+            }, '📍 回到当前课时')
+            : null,
           data.dueCount > 0
             ? createElement('div', { className: 'lks-duebox' },
               `🔁 待复习 ${data.dueCount}`,
@@ -444,15 +518,32 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
             const examAllowed = examOpen(section.lessons)
             const lessons = section.lessons.filter(l => query.trim() === '' || titleMatches(l.title, query) || l.focus)
             if (lessons.length === 0) return []
+            const secKey = `${courseId}/${section.title}`
+            // Active search overrides collapse (results must be visible);
+            // otherwise the user's toggle wins over the frontier default.
+            const open = query.trim() !== '' || (secOpen[secKey] ?? sectionDefaultOpen(section))
             return [
-              createElement('div', { key: section.title, className: 'lks-sec' },
-                createElement('span', { className: 'lks-sec-num' }, String(section.index + 1)),
-                ` ${section.title}`),
-              ...lessons.map(lesson => {
+              createElement('button', {
+                key: section.title,
+                type: 'button',
+                className: 'lks-sechead',
+                'aria-expanded': String(open),
+                title: open ? '折叠本章节' : `展开本章节(${section.lessons.length} 课时)`,
+                onClick: () => { setSecOpen(m => ({ ...m, [secKey]: !open })) },
+              },
+              createElement('span', { className: 'lks-sec-num' }, String(section.index + 1)),
+              createElement('span', { className: 'lks-sechead-t' }, section.title),
+              open ? null : createElement('span', { className: 'lks-sechead-n' }, `${section.lessons.length} 课`),
+              createElement('span', { className: 'lks-sechead-c' }, open ? '▾' : '▸')),
+              ...(open ? lessons.map(lesson => {
                 const locked = lesson.status === 'locked' || (lesson.kind === 'exam' && !examAllowed)
-                return createElement('div', {
+                // aria-disabled (not the disabled attribute): the row stays
+                // focusable so its title can explain WHY it is locked.
+                return createElement('button', {
                   key: lesson.id,
-                  className: `lks-node${locked ? ' locked' : ''}${lesson.focus ? ' focus' : ''}`,
+                  type: 'button',
+                  className: `lks-node${lesson.focus ? ' focus' : ''}`,
+                  'aria-disabled': locked || undefined,
                   title: jumping === lesson.id ? '正在打开课时会话…' : statusTitle(lesson.kind, locked ? 'locked' : lesson.status),
                   onClick: () => {
                     if (locked) return
@@ -474,7 +565,7 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
                   : null,
                 lesson.masteryPct !== null ? createElement('span', { className: 'lks-pct', title: '课时掌握度 = 最薄弱知识点的掌握度' }, `${lesson.masteryPct}%`) : null,
                 )
-              }),
+              }) : []),
             ]
           }),
           createElement('button', {
