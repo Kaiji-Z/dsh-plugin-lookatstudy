@@ -91,6 +91,39 @@ gate('bundle', () => {
   return { exit: 0, checks }
 })
 
+gate('secrets', () => {
+  // "The key never enters the public repo" as a machine gate, not a promise.
+  // Scans every git-tracked file for (a) KEY=value assignments, (b) sk- token
+  // patterns, (c) the actual Z_AI_API_KEY value when it is present in this
+  // shell's env (CI has no key → (c) self-skips). Hits report file + kind only,
+  // never the matched text — the gate must not become the leak.
+  const ls = spawnSync('git', ['ls-files'], { encoding: 'utf8' })
+  if (ls.status !== 0) return { exit: 1, checks: [{ ok: false, label: `git ls-files failed: ${ls.stderr?.trim()}` }] }
+  const files = ls.stdout.split('\n').map(s => s.trim()).filter(Boolean)
+  const ASSIGNMENT = /(API_KEY|SECRET|TOKEN|PASSWORD)[ \t]*=[ \t]*['"]?[A-Za-z0-9_\-+/=]{8,}/
+  const TOKEN = /sk-[A-Za-z0-9]{16,}/
+  const live = process.env.Z_AI_API_KEY
+  const hits = []
+  for (const f of files) {
+    let body
+    try { body = readFileSync(f, 'utf8') } catch { continue }
+    const kinds = []
+    if (ASSIGNMENT.test(body)) kinds.push('key-assignment')
+    if (TOKEN.test(body)) kinds.push('sk-token-pattern')
+    if (live && live.length >= 8 && body.includes(live)) kinds.push('live-key-value')
+    if (kinds.length > 0) hits.push(`${f} (${kinds.join(', ')})`)
+  }
+  const artifacts = ['livetest-output.md', 'livetest-judge-output.md', 'livetest-design-output.md', 'livetest-design-state.json', 'livetest-design-err.log']
+  const tracked = artifacts.filter(a => files.includes(a))
+  return {
+    exit: 0,
+    checks: [
+      { ok: hits.length === 0, label: hits.length === 0 ? `scanned ${files.length} tracked files — no key assignments, no token patterns${live ? ', live key value absent' : ''}` : `LEAK: ${hits.join(' | ')}` },
+      { ok: tracked.length === 0, label: tracked.length === 0 ? 'live artifacts (livetest/judge outputs, state) stay untracked' : `tracked live artifacts: ${tracked.join(', ')}` },
+    ],
+  }
+})
+
 if (failed.length > 0) {
   console.log(`\nVERIFY: FAILED at ${failed.join(', ')}`)
   process.exit(1)

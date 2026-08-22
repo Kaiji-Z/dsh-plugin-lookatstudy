@@ -118,6 +118,8 @@ Score each dimension 0–10 and give deduction points: [dimension A/B/...]
 | LangSmith | `RunEvalConfig` + `EvaluatorType.SCORE`; judge model specified in the evaluator |
 | None | go to §8.7 [must-ask] |
 
+**Landed in this repo (owner-ratified; §7 rule 8/9 honored — no eval framework installed, self-built judge is the explicit owner decision):** `scripts/livetest-judge.mjs` (`pnpm run judge`) + frozen `judge-criteria.md`. The prompt is exactly criteria + transcript + a fixed template — context purity (iron rule 1) is a structural test, not a convention; scoring is 0–10 per criterion (rule 2) with PASS iff every criterion ≥ 8; the judge model defaults to the generator model (rule 3 compromise, documented in the criteria file, `JUDGE_MODEL` overrides). The key (`Z_AI_API_KEY`) is env-only, never written or echoed, and verify's secrets gate re-scans the whole tracked tree every run.
+
 ---
 
 ## §4 REGRESSION SET + FLAG

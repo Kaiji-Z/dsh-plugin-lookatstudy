@@ -8,7 +8,8 @@ A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) community 
 
 ```sh
 pnpm test            # node:test suite (tests/*.test.ts) — tsx loader, glob QUOTED on Windows git-bash
-pnpm run verify      # THE gate: tests → build → bundle assertions, every step exit-code checked
+pnpm run verify      # THE gate: tests → build → bundle + secrets scan, every step exit-code checked
+pnpm run judge       # Layer-2 LLM judge: score livetest-output.md against judge-criteria.md (needs Z_AI_API_KEY from the harness .env; -- --dry-run prints the prompt, no key)
 pnpm run build       # tsdown dual config: lib/index.mjs (host ESM+dts) + lib/client.js (CJS in __ModuleLoader__.load)
 pnpm pack            # tarball for `dsh plugin add`
 node scripts/release.mjs <ver|major|minor|patch> ["msg"]  # THE release: verify → bump → commit → tag → push → CI → npm live
@@ -36,6 +37,7 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 - `src/cards.ts` — pure display projections shared by render and presenter cards
 - `src/client/` — browser half: `views.tsx` (the tab + `transcriptRows`), `starter.tsx` (hero one-click), `data.ts` (shared poll store), `styles.ts` (injected `--dsw-*` stylesheet), `icons.tsx` (ic_ds glyphs vendored byte-exact from ui-primitives)
 - `src/vendor/` — LookatStudy pure modules, vendored verbatim (provenance headers inside; the scanner dedup-key patch and the repo-fetcher network-hardening port — deadline/abort/jsDelivr tree fallback, upstream 2026-08-16 — are documented there)
+- `judge-criteria.md` + `scripts/livetest-judge.mjs` — the Layer-2 judge: frozen acceptance criteria and the runner that scores a transcript through a structurally clean prompt (criteria + transcript + fixed template, purity test-asserted); report lands in gitignored `livetest-judge-output.md`
 - `tests/` — see Verification system
 
 ## State-machine invariants (asserted by tests/invariants.test.ts)
@@ -53,12 +55,11 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 - **Layer 1 (deterministic, this repo's core):** `tests/*.test.ts` under plain `node:test` — engine fidelity, state transitions, import gating, tool contracts, presenter totality (including meta-less history inputs), dashboard routes, client folds (`transcriptRows`, `pickPane`), and two gates born from live bugs:
   - *schema conformance* — every tool's representative output validated against its declared `output.schema` (direct `execute` calls bypass the real path's validation; this gate is what caught `ConceptView.tested` being undeclared). When extending it: a `type:'null'` arm missing its switch case silently accepts everything — prove a new gate fails first, then trust its green.
   - *invariant fuzz* — seeded random op sequences over the state machine asserting the invariants above after every step.
-- **Layer 2 (LLM judge, manual):** the livetest harness (`cordis.livetest.yml` + `livetest-run.mjs` + `livetest-task.txt`, needs a real API key) runs the full tutor loop against a real model; `livetest-output.md` keeps the transcript. A clean-context scoring pass over that transcript is designed but NOT wired — see backlog.
+- **Layer 2 (LLM judge, wired):** `pnpm run judge` scores a livetest transcript (`livetest-output.md`, produced by `livetest-run.mjs` or a real model run of `livetest-task.txt`) against the frozen `judge-criteria.md`: prompt = criteria + transcript + fixed template ONLY (the iron rule is a structural test, `tests/livetest-judge.test.ts`), glm-5.2 at temperature 0 (`JUDGE_MODEL` overrides), 0–10 per criterion, PASS iff every criterion ≥ 8, report to gitignored `livetest-judge-output.md`, exit code gates CI-ably. Key discipline: `Z_AI_API_KEY` is env-only (source the harness checkout's `.env`), never written or echoed — the no-echo is itself test-asserted, and verify's secrets gate scans every tracked file for key assignments, `sk-` token patterns, and the live key value itself.
 - **Done** means `pnpm run verify` passes, and any new behavior carries its regression test in the same change.
 
 ## Backlog
 
-- Wire the Layer-2 judge: score `livetest-output.md` transcripts against frozen acceptance criteria with a prompt that never sees the implementation.
 - Full-text lesson search in the course rail (title search shipped).
 - Image inlining, translation system, exam star levels — intentionally not restored.
 
