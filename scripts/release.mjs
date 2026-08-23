@@ -51,6 +51,16 @@ const message = messageParts.join(' ') || `${tag}: release`
 
 console.log(`RELEASE ${current} -> ${next} (${tag})`)
 
+// GATE 0 — clean tree. This script commits ONLY package.json; every source
+// change must already be committed or the tag ships a version bump over stale
+// code (this exact incident shipped a broken 0.11.0 on 2026-08-23).
+const dirty = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8' })
+if (dirty.status !== 0 || (dirty.stdout ?? '').trim() !== '') {
+  console.error('release: working tree is dirty — commit your changes first')
+  console.error('  (the release commit carries only the version bump; uncommitted code would NOT reach the tag)')
+  process.exit(1)
+}
+
 // GATE 1 — the verify gate (same as local; CI re-runs it too).
 if (sh('pnpm', ['run', 'verify'], process.platform === 'win32') !== 0) {
   console.error('release: verify FAILED — nothing was written')
