@@ -1,0 +1,13 @@
+Live self-test of the LookatStudy study plugin's upstream-alignment features. Execute every step autonomously with the study_* tools, in order. Do not ask questions; simulate both tutor and learner. End your final message with the exact line: LIVETEST DONE
+
+1. NEW-FORMAT FOLDER IMPORT: call study_import_folder with path "D:/Users/kaiji/vibecodingKJ/projects/dsh-plugin-lookatstudy/.livetest-fixture/course-materials". The folder holds a Word .docx (two Heading1 chapters), a markdown file, and a zh-CN translation pair. The tool returns design_required with a brief. Design a small course: one section per document chapter/lesson (the docx chapters and the two markdown H2 sections), each as a whole-file or anchored study lesson. Call study_apply_design with your design. On error, read it, fix, retry (up to three times).
+
+2. TRANSLATION PAIRING: after import, call study_lesson on the markdown lesson (Momentum or Adam). Translate its body to Chinese yourself and call study_translate_lesson with lessonId, your paragraph-aligned Chinese markdown, and lang "zh-CN".
+
+3. EXAM DOMAIN: find the section exam node via study_map. Call study_lesson on the exam node and read its examGuide (question quota and the per-question time-limit rule). Then simulate a 5-question exam about the section content: write each question and the learner's answer in your reply, grade honestly with study_record_answer (concept attribution where concepts exist), making exactly 4 correct and 1 incorrect. Finally call study_exam_result on the exam node with correct=4, total=5, and report the stars and the offered post-quiz actions.
+
+4. FULL-TEXT SEARCH + PROGRESS: call study_courses with query "Jacobian" (a word that only appears inside a lesson body, not in any title) and report the matched lesson. Then call study_courses without a query and report the XP/level/streak progress block.
+
+5. EXPORT: call study_export on the imported course and report the lesson count and character count of the pack (do not paste the whole pack).
+
+Then write a three-sentence summary of what the alignment surface (docx import, translation pairing, exam stars/actions, full-text search, XP) recorded, and finish with the LIVETEST DONE line.

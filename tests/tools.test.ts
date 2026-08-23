@@ -23,10 +23,10 @@ const COURSE_MD = [
   '### Review', 'review body',
 ].join('\n')
 
-function setup(): { byName: Map<string, ToolDefinition>; state: LearningState; saves: () => number } {
+function setup(fetch?: typeof fetch): { byName: Map<string, ToolDefinition>; state: LearningState; saves: () => number } {
   const state = emptyState()
   let saves = 0
-  const tools = studyTools({ get: () => state, save: () => { saves += 1 } })
+  const tools = studyTools({ get: () => state, save: () => { saves += 1 } }, fetch ? { fetch } : {})
   const byName = new Map(tools.map(t => [t.name, t]))
   return { byName, state, saves: () => saves }
 }
@@ -228,6 +228,23 @@ test('every tool output conforms to its declared output schema (the real tool-ca
     ['study_set_mode', { mode: 'practice' }],
     ['study_lesson', { lessonId }],
   ]
+  // exam nodes: study_exam_result must satisfy its schema too (needs an exam id)
+  {
+    const map = await run(byName, 'study_map', { courseId: imported.courseId }) as { tree: Array<{ lessons: Array<{ kind?: string; id?: string }> }> }
+    const examId = map.tree.flatMap(s => s.lessons).find(l => l.kind === 'exam')?.id
+    if (examId !== undefined) scenarios.push(['study_exam_result', { lessonId: examId, correct: 4, total: 5 }])
+  }
+  // study_import_url's article route through a stubbed page fetch — its
+  // design_required output must satisfy the shared design-or-imported schema.
+  {
+    const body = Array.from({ length: 12 }, (_v, i) => `<p>Paragraph ${i} of a real article body with teaching substance.</p>`).join('')
+    const fetchFn: typeof fetch = async () => new Response(`<html><head><title>Stub Article</title></head><body><article><h1>Stub Article</h1>${body}</article></body></html>`, { status: 200 })
+    const { byName: stubMap } = setup(fetchFn)
+    const urlResult = await run(stubMap, 'study_import_url', { url: 'https://example.com/article' })
+    const urlTool = stubMap.get('study_import_url')!
+    const urlErr = conforms(urlResult, urlTool.output.schema as Schema, 'study_import_url')
+    assert.equal(urlErr, null, 'study_import_url output must satisfy its schema')
+  }
   for (const [name, args] of scenarios) {
     const tool = byName.get(name)!
     const output = await run(byName, name, args)
@@ -266,6 +283,35 @@ test('render returns text blocks for the core outputs', async () => {
   assert.ok(blocks.some(b => 'text' in b && b.text.includes('⭐')),
     'the fresh first lesson renders as the available star')
   assert.ok(blocks.some(b => 'text' in b && b.text.includes('🎯')), 'exam nodes render')
+})
+
+test('renders expose course/lesson ids so the tutor never has to guess them', async () => {
+  const { byName, state } = setup()
+  const imported = await run(byName, 'study_import_markdown', { markdown: COURSE_MD }) as {
+    courseId: string; firstLessonId: string
+  }
+  const renderText = (name: string, args: Record<string, unknown>, value: unknown): string => {
+    const tool = byName.get(name)!
+    return (tool.output as unknown as { render: (a: Record<string, unknown>, v: unknown) => Array<{ text: string }> })
+      .render(args, value).map(b => b.text).join('\n')
+  }
+
+  const coursesText = renderText('study_courses', {}, await run(byName, 'study_courses'))
+  assert.ok(coursesText.includes(`[courseId ${imported.courseId}]`), 'course list names the courseId')
+  assert.ok(coursesText.includes(`current lesson ${imported.firstLessonId}`), 'course list names the current lesson id')
+
+  const searchText = renderText('study_courses', { query: 'reading' }, await run(byName, 'study_courses', { query: 'reading' }))
+  assert.ok(searchText.includes('[lessonId '), 'search hits name the lessonId')
+
+  const mapText = renderText('study_map', { courseId: imported.courseId }, await run(byName, 'study_map', { courseId: imported.courseId }))
+  assert.ok(mapText.includes(`[courseId ${imported.courseId}]`), 'map header names the courseId')
+  assert.ok(mapText.includes('[lessonId '), 'map lines name lesson ids')
+
+  await run(byName, 'study_complete_lesson', { lessonId: imported.firstLessonId })
+  // Force the first SM-2 review overdue (complete schedules it a day out).
+  state.courses[0]!.sections[0]!.lessons[0]!.dueAt = '2000-01-01T00:00:00.000Z'
+  const dueText = renderText('study_due_reviews', {}, await run(byName, 'study_due_reviews'))
+  assert.ok(dueText.includes('[lessonId '), 'due list names the lessonId (needed by study_record_review)')
 })
 
 test('KC lifecycle: define, attribute answers, weak flags, min aggregation', async () => {

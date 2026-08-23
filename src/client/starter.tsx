@@ -13,11 +13,9 @@ import { createElement, useState } from 'react'
 import type { ReactNode } from 'react'
 import { IconLoadingOutline16, IconThinkOutline16 } from './icons.tsx'
 import { useStudy } from './data.ts'
+import { tr } from './locale.ts'
 import type { InputZone } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-
-/** The kickoff prompt: starts the tutoring loop and points at the study tab. */
-const KICKOFF = '开始学习:查看我的学习状态并打开当前焦点课时。如果我还没有课程,推荐我导入示例课程(AI-For-Beginners)并说明怎么开始。回复最后请提醒我点上方「学习」页签进入学习界面。'
 
 /**
  * Build the hero starter button bound to the framework services.
@@ -54,7 +52,7 @@ function Inner({ ctx }: { ctx: ClientContext }): ReactNode {
         const actx = ctx.sessions.scope(sessionId)
         const face = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
         if (face === undefined) throw new Error('study session is not addressable yet')
-        const result = await face.prompt([{ type: 'text', text: KICKOFF }], 'queue')
+        const result = await face.prompt([{ type: 'text', text: tr('prompt.kickoff') }], 'queue')
         if (!result.ok) throw new Error(`kickoff prompt rejected: ${result.error.code}: ${result.error.message}`)
         ctx.sessions.open(sessionId)
       } catch (err) {
@@ -66,14 +64,14 @@ function Inner({ ctx }: { ctx: ClientContext }): ReactNode {
   return createElement('span', { className: 'lks-root', style: { display: 'inline-flex', alignItems: 'center', gap: '8px' } },
     createElement('button', {
       className: 'lks-pill on',
-      title: '一键准备学习:建立学习工作区、开启会话并让导师就位',
+      title: tr('start.title'),
       disabled: busy,
       onClick: start,
     },
       busy
         ? createElement(IconLoadingOutline16, { className: 'lks-spin' })
         : createElement(IconThinkOutline16, null),
-      busy ? '正在准备学习区…' : data?.active === true ? '进入学习' : '开始学习'),
+      busy ? tr('start.busy') : data?.active === true ? tr('start.enter') : tr('start.go')),
     error !== null ? createElement('span', { className: 'lks-propcard-err', style: { marginTop: 0 } }, error) : null,
   )
 }

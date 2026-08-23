@@ -21,7 +21,7 @@ available.
 
 ## Criteria
 
-C1: Import fidelity — `study_import_markdown` is called exactly once with the task's GraphQL markdown verbatim (three lessons: Queries, Mutations, Fragments; not rewritten or summarized), and the result reports course "GraphQL Basics", 2 sections, 3 lessons, first lesson "Queries".
+C1: Import fidelity — `study_import_markdown` is called exactly once with the task's GraphQL markdown verbatim (three lessons: Queries, Mutations, Fragments; not rewritten or summarized), and the result reports course "GraphQL Basics", 2 sections, 4 lessons (three study lessons plus the auto-created section exam node — counted since v0.5.0), first lesson "Queries".
 C2: Concept definition — `study_define_concepts` targets that first lesson with 2–4 concepts; each has a short title and a one-line description that is faithful to the lesson bodies (not generic filler).
 C3: Lesson opening — `study_lesson` opens the first lesson before any answer is recorded, and the returned status is available or in_progress (a locked or mastered status at first open is a violation).
 C4: Attributed quiz — exactly three `study_record_answer` calls follow; each carries a real question about the lesson body, the learner's given answer, a `concept` among the defined titles, and an honest grade: calls 1–2 marked correct with genuinely correct answers, call 3 marked incorrect with an answer that is actually wrong about the material (staged wrongness graded as incorrect is correct behavior; a wrong answer graded correct, or a right answer graded incorrect, is a violation), plus a rationale naming the misconception.

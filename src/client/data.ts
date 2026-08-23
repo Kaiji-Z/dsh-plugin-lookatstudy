@@ -48,12 +48,26 @@ export interface StudyState {
     readonly starters: ReadonlyArray<{ label: string; message: string }>
     readonly notes: ReadonlyArray<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null }>
     readonly html: string
+    readonly markdown: string
   } | null
   readonly dueCount: number
   readonly due: ReadonlyArray<{ lessonId: string; lessonTitle: string; courseTitle: string; overdueDays: number }>
   readonly pendingProposals: ReadonlyArray<{ id: string; lessonTitle: string; rationale: string }>
   readonly memory: { global: string | null; lesson: string | null; pattern: string | null }
   readonly lessonSessions: Readonly<Record<string, string>>
+  /** XP + streak block (mirrors study_courses; feeds the dock pill and the settings page). */
+  readonly progress: {
+    readonly totalXp: number
+    readonly level: number
+    readonly levelPct: number
+    readonly todayXp: number
+    readonly dailyGoal: number
+    readonly streak: number
+    readonly longestStreak: number
+    readonly freezeCount: number
+  }
+  /** Absolute state-file path (read-only display). */
+  readonly statePath: string
 }
 
 /** Poll cadence for the shared store; one cycle serves every mounted seat. */
@@ -143,6 +157,12 @@ class StudyStore {
     this.refresh()
   }
 
+  /** Full-text lesson search (rail fallback when local title matching misses). */
+  async searchLessons(query: string): Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>> {
+    const body = await fetchJson(`/lookatstudy/api/search?q=${encodeURIComponent(query)}`) as { matches?: Array<{ lessonId: string; lessonTitle: string; snippet: string }> }
+    return body.matches ?? []
+  }
+
   /** Point the tutor's focus at one lesson. */
   async setFocus(lessonId: string): Promise<void> {
     await fetchJson('/lookatstudy/api/focus', {
@@ -183,6 +203,7 @@ export function useStudy(): {
   activate: (active: boolean) => Promise<void>
   setMode: (mode: StudyState['mode']) => Promise<void>
   setFocus: (lessonId: string) => Promise<void>
+  searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>
   deleteCourse: (courseId: string) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string) => Promise<void>
 } {
@@ -192,6 +213,7 @@ export function useStudy(): {
     activate: studyStore.activate.bind(studyStore),
     setMode: studyStore.setMode.bind(studyStore),
     setFocus: studyStore.setFocus.bind(studyStore),
+    searchLessons: studyStore.searchLessons.bind(studyStore),
     deleteCourse: studyStore.deleteCourse.bind(studyStore),
     bindLessonSession: studyStore.bindLessonSession.bind(studyStore),
   }

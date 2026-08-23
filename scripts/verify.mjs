@@ -79,6 +79,18 @@ gate('bundle', () => {
     [host, 'study_apply_design', 'tutor-design apply tool'],
     [host, 'design_required', 'import design protocol status'],
     [host, '3000-8000', 'lesson pacing rule rides the brief and prompt'],
+    [client, 'esm.sh/shiki', 'shiki CDN loader (Phase 2 rendering, zero-dep bundle)'],
+    [client, 'esm.sh/mermaid', 'mermaid CDN loader'],
+    [client, 'esm.sh/markmap', 'markmap CDN loader'],
+    [client, 'esm.sh/elkjs', 'elkjs CDN loader (concept map layout)'],
+    [client, 'cdn.jsdelivr.net/npm/katex', 'KaTeX CDN loader'],
+    [host, 'normalizeMathNotation', 'math notation normalization rides the lesson pipeline'],
+    [client, 'settings.section', 'plugin settings page (dsh-native round)'],
+    [client, 'conversation.composer.dock', 'composer dock status pill'],
+    [client, 'tool.call.toolview', 'conversation-tab tool cards'],
+    [client, 'lks-dockpill', 'dock pill styles'],
+    [client, 'registerStudyLocale', 'locale namespace registration'],
+    [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [
     [client, 'agentReady', 'stale agentReady gate (removed in 0.4.1)'],
@@ -87,6 +99,16 @@ gate('bundle', () => {
   const checks = [
     ...required.map(([src, needle, label]) => ({ ok: src.includes(needle), label: `bundle contains ${label} (${JSON.stringify(needle)})` })),
     ...forbidden.map(([src, needle, label]) => ({ ok: !src.includes(needle), label: `bundle free of ${label}` })),
+    // The dsh.client manifest must keep the boot-tier prefetch flag (the study
+    // tab's first open would otherwise pay a bundle fetch) and the locale edge.
+    (() => {
+      const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+      const decl = pkg.dsh?.client ?? {}
+      return {
+        ok: decl.immediately === true && Array.isArray(decl.inject) && decl.inject.includes('locale'),
+        label: 'dsh.client manifest: immediately:true + locale inject edge',
+      }
+    })(),
   ]
   return { exit: 0, checks }
 })

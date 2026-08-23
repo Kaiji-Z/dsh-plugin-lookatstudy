@@ -8,7 +8,11 @@
  */
 
 import { renderMarkdown } from './markdown.ts'
+import { normalizeMathNotation } from './vendor/math-normalize.ts'
+import { renderBilingual } from './markdown.ts'
+import { DEFAULT_DAILY_GOAL, levelFromTotalXp } from './vendor/xp.ts'
 import {
+  searchLessons,
   conceptViews,
   deleteCourse,
   dueReviews,
@@ -33,6 +37,8 @@ export interface DashboardDeps {
   studyAreaPath: string
   /** Applies an activation flip to the host surface (tool registry sync). */
   onActiveChange: (active: boolean) => void
+  /** Absolute state-file path (read-only display in the settings page). */
+  statePath: string
 }
 
 /** Structural slice of the dsh `webServer` service, for testability. */
@@ -108,6 +114,17 @@ export interface WorkbenchState {
   memory: { global: string | null; lesson: string | null; pattern: string | null }
   /** Lesson id → dsh session id (one session per lesson node). */
   lessonSessions: Record<string, string>
+  /** XP + streak block (same shape as study_courses; feeds the dock pill and the settings page). */
+  progress: {
+    totalXp: number
+    level: number
+    levelPct: number
+    todayXp: number
+    dailyGoal: number
+    streak: number
+    longestStreak: number
+    freezeCount: number
+  }
 }
 
 /**
@@ -170,7 +187,10 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
           source: n.source,
           quote: n.quote,
         })),
-        html: renderMarkdown(ref.lesson.body),
+        html: renderMarkdown(normalizeMathNotation(
+          ref.lesson.translation === undefined ? ref.lesson.body : renderBilingual(ref.lesson.body, ref.lesson.translation),
+        )),
+        markdown: ref.lesson.body,
       }
     } catch {
       lesson = null
@@ -199,6 +219,19 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
       return { global: snap.memoryGlobal, lesson: snap.memoryLesson, pattern: snap.memoryPattern }
     })(),
     lessonSessions: state.lessonSessions,
+    progress: (() => {
+      const xp = levelFromTotalXp(state.xp.total)
+      return {
+        totalXp: state.xp.total,
+        level: xp.level,
+        levelPct: xp.pct,
+        todayXp: state.xp.todayXp,
+        dailyGoal: DEFAULT_DAILY_GOAL,
+        streak: state.streak.currentStreak,
+        longestStreak: state.streak.longestStreak,
+        freezeCount: state.streak.freezeCount,
+      }
+    })(),
   }
 }
 
@@ -257,7 +290,14 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
     handler: async (req, res) => {
       const pathname = new URL(req.url ?? '/', 'http://x').pathname
       if (req.method === 'GET' && pathname === '/lookatstudy/api/state') {
-        sendJson(res, 200, workbenchState(deps.store.get(), new Date()))
+        sendJson(res, 200, { ...workbenchState(deps.store.get(), new Date()), statePath: deps.statePath })
+        return
+      }
+      if (req.method === 'GET' && pathname === '/lookatstudy/api/search') {
+        // Full-text lesson search (rail search box fallback when title matching
+        // finds nothing locally — the bodies live host-side, not in the feed).
+        const query = new URL(req.url ?? '/', 'http://x').searchParams.get('q') ?? ''
+        sendJson(res, 200, { ok: true, query, matches: searchLessons(deps.store.get(), query) })
         return
       }
       if (req.method === 'POST' && pathname === '/lookatstudy/api/active') {

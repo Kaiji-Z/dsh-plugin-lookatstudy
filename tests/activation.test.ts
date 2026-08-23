@@ -29,6 +29,12 @@ test('active states render the tutor core, the chosen soul, and the snapshot', (
   assert.ok(tutorCoreText(state).includes("learner's own language"), 'the output-language directive rides the tutor core')
   assert.ok(soulText(state).includes('Soul: practice'))
   assert.ok(snapshotSectionText(state).includes('【学习者当前状态】'), 'a focused active state renders the learner snapshot')
+  // The snapshot must carry the ids, not just titles — the tutor's tool calls
+  // key on courseId/lessonId, and a title-only line made live models guess
+  // (transcript 2026-08-23: three failed study_lesson calls before an id hit).
+  const snapText = snapshotSectionText(state)
+  assert.ok(snapText.includes(`[courseId ${course.id}]`), 'snapshot focus names the courseId')
+  assert.ok(snapText.includes(`[lessonId ${course.id}:0:0]`), 'snapshot focus names the lessonId')
   // The texts are the real prompt surfaces, not copies: they react to the
   // state's own facts.
   state.mode = 'guide'
@@ -52,18 +58,18 @@ test('the study surface registers tools on activation and retires them on exit',
 
   state.active = true
   surface.sync()
-  assert.equal(registered.length, 20, 'activation registers the full study_* toolset')
+  assert.equal(registered.length, 25, 'activation registers the full study_* toolset')
   assert.equal(disposed.length, 0)
   surface.sync()
-  assert.equal(registered.length, 20, 'sync is idempotent while the flag is unchanged')
+  assert.equal(registered.length, 25, 'sync is idempotent while the flag is unchanged')
 
   state.active = false
   surface.sync()
-  assert.equal(disposed.length, 20, 'deactivation disposes every live registration')
+  assert.equal(disposed.length, 25, 'deactivation disposes every live registration')
 
   state.active = true
   surface.sync()
-  assert.equal(registered.length, 40, 're-activation registers a fresh batch')
+  assert.equal(registered.length, 50, 're-activation registers a fresh batch')
   surface.dispose()
-  assert.equal(disposed.length, 40, 'teardown retires whatever is live regardless of the flag')
+  assert.equal(disposed.length, 50, 'teardown retires whatever is live regardless of the flag')
 })

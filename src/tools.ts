@@ -9,25 +9,39 @@
  */
 
 import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { parseMarkdownToCourse } from './vendor/markdown-course.ts'
 import type { ParsedCourse } from './vendor/markdown-course.ts'
-import { scanFolder } from './vendor/local-folder-scanner.ts'
-import { fetchFileOutlines, fetchRepoInventory, fetchSingleFileContent } from './vendor/repo-fetcher.ts'
+import { scanFolder, buildLocalInventory } from './vendor/local-folder-scanner.ts'
+import { downloadToBuffer, fetchFileOutlines, fetchRepoInventory, fetchSingleFileContent } from './vendor/repo-fetcher.ts'
+import { routeImportUrl, normalizeUrlIdentity } from './vendor/url-route.ts'
+import { parsePdfText } from './vendor/pdf-text.ts'
+import { prepareSingleDoc } from './vendor/text-chunk.ts'
+import { extractArticle } from './vendor/html-article.ts'
+import { fetchBilibiliMeta } from './vendor/video-meta.ts'
 import {
   buildCourseFromDesign,
   buildPendingDesign,
   buildPendingDesignFromFolder,
+  buildPendingDesignFromUrl,
+  collectTranslations,
+  rewriteGithubImageRefs,
+  inlineLocalImages,
+  planBriefParts,
   renderDesignBrief,
   validateDesign,
   type PendingDesign,
 } from './import-design.ts'
 import type { ReviewQuality } from './vendor/sm2.ts'
 import { masteryToCrown } from './vendor/bkt.ts'
+import { getPostQuizActions, planExamQuota } from './vendor/exam-logic.ts'
+import { DEFAULT_DAILY_GOAL, levelFromTotalXp } from './vendor/xp.ts'
 import * as cards from './cards.ts'
 import {
+  courseToPackMarkdown,
   NEAR_MASTERED_THRESHOLD,
   addFriction,
   addNote,
@@ -43,11 +57,14 @@ import {
   nextLesson,
   proposeMastery,
   recordAnswer,
+  recordExamResult,
   recordReview,
   resolveProposal,
+  searchLessons,
   setMemory,
   starterPrompts,
   defineConcepts as defineConceptsState,
+  gatherConsolidationWindow,
   strategyBand,
   type CourseState,
   type LearningState,
@@ -132,9 +149,44 @@ function toMapValue(course: CourseState): cards.MapValue {
 }
 
 /** Canonical value of `study_lesson`. */
+/** The learner-state block (upstream learner-model buildLearnerSnapshot): one
+ *  composed projection of mastery/status/weak concepts/friction/memory that the
+ *  tutor consumes whole instead of re-deriving from scattered fields. */
+function learnerStateLine(ref: LessonRef, state: LearningState): string {
+  const l = ref.lesson
+  const parts: string[] = []
+  parts.push(`status ${l.status}, mastery ${l.mastery === null ? 'untracked' : `${Math.round(l.mastery * 100)}%`}, strategy ${strategyBand(l.mastery)}`)
+  const weak = (l.concepts ?? []).filter((_c, i) => (l.conceptMastery?.[i] ?? 0.5) < 0.7)
+  if (weak.length > 0) parts.push(`weak concepts: ${weak.map(c => c.title).join('、')}`)
+  const frictionCats = [...new Set(l.friction.slice(-5).map(f => f.category))]
+  if (frictionCats.length > 0) parts.push(`recent friction: ${frictionCats.join('/')}`)
+  if (l.memory !== null) parts.push(`lesson memory: ${l.memory}`)
+  if (state.memoryGlobal !== null) parts.push(`global memory: ${state.memoryGlobal}`)
+  return parts.join(' | ')
+}
+
 function toLessonValue(ref: LessonRef, state: LearningState) {
   const next = nextLesson(ref.course, ref.lesson.id)
   const pending = state.proposals.find(p => p.lessonId === ref.lesson.id && p.status === 'pending')
+  /** Exam design guide (upstream exam-logic): question quota from the section's
+   *  KC union, per-question time rule, star thresholds — only on exam nodes. */
+  const examGuide = ref.lesson.kind === 'exam'
+    ? (() => {
+        const kcTitles = [...new Set(ref.section.lessons
+          .filter(l => l.kind !== 'exam' && l.concepts !== null)
+          .flatMap(l => l.concepts!.map(c => c.title)))]
+        const quota = planExamQuota(kcTitles)
+        const questionCount = quota.reduce((a, b) => a + b, 0)
+        return {
+          questionCount,
+          kcCount: kcTitles.length,
+          timeLimitRule: 'per-question seconds = 45 + cjkChars/5 + words/3 + options×8, +25 code block, +25 formula, clamp 60–300 (questionTimeLimitSec)',
+          starsRule: '≥95%→3★, ≥80%→2★, ≥60%→1★, below→0 (best-of kept; report with study_exam_result)',
+          bestStars: ref.lesson.examStars ?? 0,
+          examAttempts: ref.lesson.examAttempts ?? 0,
+        }
+      })()
+    : null
   return {
     lessonId: ref.lesson.id,
     courseId: ref.course.id,
@@ -159,6 +211,9 @@ function toLessonValue(ref: LessonRef, state: LearningState) {
     noteCount: ref.lesson.notes.length,
     pendingProposal: pending === undefined ? null : { id: pending.id, rationale: pending.rationale },
     nextLessonId: next?.id ?? null,
+    learnerState: learnerStateLine(ref, state),
+    ...(ref.lesson.summary !== undefined ? { summary: ref.lesson.summary } : {}),
+    ...(examGuide !== null ? { examGuide } : {}),
   }
 }
 
@@ -204,6 +259,8 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
    * replaces an unconsumed one.
    */
   let pendingDesign: PendingDesign | null = null
+  /** Which context-budget part of the pending brief the tutor last asked for. */
+  let pendingPart = 1
   /** Run a mutating state operation and persist. */
   const mutate = <T>(fn: (state: LearningState) => T): T => {
     const result = fn(store.get())
@@ -287,6 +344,8 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
             courseTitle: { type: 'string', required: true },
             fileCount: { type: 'integer', required: true },
             fullTreeCount: { type: 'integer', required: true },
+            part: { type: 'integer', description: 'Brief part this call rendered (context-budget batching).' },
+            partCount: { type: 'integer', description: 'Total brief parts; >1 means design+apply per part.' },
           },
         },
       ],
@@ -298,7 +357,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     text: value.status === 'design_required'
       ? (pendingDesign === null
           ? 'Course design required — the brief is no longer pending; call the import tool again to re-fetch it.'
-          : renderDesignBrief(pendingDesign))
+          : renderDesignBrief(pendingDesign, pendingPart))
       : `Imported course “${value.title}” (${value.sections} sections, ${value.lessons} lessons). `
         + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}).`,
   }]
@@ -321,35 +380,79 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     parameters: {
       path: { type: 'string', required: true, description: 'Absolute path of the folder to scan.' },
       title: { type: 'string', description: 'Optional course title overriding the folder name / README H1.' },
+      part: { type: 'integer', description: 'Which context-budget brief part to render (1-based); relevant only when the folder is huge.' },
     },
     output: { ...designOrImportedOutput, render: designOrImportedRender },
     async execute(args) {
       if (!existsSync(args.path)) {
         throw new Error(`lookatstudy-plugin: folder does not exist: ${args.path}`)
       }
-      const existing = store.get().courses.find(c => c.source === 'folder' && c.sourceRef === args.path)
+      const part = args.part ?? 1
+      const existing = part <= 1 ? store.get().courses.find(c => c.source === 'folder' && c.sourceRef === args.path) : undefined
       if (existing !== undefined) {
         return { status: 'imported' as const, ...toImportValue(existing) }
       }
-      const docs = await scanFolder(args.path)
+      const inventory = await buildLocalInventory(args.path)
+      const docs = inventory.docs
       if (docs.length === 0) {
         throw new Error(`lookatstudy-plugin: no importable files found in ${args.path}`)
       }
       const title = args.title ?? basename(args.path.replaceAll('\\', '/'))
-      pendingDesign = buildPendingDesignFromFolder(args.path, title, docs)
-      return {
-        status: 'design_required' as const,
-        repo: pendingDesign.repo,
-        branch: pendingDesign.branch,
-        courseTitle: pendingDesign.courseTitle,
-        fileCount: pendingDesign.files.length,
-        fullTreeCount: pendingDesign.fullTreeCount,
+      pendingDesign = buildPendingDesignFromFolder(args.path, title, docs, { translations: inventory.translations, images: inventory.images })
+      // Inline local images as data URLs (upstream scanner-images, 200KB cap per image)
+      const localImages = new Map<string, string>()
+      for (const img of inventory.images) {
+        if (img.absPath === '' || img.source === 'pdf_page') continue
+        try {
+          const buf = await readFile(img.absPath)
+          if (buf.length > 200_000) continue
+          localImages.set(img.path, `data:${img.mime};base64,${buf.toString('base64')}`)
+        } catch { /* unreadable image skipped */ }
       }
+      if (localImages.size > 0) pendingDesign.localImages = localImages
+      pendingPart = part
+      return designRequiredValue(pendingDesign, part)
     },
     timeoutMs: 60_000,
     presentCall: args => ({ card: 'generic', title: `Scan folder: ${args.path}`, kind: 'read', rawInput: args.path }),
     ...designOrImportedPresent,
   })
+
+  /** Stamp the requested brief part onto the pending design and build the design_required value. */
+  const designRequiredValue = (pd: PendingDesign, part: number) => {
+    const partCount = planBriefParts(pd.files).length
+    pd.part = part
+    pd.partCount = partCount
+    return {
+      status: 'design_required' as const,
+      repo: pd.repo,
+      branch: pd.branch,
+      courseTitle: partCount > 1 ? `${pd.courseTitle} (part ${part})` : pd.courseTitle,
+      fileCount: planBriefParts(pd.files)[Math.min(part, partCount) - 1]!.length,
+      fullTreeCount: pd.fullTreeCount,
+      ...(partCount > 1 ? { part, partCount } : {}),
+    }
+  }
+
+  /** Shared GitHub import flow — study_import_github's core, reused verbatim by
+   *  study_import_url's github branch (routing is the only difference). */
+  const runGithubImport = async (url: string, branch: string | undefined, exec: { signal: AbortSignal }, part = 1) => {
+    const { owner, repo } = parseGithubUrl(url)
+    const resolvedBranch = branch ?? 'main'
+    const fetchFn = signalFetch(exec.signal, baseFetch)
+    const existing = part <= 1 ? store.get().courses.find(c => c.source === 'github' && c.sourceRef === url) : undefined
+    if (existing !== undefined) {
+      return { status: 'imported' as const, ...toImportValue(existing) }
+    }
+    const inventory = await fetchRepoInventory(owner, repo, resolvedBranch, fetchFn, undefined, exec.signal)
+    const outlines = await fetchFileOutlines(inventory.fileList.map(f => f.path), owner, repo, inventory.branch, fetchFn, undefined, exec.signal)
+    pendingDesign = buildPendingDesign(url, owner, repo, inventory, outlines)
+    if (pendingDesign.files.length === 0) {
+      throw new Error('lookatstudy-plugin: course files were discovered but no outlines could be fetched (CDN unreachable?)')
+    }
+    pendingPart = part
+    return designRequiredValue(pendingDesign, part)
+  }
 
   const importGithub = defineTool({
     name: 'study_import_github',
@@ -362,33 +465,89 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     parameters: {
       url: { type: 'string', required: true, description: 'Repository URL, e.g. https://github.com/microsoft/AI-For-Beginners.' },
       branch: { type: 'string', description: 'Branch to read (main tried, then master); defaults to main.' },
+      part: { type: 'integer', description: 'Which context-budget brief part to render (1-based); relevant only for huge repos.' },
+    },
+    output: { ...designOrImportedOutput, render: designOrImportedRender },
+    execute: (args, exec) => runGithubImport(args.url, args.branch, exec, args.part ?? 1),
+    timeoutMs: 180_000,
+    presentCall: args => ({ card: 'generic', title: `Import GitHub course: ${args.url}`, kind: 'fetch' }),
+    ...designOrImportedPresent,
+  })
+
+  const importUrl = defineTool({
+    name: 'study_import_url',
+    description:
+      'Import any learning URL by auto-routing: GitHub repos reuse the repository import; arXiv papers '
+      + 'download the PDF and extract its text layer; other http(s) pages get web-article extraction '
+      + '(nav/ads stripped, honest failure on non-article pages). All routes return the same design '
+      + 'brief the tutor designs against (apply with study_apply_design). Video links (B站/YouTube/抖音) '
+      + 'are classified with title metadata but cannot be transcribed here — ask the learner to paste '
+      + 'the transcript/subtitles and use study_import_markdown instead.',
+    parameters: {
+      url: { type: 'string', required: true, description: 'The URL to import: github.com repo, arxiv.org paper, or any web article page.' },
+      part: { type: 'integer', description: 'Which context-budget brief part to render (1-based); relevant only for enormous documents.' },
     },
     output: { ...designOrImportedOutput, render: designOrImportedRender },
     async execute(args, exec) {
-      const { owner, repo } = parseGithubUrl(args.url)
-      const branch = args.branch ?? 'main'
+      const route = routeImportUrl(args.url)
+      if (route === null) {
+        throw new Error(`lookatstudy-plugin: ${JSON.stringify(args.url)} is not a recognizable import URL (github repo / arxiv paper / web article / video link)`)
+      }
+      if (route.kind === 'github') {
+        return runGithubImport(args.url, undefined, exec, args.part ?? 1)
+      }
       const fetchFn = signalFetch(exec.signal, baseFetch)
-      const existing = store.get().courses.find(c => c.source === 'github' && c.sourceRef === args.url)
-      if (existing !== undefined) {
-        return { status: 'imported' as const, ...toImportValue(existing) }
+      if (route.kind === 'video') {
+        // 分类与元数据(SPEC 1.2):字幕拉取需 yt-dlp spawn、音频转写需模型客户端——
+        // 两条路都在插件禁区,诚实报元数据 + 指路粘贴文稿。
+        if (route.source === 'bilibili') {
+          const meta = await fetchBilibiliMeta(route.url, fetchFn, exec.signal)
+          const parts = meta.parts.length > 0 ? `, ${meta.parts.length} 分P` : ''
+          throw new Error(
+            `lookatstudy-plugin: B站视频《${meta.title}》(UP:${meta.owner}${parts})已识别,但插件内无字幕拉取与音频转写能力。`
+            + '请让学习者把字幕/文稿粘贴进来,用 study_import_markdown 导入。',
+          )
+        }
+        throw new Error(
+          `lookatstudy-plugin: ${route.url} 是视频链接(YouTube/抖音需要 yt-dlp,插件环境不可用)。`
+          + '请让学习者把字幕/文稿粘贴进来,用 study_import_markdown 导入。',
+        )
       }
-      const inventory = await fetchRepoInventory(owner, repo, branch, fetchFn, undefined, exec.signal)
-      const outlines = await fetchFileOutlines(inventory.fileList.map(f => f.path), owner, repo, inventory.branch, fetchFn, undefined, exec.signal)
-      pendingDesign = buildPendingDesign(args.url, owner, repo, inventory, outlines)
-      if (pendingDesign.files.length === 0) {
-        throw new Error('lookatstudy-plugin: course files were discovered but no outlines could be fetched (CDN unreachable?)')
+      if (route.flavor === 'arxiv') {
+        const buf = await downloadToBuffer(route.pdfUrl, fetchFn, { signal: exec.signal })
+        const text = parsePdfText(buf)
+        if (!text || text.replace(/\s+/g, '').length < 200) {
+          throw new Error('lookatstudy-plugin: arXiv PDF has no extractable text layer (scanned/image PDF) — try the HTML version or paste the abstract as markdown')
+        }
+        const docs = prepareSingleDoc(`arxiv-${route.arxivId}`, `# arXiv:${route.arxivId}\n\n${text}`)
+        if (docs.length === 0) throw new Error('lookatstudy-plugin: arXiv PDF text was empty after chunking')
+        const part = args.part ?? 1
+        const existing = part <= 1 ? store.get().courses.find(c => c.source === 'url' && c.sourceRef === route.url) : undefined
+        if (existing !== undefined) return { status: 'imported' as const, ...toImportValue(existing) }
+        pendingDesign = buildPendingDesignFromUrl(route.url, `arXiv:${route.arxivId}`, docs)
+        pendingPart = part
+        return designRequiredValue(pendingDesign, part)
       }
-      return {
-        status: 'design_required' as const,
-        repo: `${owner}/${repo}`,
-        branch: pendingDesign.branch,
-        courseTitle: pendingDesign.courseTitle,
-        fileCount: pendingDesign.files.length,
-        fullTreeCount: pendingDesign.fullTreeCount,
+      // article:网页正文抽取
+      const part = args.part ?? 1
+      const identity = normalizeUrlIdentity(route.url)
+      const existing = part <= 1 ? store.get().courses.find(c => c.source === 'url' && c.sourceRef === identity) : undefined
+      if (existing !== undefined) return { status: 'imported' as const, ...toImportValue(existing) }
+      const resp = await fetchFn(route.url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LookatStudyPlugin/0.9)' } })
+      if (!resp.ok) throw new Error(`lookatstudy-plugin: page fetch failed (HTTP ${resp.status}): ${route.url}`)
+      const html = await resp.text()
+      const article = extractArticle(html, route.url)
+      if (article === null) {
+        throw new Error(`lookatstudy-plugin: ${route.url} does not look like an article page (no readable body found) — login walls, indexes and app shells are rejected honestly rather than imported as noise`)
       }
+      const docs = prepareSingleDoc(article.title.slice(0, 60), article.markdown)
+      if (docs.length === 0) throw new Error('lookatstudy-plugin: article body was empty after chunking')
+      pendingDesign = buildPendingDesignFromUrl(identity, article.title, docs)
+      pendingPart = part
+      return designRequiredValue(pendingDesign, part)
     },
-    timeoutMs: 180_000,
-    presentCall: args => ({ card: 'generic', title: `Import GitHub course: ${args.url}`, kind: 'fetch' }),
+    timeoutMs: 120_000,
+    presentCall: args => ({ card: 'generic', title: `Import URL: ${args.url}`, kind: 'fetch' }),
     ...designOrImportedPresent,
   })
 
@@ -464,7 +623,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
           if (text === undefined) {
             throw new Error(`lookatstudy-plugin: designed file ${JSON.stringify(file)} is not in the scanned folder — use only paths from the design brief`)
           }
-          contents.set(file, text)
+          contents.set(file, pd.localImages === undefined ? text : inlineLocalImages(text, file, pd.localImages))
         }
       } else {
         // GitHub imports fetch each designed file exactly once, five in flight, abort-aware.
@@ -476,7 +635,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
           const texts = await Promise.all(batch.map(f => fetchSingleFileContent(f, pd.owner, pd.repo, pd.branch, fetchFn)))
           for (let j = 0; j < batch.length; j++) {
             if (texts[j] === null) failed.push(batch[j]!)
-            else contents.set(batch[j]!, texts[j]!)
+            else contents.set(batch[j]!, rewriteGithubImageRefs(texts[j]!, batch[j]!, pd.owner, pd.repo, pd.branch))
           }
         }
         if (contents.size === 0) {
@@ -486,10 +645,16 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
           throw new Error(`lookatstudy-plugin: ${failed.length} designed file(s) failed to fetch: ${failed.join(', ')} — drop or fix them and call study_apply_design again`)
         }
       }
-      const parsed = buildCourseFromDesign(pd.courseTitle, validated, contents)
+      const parsed = buildCourseFromDesign(
+        pd.part !== undefined && pd.partCount !== undefined && pd.partCount > 1 ? `${pd.courseTitle} (part ${pd.part})` : pd.courseTitle,
+        validated,
+        contents,
+        pd.translations,
+      )
       requireParsedLessons(parsed)
       const value = mutate(state => toImportValue(importCourse(state, parsed, pd.source, pd.url)))
       pendingDesign = null
+      pendingPart = 1
       return { ...value, droppedLessons: validated.droppedLessons }
     },
     timeoutMs: 180_000,
@@ -503,8 +668,14 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
 
   const listCourses = defineTool({
     name: 'study_courses',
-    description: 'List imported courses with progress, average mastery, due reviews, and the current lesson id.',
-    parameters: {},
+    description:
+      'List imported courses with progress, average mastery, due reviews, and the current lesson id — plus the '
+      + 'learner\'s XP/level/streak block (upstream xp-service + streak). With `query`, runs a full-text '
+      + 'multi-keyword AND search over every lesson title AND body (upstream course-tree-filter extended) '
+      + 'and returns the hits alongside the course list.',
+    parameters: {
+      query: { type: 'string', description: 'Optional full-text search: space-separated keywords, all must hit title or body.' },
+    },
     output: {
       schema: {
         type: 'object',
@@ -520,7 +691,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
               properties: {
                 courseId: { type: 'string', required: true },
                 title: { type: 'string', required: true },
-                source: { type: 'string', required: true, enum: ['markdown', 'folder', 'github'] },
+                source: { type: 'string', required: true, enum: ['markdown', 'folder', 'github', 'url'] },
                 total: { type: 'integer', required: true },
                 mastered: { type: 'integer', required: true },
                 avgMasteryPct: { ...nullableInteger, required: true },
@@ -529,22 +700,60 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
               },
             },
           },
+          progress: {
+            type: 'object',
+            required: true,
+            additionalProperties: false,
+            description: 'XP + streak block (upstream xp-service/streak semantics).',
+            properties: {
+              totalXp: { type: 'integer', required: true },
+              level: { type: 'integer', required: true },
+              levelPct: { type: 'integer', required: true },
+              todayXp: { type: 'integer', required: true },
+              dailyGoal: { type: 'integer', required: true },
+              streak: { type: 'integer', required: true },
+              longestStreak: { type: 'integer', required: true },
+              freezeCount: { type: 'integer', required: true },
+            },
+          },
+          matches: {
+            type: 'array',
+            description: 'Full-text hits (present only when query was given).',
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                courseId: { type: 'string', required: true },
+                courseTitle: { type: 'string', required: true },
+                lessonId: { type: 'string', required: true },
+                lessonTitle: { type: 'string', required: true },
+                snippet: { type: 'string', required: true },
+              },
+            },
+          },
         },
       },
       render: (_args, value) => [{
         type: 'text',
-        text: value.courses.length === 0
-          ? 'No courses imported yet. Import one with study_import_markdown, study_import_folder, or study_import_github.'
-          : value.courses.map(c =>
-              `“${c.title}” (${c.source}) — ${c.mastered}/${c.total} lessons mastered`
+        text: (value.courses as Array<{ courseId: string; title: string; source: string; mastered: number; total: number; avgMasteryPct: number | null; dueCount: number; currentLessonId: string | null }>).length === 0
+          ? 'No courses imported yet. Import one with study_import_markdown, study_import_folder, study_import_github, or study_import_url.'
+          : (value.courses as Array<{ courseId: string; title: string; source: string; mastered: number; total: number; avgMasteryPct: number | null; dueCount: number; currentLessonId: string | null }>).map(c =>
+              `[courseId ${c.courseId}] “${c.title}” (${c.source}) — ${c.mastered}/${c.total} lessons mastered`
               + `${c.avgMasteryPct === null ? '' : `, avg mastery ${c.avgMasteryPct}%`}`
               + `${c.dueCount === 0 ? '' : `, ${c.dueCount} reviews due`}`
               + `${c.currentLessonId === null ? '' : `, current lesson ${c.currentLessonId}`}`,
-            ).join('\n'),
+            ).join('\n')
+            + `\nXP ${value.progress.totalXp} (Lv${value.progress.level} ${value.progress.levelPct}%), today ${value.progress.todayXp}/${value.progress.dailyGoal}`
+            + `, streak ${value.progress.streak}d (best ${value.progress.longestStreak}d, ${value.progress.freezeCount} freeze left)`
+            + (Array.isArray(value.matches) && value.matches.length > 0
+              ? `\nsearch hits (use study_lesson with the lessonId):\n${(value.matches as Array<{ lessonId: string; lessonTitle: string; courseTitle: string; snippet: string }>).map(m => `- ${m.lessonTitle} [lessonId ${m.lessonId}] (${m.courseTitle}): ${m.snippet}`).join('\n')}`
+              : ''),
       }],
     },
-    async execute() {
-      const summaries = courseSummaries(store.get(), new Date())
+    async execute(args) {
+      const state = store.get()
+      const summaries = courseSummaries(state, new Date())
+      const xp = levelFromTotalXp(state.xp.total)
       return {
         total: summaries.length,
         courses: summaries.map(s => ({
@@ -557,10 +766,21 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
           dueCount: s.dueCount,
           currentLessonId: s.currentLessonId,
         })),
+        progress: {
+          totalXp: state.xp.total,
+          level: xp.level,
+          levelPct: xp.pct,
+          todayXp: state.xp.todayXp,
+          dailyGoal: DEFAULT_DAILY_GOAL,
+          streak: state.streak.currentStreak,
+          longestStreak: state.streak.longestStreak,
+          freezeCount: state.streak.freezeCount,
+        },
+        ...(args.query !== undefined ? { matches: searchLessons(state, args.query) } : {}),
       }
     },
     isConcurrencySafe: () => true,
-    presentCall: () => ({ card: 'generic', title: 'List courses', kind: 'read' }),
+    presentCall: args => ({ card: 'generic', title: args.query === undefined ? 'List courses' : `Search lessons: ${args.query}`, kind: 'read' }),
   })
 
   const courseMap = defineTool({
@@ -700,7 +920,22 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
             additionalProperties: false,
             properties: { id: { type: 'string', required: true }, rationale: { type: 'string', required: true } },
           }], required: true },
+          examGuide: {
+            type: 'object',
+            description: 'Exam nodes only: question quota, time-limit rule, star thresholds.',
+            additionalProperties: false,
+            properties: {
+              questionCount: { type: 'integer', required: true },
+              kcCount: { type: 'integer', required: true },
+              timeLimitRule: { type: 'string', required: true },
+              starsRule: { type: 'string', required: true },
+              bestStars: { type: 'integer', required: true },
+              examAttempts: { type: 'integer', required: true },
+            },
+          },
           nextLessonId: { ...nullableString, required: true },
+          learnerState: { type: 'string', required: true, description: 'Composed learner snapshot (status/mastery/weak/friction/memory).' },
+          summary: { type: 'string', description: '1–2 sentence lesson summary (defined with the concepts).' },
         },
       },
       render: (_args, value) => [{
@@ -710,6 +945,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
           + `${value.correctCount}/${value.attempts} answers correct\n`
           + `strategy: ${value.strategy}\n`
           + (value.concepts === null ? '' : `concepts: ${value.concepts.map(c => `${c.title} ${c.masteryPct}%${c.weak ? ' ⚡weak' : ''}`).join(' · ')}\n`)
+          + (value.examGuide === undefined ? '' : `exam: ${value.examGuide.questionCount} questions (${value.examGuide.kcCount} KCs); per-question time ${value.examGuide.timeLimitRule}; stars ${value.examGuide.starsRule}\n`)
           + `starters: ${value.starters.map(s => s.label).join(' / ')}\n\n${value.body}`
           + `${value.nextLessonId === null ? '\n\n(this is the last lesson)' : `\n\n(next lesson: ${value.nextLessonId})`}`,
       }],
@@ -815,6 +1051,84 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       title: `Record answer (${args.correct ? 'correct' : 'incorrect'}): ${args.lessonId}`,
     }),
     presentationMeta: (_args, value) => [cards.answerLine(value)],
+    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+  })
+
+  const examResultTool = defineTool({
+    name: 'study_exam_result',
+    description:
+      'Record one graded section-exam attempt: stars from accuracy (≥95%→3★, ≥80%→2★, ≥60%→1★, '
+      + 'below→0; best-of retained across attempts) plus the post-quiz action set the learner should '
+      + 'be offered next (explain-wrong / retry / go-deeper / mark-mastered→study_propose_mastery / '
+      + 'next-topic). Call once per exam attempt after grading all questions.',
+    parameters: {
+      lessonId: { type: 'string', required: true, description: 'The exam lesson node id.' },
+      correct: { type: 'integer', required: true, description: 'Questions answered correctly.' },
+      total: { type: 'integer', required: true, description: 'Questions asked in this attempt (must be > 0).' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          lessonId: { type: 'string', required: true },
+          lessonTitle: { type: 'string', required: true },
+          stars: { type: 'integer', required: true },
+          bestStars: { type: 'integer', required: true },
+          attempts: { type: 'integer', required: true },
+          masteryPct: { type: 'integer', required: true },
+          actions: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                id: { type: 'string', enum: ['explain-wrong', 'retry', 'go-deeper', 'mark-mastered', 'next-topic'], required: true },
+                label: { type: 'string', required: true },
+                advancesMastery: { type: 'boolean' },
+              },
+            },
+          },
+          nextLessonId: { ...nullableString, required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Exam result: ${value.stars}★ (best ${value.bestStars}★, attempt ${value.attempts}). `
+          + `Offer the learner: ${value.actions.map(a => a.label).join(' / ')}.`
+          + (value.nextLessonId === null ? '' : ` Next topic: ${value.nextLessonId}.`),
+      }],
+    },
+    execute(args) {
+      return mutate((state) => {
+        const r = recordExamResult(state, args.lessonId, args.correct, args.total)
+        const actions = getPostQuizActions({ correct: args.correct, total: args.total }, r.ref.lesson.mastery)
+        // next-topic: the next non-exam lesson after this exam in course order that is not locked
+        const flat = r.ref.course.sections.flatMap(s => s.lessons)
+        const idx = flat.findIndex(l => l.id === args.lessonId)
+        const next = flat.slice(idx + 1).find(l => l.kind !== 'exam' && l.status !== 'locked') ?? null
+        const labels: Record<string, string> = {
+          'explain-wrong': '讲解错题',
+          retry: '再来一组',
+          'go-deeper': '深入这个主题',
+          'mark-mastered': '标记掌握 (study_propose_mastery)',
+          'next-topic': next === null ? '下一课' : `下一课 (${next.title})`,
+        }
+        return {
+          lessonId: r.ref.lesson.id,
+          lessonTitle: r.ref.lesson.title,
+          stars: r.stars,
+          bestStars: r.bestStars,
+          attempts: r.attempts,
+          masteryPct: Math.round((r.ref.lesson.mastery ?? 0) * 100),
+          actions: actions.map(a => ({ id: a.id, label: labels[a.id] ?? a.id, ...(a.advancesMastery ? { advancesMastery: true } : {}) })),
+          nextLessonId: next === null ? null : next.id,
+        }
+      })
+    },
+    presentCall: args => ({ card: 'generic', title: `Exam result: ${args.correct}/${args.total}` }),
+    presentationMeta: (_args, value) => [`${value.stars}★`],
     presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
   })
 
@@ -1005,11 +1319,12 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
           type: 'object',
           additionalProperties: false,
           properties: {
-            title: { type: 'string', required: true, description: 'Short concept title (≤10 chars).' },
-            description: { type: 'string', required: true, description: 'What understanding this concept means.' },
+            title: { type: 'string', required: true, description: 'Short concept title.' },
+            description: { type: 'string', required: true, description: 'One line: what understanding this concept means.' },
           },
         },
       },
+      summary: { type: 'string', description: 'Optional 1–2 sentence lesson summary (upstream lesson-summary-kc: generated once alongside the concepts).' },
     },
     output: {
       schema: {
@@ -1035,7 +1350,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     },
     async execute(args) {
       return mutate((state) => {
-        defineConceptsState(state, args.lessonId, args.concepts)
+        defineConceptsState(state, args.lessonId, args.concepts, args.summary)
         const ref = findLesson(state, args.lessonId)
         return {
           lessonId: ref.lesson.id,
@@ -1197,6 +1512,143 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     presentCall: () => ({ card: 'generic', title: 'Update learner memory' }),
   })
 
+  const translateLessonTool = defineTool({
+    name: 'study_translate_lesson',
+    description:
+      'Write your translation of one lesson (the tutor IS the translator — upstream runs a model '
+      + 'client, the plugin has none). The stored translation renders as a bilingual interleaved '
+      + 'blackboard: each original paragraph followed by its translation. Translate faithfully at '
+      + 'paragraph granularity so the pairing reads tightly.',
+    parameters: {
+      lessonId: { type: 'string', required: true, description: 'Lesson to translate.' },
+      markdown: { type: 'string', required: true, description: 'The full translated lesson body (markdown, paragraph-aligned with the original).' },
+      lang: { type: 'string', required: true, description: 'Language code or name, e.g. zh-CN / 中文.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          lessonId: { type: 'string', required: true },
+          lessonTitle: { type: 'string', required: true },
+          lang: { type: 'string', required: true },
+          chars: { type: 'integer', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Translation stored for “${value.lessonTitle}” (${value.lang}, ${value.chars} chars) — the blackboard now interleaves the original with it.`,
+      }],
+    },
+    execute(args) {
+      return mutate((state) => {
+        const ref = findLesson(state, args.lessonId)
+        if (args.markdown.trim() === '') throw new Error('lookatstudy-plugin: translation markdown is empty')
+        ref.lesson.translation = args.markdown
+        ref.lesson.translationLang = args.lang
+        return { lessonId: ref.lesson.id, lessonTitle: ref.lesson.title, lang: args.lang, chars: args.markdown.length }
+      })
+    },
+    presentCall: args => ({ card: 'generic', title: `Translate lesson: ${args.lessonId} → ${args.lang}` }),
+  })
+
+  const consolidateTool = defineTool({
+    name: 'study_consolidate',
+    description:
+      'Gather the consolidation window — friction entries and practice notes recorded since the last '
+      + 'consolidation — and advance the watermark. You are the consolidation function (upstream runs an '
+      + 'LLM call; here the tutor IS it): distill the window into 0–3 durable memory writes via '
+      + 'study_remember (global style / per-course pattern / lesson-specific gaps), then tell the learner '
+      + 'in one short line what you took away. Call when a session accumulates friction or after heavy '
+      + 'quizzing — not every turn.',
+    parameters: {},
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          since: { ...nullableString, required: true },
+          entries: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                lessonId: { type: 'string', required: true },
+                lessonTitle: { type: 'string', required: true },
+                kind: { type: 'string', required: true, enum: ['friction', 'practice'] },
+                category: { type: 'string' },
+                text: { type: 'string', required: true },
+                at: { type: 'string', required: true },
+              },
+            },
+          },
+          counts: {
+            type: 'object',
+            required: true,
+            additionalProperties: false,
+            properties: { friction: { type: 'integer', required: true }, practice: { type: 'integer', required: true } },
+          },
+          watermark: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Consolidation window since ${value.since ?? '(beginning)'}: ${value.counts.friction} friction, ${value.counts.practice} practice entries.`
+          + (value.entries.length === 0 ? ' Nothing to distill — tell the learner their memory is up to date.' : ' Distill these into 0–3 study_remember writes (global / pattern / lesson), then summarize in one line.'),
+      }],
+    },
+    execute() {
+      return mutate((state) => {
+        const window = gatherConsolidationWindow(state)
+        const watermark = new Date().toISOString()
+        state.lastConsolidatedAt = watermark
+        return { since: window.since, entries: window.entries, counts: window.counts, watermark }
+      })
+    },
+    presentCall: () => ({ card: 'generic', title: 'Consolidate learner memory' }),
+  })
+
+  const exportTool = defineTool({
+    name: 'study_export',
+    description:
+      'Export one course as a single markdown learning pack (upstream pack-export, zero-LLM): sections and '
+      + 'lesson bodies verbatim. The receiver imports it anywhere through study_import_markdown — same plugin, '
+      + 'fresh machine, no network. Present the pack to the learner (a copyable block) or save it into the study '
+      + 'workspace when they ask for a file.',
+    parameters: {
+      courseId: { type: 'string', required: true, description: 'Course id to export.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          courseId: { type: 'string', required: true },
+          title: { type: 'string', required: true },
+          lessonCount: { type: 'integer', required: true },
+          chars: { type: 'integer', required: true },
+          markdown: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Course pack “${value.title}” — ${value.lessonCount} lessons, ${value.chars} chars. `
+          + 'Give the learner the markdown below (copyable); importing it goes through study_import_markdown.\n\n'
+          + value.markdown,
+      }],
+    },
+    execute(args) {
+      const course = findCourse(store.get(), args.courseId)
+      const markdown = courseToPackMarkdown(course)
+      const lessonCount = course.sections.reduce((n, sec) => n + sec.lessons.filter(l => l.kind !== 'exam').length, 0)
+      return { courseId: course.id, title: course.title, lessonCount, chars: markdown.length, markdown }
+    },
+    isConcurrencySafe: () => true,
+    presentCall: args => ({ card: 'generic', title: `Export course: ${args.courseId}`, kind: 'read' }),
+  })
+
   const noteSaveTool = defineTool({
     name: 'study_note_save',
     description:
@@ -1318,11 +1770,13 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     importMarkdown,
     importFolder,
     importGithub,
+    importUrl,
     applyDesign,
     listCourses,
     courseMap,
     lessonContent,
     recordAnswerTool,
+    examResultTool,
     completeLessonTool,
     dueReviewsTool,
     recordReviewTool,
@@ -1332,6 +1786,9 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     resolveProposalTool,
     reportFrictionTool,
     rememberTool,
+    consolidateTool,
+    translateLessonTool,
+    exportTool,
     noteSaveTool,
     notesTool,
     setModeTool,

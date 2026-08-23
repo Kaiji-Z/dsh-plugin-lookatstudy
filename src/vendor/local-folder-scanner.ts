@@ -33,7 +33,7 @@ export interface ScannedDoc {
   /** 语言(zh/en/other),用于去重 */
   lang: "zh" | "en" | "other";
   /** 文件类型 */
-  kind: "txt" | "md" | "html" | "pdf" | "ipynb" | "rst" | "rmd" | "org" | "adoc" | "code" | "pptx";
+  kind: "txt" | "md" | "html" | "pdf" | "ipynb" | "rst" | "rmd" | "org" | "adoc" | "code" | "pptx" | "epub" | "docx";
 }
 
 /** 扫描到的图片资源(独立图片文件 / markdown 引用 / PDF 页面渲染图) */
@@ -66,6 +66,8 @@ const EXT_KIND: Record<string, ScannedDoc["kind"]> = {
   htm: "html",
   pdf: "pdf",
   pptx: "pptx",
+  epub: "epub",
+  docx: "docx",
   ipynb: "ipynb",
   rst: "rst",
   rmd: "rmd",
@@ -200,7 +202,7 @@ export function dedupKey(relPath: string): string {
 export async function scanFolder(
   rootDir: string,
   onProgress?: (scanned: number, currentPath: string) => void,
-  options?: { collectImages?: boolean },
+  options?: { collectImages?: boolean; parsePdf?: (buf: Buffer) => Promise<string> },
 ): Promise<ScannedDoc[] | { docs: ScannedDoc[]; images: ScannedImage[] }> {
   const allFiles: { absPath: string; relPath: string; isImage: boolean }[] = [];
   await walkDir(rootDir, rootDir, allFiles);
@@ -220,7 +222,7 @@ export async function scanFolder(
     const kind = EXT_KIND[ext];
     if (!kind) continue;
     try {
-      const content = await readFileWithKind(f.absPath, kind);
+      const content = await readFileWithKind(f.absPath, kind, options?.parsePdf);
       if (!content || content.trim().length < 5) continue; // 跳过空/太短文件(中文 4-5 字也算有效)
       const lang = detectLang(f.relPath);
       docs.push({
@@ -316,10 +318,11 @@ export async function scanFolder(
   for (const doc of dedupedDocs) {
     if (doc.kind !== "pptx") continue;
     try {
-      const { parsePptx } = await import("../../lib/pptx-parser.js");
+      // 插件版 parsePptx 文本优先(v1 无内嵌图提取,images 为空数组/缺省)
+      const { parsePptx } = await import("./pptx-parser.js");
       const pptxBuf = await readFile(join(rootDir, doc.path));
       const result = await parsePptx(pptxBuf);
-      for (const img of result.images) {
+      for (const img of result.images ?? []) {
         pptxImages.push({
           path: `${doc.path}#slide${img.slideNumber}.png`,
           absPath: "", // buffer 型, 无源文件
@@ -539,20 +542,39 @@ async function walkDir(root: string, current: string, acc: { absPath: string; re
   }
 }
 
-async function readFileWithKind(absPath: string, kind: ScannedDoc["kind"]): Promise<string> {
+async function readFileWithKind(
+  absPath: string,
+  kind: ScannedDoc["kind"],
+  parsePdf?: (buf: Buffer) => Promise<string>,
+): Promise<string> {
   if (kind === "pdf") {
-    // 优先 pdf-inspector(layout-aware markdown), 失败/平台不支持回退 pdf-parse。
-    // 路由 + 兜底集中在 lib/pdf-text.ts(平台缺预编译时 require 会抛, 不能让导入挂)。
+    // parsePdf 注入口保留(上游 v0.20 公式视觉转写的 flag 门控形态);缺省走插件
+    // 零依赖文本层(vendor/pdf-text.ts,Flate 解压 + Tj/TJ 抽取,失败回退空串)。
     const buf = await readFile(absPath);
-    const { parsePdfText } = await import("../../lib/pdf-text.js");
+    if (parsePdf) return parsePdf(buf);
+    const { parsePdfText } = await import("./pdf-text.js");
     return parsePdfText(buf);
   }
   if (kind === "pptx") {
-    // .pptx → officeparser AST → markdown(每 slide 一个 ##, 讲者备注随 slide 走)。
+    // .pptx → OOXML 解析 → markdown(每 slide 一个 ##, 讲者备注随 slide 走)。
     // 现有导入管线按 ## 切, 自动每 slide 一节课。图片在下面 pptxImages 循环单独提取。
     const buf = await readFile(absPath);
-    const { parsePptx } = await import("../../lib/pptx-parser.js");
+    const { parsePptx } = await import("./pptx-parser.js");
     return (await parsePptx(buf)).markdown;
+  }
+  if (kind === "docx") {
+    // .docx → OOXML 解析 → markdown。整本压平成一个文件(同 epub flat 先例),
+    // 标题整体降一级(H1→##,H2→###)——管线锚点只认 H2/H3,不降级则
+    // Heading1-only 的文档章节永远切不开(2026-08-23 活测实测缺陷)。
+    const buf = await readFile(absPath);
+    const { parseDocx } = await import("./docx-parser.js");
+    return parseDocx(buf).replace(/^(#{1,5}) /gm, (m) => `#${m}`);
+  }
+  if (kind === "epub") {
+    // .epub → zip 解章节 → 压平成一个 markdown(章标题降为 ##,管线按 anchor 每章拆课)
+    const buf = await readFile(absPath);
+    const { parseEpubFlat } = await import("./epub-parser.js");
+    return parseEpubFlat(buf);
   }
   if (kind === "ipynb") {
     // .ipynb 是 JSON,用 notebook-parser 转成 markdown(markdown cell + code block)
@@ -642,9 +664,10 @@ export interface LocalInventory {
 export async function buildLocalInventory(
   rootDir: string,
   onProgress?: (scanned: number, currentPath: string) => void,
+  options?: { parsePdf?: (buf: Buffer) => Promise<string> },
 ): Promise<LocalInventory> {
   // 1. 扫描文档 + 图片(scanFolder 内部排除 translations/,不影响)
-  const scanResult = await scanFolder(rootDir, onProgress, { collectImages: true });
+  const scanResult = await scanFolder(rootDir, onProgress, { collectImages: true, parsePdf: options?.parsePdf });
   // collectImages:true → 返回 { docs, images }（不是 ScannedDoc[]）
   const { docs, images } = Array.isArray(scanResult) ? { docs: scanResult, images: [] } : scanResult;
 

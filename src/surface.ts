@@ -110,7 +110,7 @@ export function snapshotSectionText(state: LearningState): string {
     return snap.dueCount === 0 ? '' : `【学习者当前状态】\n今日待复习: ${snap.dueCount} 项(study_due_reviews)`
   }
   const lines: string[] = ['【学习者当前状态】']
-  lines.push(`焦点: ${snap.focus.courseTitle} / ${snap.focus.lessonTitle}(${snap.focus.status}${snap.focus.masteryPct === null ? '' : `, 掌握度 ${snap.focus.masteryPct}%`})`)
+  lines.push(`焦点: ${snap.focus.courseTitle} [courseId ${snap.focus.courseId}] / ${snap.focus.lessonTitle} [lessonId ${snap.focus.lessonId}](${snap.focus.status}${snap.focus.masteryPct === null ? '' : `, 掌握度 ${snap.focus.masteryPct}%`})`)
   if (snap.strategy !== null) lines.push(`教学策略: ${snap.strategy}`)
   if (snap.concepts !== null && snap.concepts.length > 0) {
     lines.push(`知识点(课级掌握度 = 最薄弱知识点): ${snap.concepts.map(c => `${c.title} ${c.masteryPct}%${c.weak ? ' ⚡薄弱' : ''}`).join(' · ')}`)

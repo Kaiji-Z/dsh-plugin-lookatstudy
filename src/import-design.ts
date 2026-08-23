@@ -16,7 +16,8 @@
 import type { ParsedCourse, ParsedLesson, ParsedSection } from './vendor/markdown-course.ts'
 import { extractOutlineWithCharCounts } from './vendor/repo-fetcher.ts'
 import type { FileOutline, RepoInventory } from './vendor/repo-fetcher.ts'
-import type { ScannedDoc } from './vendor/local-folder-scanner.ts'
+import type { ScannedDoc, ScannedImage } from './vendor/local-folder-scanner.ts'
+import { estimateTokens } from './vendor/token-estimate.ts'
 
 /** One file entry of the design brief, as rendered to the tutor. */
 export interface DesignFile {
@@ -29,7 +30,7 @@ export interface DesignFile {
 /** In-memory state between an import tool and study_apply_design. */
 export interface PendingDesign {
   /** What the import ran over; apply uses it for sourceRef. */
-  source: 'github' | 'folder'
+  source: 'github' | 'folder' | 'url'
   url: string
   owner: string
   repo: string
@@ -40,6 +41,14 @@ export interface PendingDesign {
   fullTreeCount: number
   /** Folder imports carry their file contents inline — apply never hits the network. */
   localContents?: ReadonlyMap<string, string>
+  /** Context-budget brief part this pending design was rendered for (import v2
+   *  batching): part N > 1 imports as its own course with this title suffix. */
+  part?: number
+  partCount?: number
+  /** Translations keyed by original file path (translations/{lang}/{path}). */
+  translations?: ReadonlyMap<string, { lang: string; content: string }>
+  /** Inline-able local images keyed by repository-relative path → data: URL (capped). */
+  localImages?: ReadonlyMap<string, string>
 }
 
 /** The tutor's JSON as declared by study_apply_design's parameters. */
@@ -110,7 +119,7 @@ export function buildPendingDesign(url: string, owner: string, repo: string, inv
  * @param docs - scanFolder output (relative paths + content).
  * @returns the pending design.
  */
-export function buildPendingDesignFromFolder(path: string, title: string, docs: ScannedDoc[]): PendingDesign {
+export function buildPendingDesignFromFolder(path: string, title: string, docs: ScannedDoc[], extra?: { translations?: ScannedDoc[]; images?: ScannedImage[] }): PendingDesign {
   const files: DesignFile[] = docs.map(doc => ({
     path: doc.path,
     role: doc.kind === 'ipynb' ? 'practice' : 'original',
@@ -130,6 +139,89 @@ export function buildPendingDesignFromFolder(path: string, title: string, docs: 
     files,
     fullTreeCount: docs.length,
     localContents,
+    ...(extra?.translations !== undefined && extra.translations.length > 0 ? { translations: collectTranslations(extra.translations) } : {}),
+    ...(extra?.images !== undefined && extra.images.length > 0 ? { localImages: new Map<string, string>() } : {}),
+  }
+}
+
+/** Rewrite ![alt](relRef) refs in one file's content to the inlined data URLs
+ *  (refs resolve relative to the markdown file's own directory). */
+export function inlineLocalImages(content: string, filePath: string, images: ReadonlyMap<string, string>): string {
+  if (images.size === 0) return content
+  const dir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : ''
+  const resolve = (ref: string): string => {
+    const parts = `${dir}/${ref.replace(/^\.\//, '')}`.split('/')
+    const stack: string[] = []
+    for (const p of parts) {
+      if (p === '..') stack.pop()
+      else if (p !== '.' && p !== '') stack.push(p)
+    }
+    return stack.join('/')
+  }
+  return content.replace(/(!\[[^\]]*\]\()([^)\s]+)(\))/g, (m, open: string, ref: string, close: string) => {
+    if (/^(https?:|data:)/i.test(ref)) return m
+    const data = images.get(resolve(ref))
+    return data === undefined ? m : `${open}${data}${close}`
+  })
+}
+
+/** translations/{lang}/{originalPath} → Map<originalPath, {lang, content}> (upstream translation pairing). */
+export function collectTranslations(translations: ReadonlyArray<{ path: string; content: string }>): Map<string, { lang: string; content: string }> {
+  const out = new Map<string, { lang: string; content: string }>()
+  for (const t of translations) {
+    const m = t.path.match(/^translations\/([^/]+)\/(.+)$/)
+    if (m === null) continue
+    out.set(m[2]!, { lang: m[1]!, content: t.content })
+  }
+  return out
+}
+
+/** Rewrite relative image refs to jsDelivr raw URLs (GitHub imports keep
+ *  referencing the CDN — no download, upstream image-refs semantics). */
+export function rewriteGithubImageRefs(content: string, filePath: string, owner: string, repo: string, branch: string): string {
+  const dir = filePath.includes('/') ? filePath.slice(0, filePath.lastIndexOf('/')) : ''
+  const resolve = (ref: string): string => {
+    const parts = `${dir}/${ref.replace(/^\.\//, '')}`.split('/')
+    const stack: string[] = []
+    for (const p of parts) {
+      if (p === '..') stack.pop()
+      else if (p !== '.' && p !== '') stack.push(p)
+    }
+    return stack.join('/')
+  }
+  return content.replace(/(!\[[^\]]*\]\()([^)\s]+)(\))/g, (m, open: string, ref: string, close: string) => {
+    if (/^(https?:|data:)/i.test(ref)) return m
+    return `${open}https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${resolve(ref)}${close}`
+  })
+}
+
+/**
+ * Build the pending design from URL-sourced docs (arXiv PDF text / web article
+ * markdown, already chunked by prepareSingleDoc) — bodies ride along so apply
+ * is fully offline, same as folder imports.
+ * @param url - the normalized source URL (becomes sourceRef).
+ * @param title - the fetched title (article title / arXiv id label).
+ * @param docs - virtual docs ({stem}-01.md parts or one whole file).
+ * @returns the pending design.
+ */
+export function buildPendingDesignFromUrl(url: string, title: string, docs: { path: string; content: string }[]): PendingDesign {
+  const files: DesignFile[] = docs.map(doc => ({
+    path: doc.path,
+    role: 'original',
+    outline: extractOutlineWithCharCounts(doc.content, doc.path),
+  }))
+  const localContents = new Map(docs.map(doc => [doc.path, doc.content]))
+  return {
+    source: 'url',
+    url,
+    owner: '',
+    repo: title,
+    branch: 'web',
+    courseTitle: title,
+    readmeExcerpt: docs[0]?.content.slice(0, 4000) ?? '',
+    files,
+    fullTreeCount: docs.length,
+    localContents,
   }
 }
 
@@ -142,18 +234,28 @@ export function buildPendingDesignFromFolder(path: string, title: string, docs: 
  * @param pending - the pending design to present.
  * @returns the full brief text.
  */
-export function renderDesignBrief(pending: PendingDesign): string {
+export function renderDesignBrief(pending: PendingDesign, part = 1): string {
+  const parts = planBriefParts(pending.files)
+  const shown = parts[Math.min(Math.max(part, 1), parts.length) - 1]!
   const lines: string[] = []
   lines.push(`## Course design brief: ${pending.courseTitle}`)
   lines.push(pending.source === 'folder'
-    ? `Folder import (${pending.fullTreeCount} files; ${pending.files.length} course files below).`
-    : `Repo ${pending.owner}/${pending.repo}@${pending.branch} (${pending.fullTreeCount} paths in tree; ${pending.files.length} course files below).`)
+    ? `Folder import (${pending.fullTreeCount} files; ${shown.length} of ${pending.files.length} course files below).`
+    : pending.source === 'url'
+      ? `Web import from ${pending.url} (${pending.fullTreeCount} document parts; ${shown.length} of ${pending.files.length} course files below).`
+      : `Repo ${pending.owner}/${pending.repo}@${pending.branch} (${pending.fullTreeCount} paths in tree; ${shown.length} of ${pending.files.length} course files below).`)
+  if (parts.length > 1) {
+    lines.push('')
+    lines.push(`**Brief part ${Math.min(Math.max(part, 1), parts.length)} of ${parts.length}** (context-budget split, ~${Math.round(BRIEF_PART_TOKEN_BUDGET / 1000)}k tokens per part).`
+      + ` Design lessons ONLY from the files in this part, apply, then call the same import tool again with \`part\` = ${Math.min(Math.max(part, 1), parts.length) + 1 <= parts.length ? Math.min(Math.max(part, 1), parts.length) + 1 : 'done'}`
+      + ` — each part imports as its own course. File paths from other parts are valid but invisible to you; do not guess them.`)
+  }
   lines.push('')
   lines.push('### Repository README (first 4000 chars)')
   lines.push(pending.readmeExcerpt.trim() === '' ? '(empty)' : pending.readmeExcerpt)
   lines.push('')
   lines.push('### Files (role hint · h1 · totalChars · H2/H3 outline with per-heading chars)')
-  for (const file of pending.files) {
+  for (const file of shown) {
     lines.push(`- ${file.path} (role hint: ${file.role}, total ${file.outline.totalChars} chars, h1: ${file.outline.h1})`)
     const headings = file.outline.headings.slice(0, 40)
     for (const heading of headings) {
@@ -178,11 +280,44 @@ export function renderDesignBrief(pending: PendingDesign): string {
   lines.push('Other rules:')
   lines.push('- role hints are references, not verdicts — README tables usually mark real roles (Lesson link = study, Notebook/Lab = practice).')
   lines.push('- if the directory layout is already clear (e.g. lessons/N-Topic/), keep its sections; do not over-reorganize.')
-  lines.push(`- anchor is the full heading text used to slice the body; omit it for whole-file lessons.${pending.files.length > COARSE_DESIGN_FILE_THRESHOLD ? ' This repo is large: design at file granularity (omit anchors, one lesson per file) to keep the JSON manageable.' : ''}`)
+  lines.push(`- anchor is the full heading text used to slice the body; omit it for whole-file lessons.${shown.length > COARSE_DESIGN_FILE_THRESHOLD ? ' This part is large: design at file granularity (omit anchors, one lesson per file) to keep the JSON manageable.' : ''}`)
   lines.push('')
   lines.push('Now design the course and call study_apply_design with:')
   lines.push('{ "sections": [ { "title": "...", "lessons": [ { "title": "...", "file": "<exact path from this brief>", "anchor": "<optional full heading text>", "world": "study" | "practice" } ] } ] }')
   lines.push('Use ONLY file paths that appear in this brief — anything else is dropped. Apply directly, then walk the learner through the course map.')
+  return lines.join('\n')
+}
+
+/** Context-budget per brief part (upstream import v2 batching semantics, dsh-adapted:
+ *  the brief is the plugin's classification input, so the split rides the brief). */
+export const BRIEF_PART_TOKEN_BUDGET = 48_000
+
+/** Greedily pack brief files into token-budgeted parts (upstream Step-2 batching).
+ *  A single file larger than the budget gets its own part (never dropped). */
+export function planBriefParts(files: readonly DesignFile[], budgetTokens = BRIEF_PART_TOKEN_BUDGET): DesignFile[][] {
+  const parts: DesignFile[][] = []
+  let current: DesignFile[] = []
+  let used = 0
+  for (const file of files) {
+    const cost = estimateTokens(briefFileBlock(file))
+    if (current.length > 0 && used + cost > budgetTokens) {
+      parts.push(current)
+      current = []
+      used = 0
+    }
+    current.push(file)
+    used += cost
+  }
+  if (current.length > 0) parts.push(current)
+  return parts.length > 0 ? parts : [[]]
+}
+
+/** The rendered brief block for one file (the unit the token budget packs). */
+function briefFileBlock(file: DesignFile): string {
+  const lines = [`${file.path} (role hint: ${file.role}, total ${file.outline.totalChars} chars, h1: ${file.outline.h1})`]
+  for (const heading of file.outline.headings.slice(0, 40)) {
+    lines.push(`${'#'.repeat(heading.level)} ${heading.title} [${heading.chars}]`)
+  }
   return lines.join('\n')
 }
 
@@ -327,7 +462,7 @@ function slugAnchor(title: string): string {
  * @param contents - fetched body text per designed file (missing key = loud failure).
  * @returns the parsed course ready for importCourse.
  */
-export function buildCourseFromDesign(courseTitle: string, validated: ValidatedDesign, contents: ReadonlyMap<string, string>): ParsedCourse {
+export function buildCourseFromDesign(courseTitle: string, validated: ValidatedDesign, contents: ReadonlyMap<string, string>, translations?: ReadonlyMap<string, { lang: string; content: string }>): ParsedCourse {
   const headingsCache = new Map<string, HeadingLine[]>()
   const headingsOf = (file: string): HeadingLine[] => {
     const cached = headingsCache.get(file)
@@ -349,12 +484,22 @@ export function buildCourseFromDesign(courseTitle: string, validated: ValidatedD
       const titleIndex = lesson.anchor === null ? -1 : findTitleIndex(headings, lesson.anchor)
       const isFirst = !firstLessonSeen.has(lesson.file)
       firstLessonSeen.add(lesson.file)
+      const pair = translations?.get(lesson.file)
+      let translation: string | undefined
+      if (pair !== undefined) {
+        // Slice the translation by the SAME anchor (upstream translation pairing:
+        // headings are translated too, so the anchor match is bidirectional-substring).
+        const tHeadings = extractHeadings(pair.content)
+        const tIndex = lesson.anchor === null ? -1 : findTitleIndex(tHeadings, lesson.anchor)
+        translation = sliceLessonBody(pair.content, tHeadings, tIndex, isFirst)
+      }
       return {
         title: lesson.title,
         anchor: slugAnchor(lesson.title),
         body: sliceLessonBody(content, headings, titleIndex, isFirst),
         sourceFilePath: lesson.file,
         world: lesson.world,
+        ...(translation !== undefined ? { translation, translationLang: pair!.lang } : {}),
       }
     })
     return {

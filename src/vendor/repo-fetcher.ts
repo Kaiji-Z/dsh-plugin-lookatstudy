@@ -1315,6 +1315,41 @@ export interface FileOutline {
   totalChars: number;
   /** H2/H3 标题列表（不含正文）+ 每段字符数（到下一个同级或更高级标题） */
   headings: { level: number; title: string; chars: number }[];
+  /** 正文开头摘录(前 ~300 字符,跳标题/围栏代码/纯符号行)——Step 4 语义分组依据。
+   *  标题同名不同物的文件(两个都叫 "Setup")靠它区分内容主题。 */
+  bodyPreview?: string;
+}
+
+/**
+ * 提取正文开头摘录(供 Step 4 结构设计做语义分组)。
+ *
+ * 规则:
+ *   - 跳过标题行(#/##/###)、代码围栏内容、空行、纯符号行(分隔线/表格线)
+ *   - 行内 markdown 降噪:图片整体丢弃、`[文字](链接)` 只留文字、剥引用前缀 ">"
+ *   - 行以空格连接成单行(进 prompt 的 JSON 块不能带换行),空白折叠
+ *   - 攒够 maxChars 即停(长文件不读完,零浪费)
+ * 纯函数,可 verify 直测。
+ */
+export function extractBodyPreview(text: string, maxChars = 300): string {
+  const lines = text.split(/\r?\n/);
+  let inCodeFence = false;
+  let buf = "";
+  for (const rawLine of lines) {
+    if (buf.length >= maxChars) break;
+    if (/^(\s*)(```|~~~)/.test(rawLine)) { inCodeFence = !inCodeFence; continue; }
+    if (inCodeFence) continue;
+    if (/^#{1,6}\s/.test(rawLine)) continue; // 标题行(h1-h6 都跳)
+    let line = rawLine
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "") // 图片整体丢弃
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // 链接只留文字
+      .replace(/^>\s?/, "") // 引用前缀剥掉
+      .replace(/\s+/g, " ")
+      .trim();
+    // 纯符号行:分隔线 / 表格分隔行 / 残留裸表格线
+    if (!line || /^(-{3,}|\*{3,}|_{3,})$/.test(line) || /^\|?[\s:|-]+\|?$/.test(line)) continue;
+    buf += (buf ? " " : "") + line;
+  }
+  return buf.slice(0, maxChars);
 }
 
 /**
@@ -1406,7 +1441,7 @@ export function extractOutlineWithCharCounts(text: string, filePath: string): Fi
   if (!h1 && filePath.endsWith(".ipynb")) {
     h1 = filePath.split("/").pop()?.replace(/\.ipynb$/i, "") ?? filePath;
   }
-  return { h1: h1 || (filePath.split("/").pop() ?? filePath), totalChars, headings };
+  return { h1: h1 || (filePath.split("/").pop() ?? filePath), totalChars, headings, bodyPreview: extractBodyPreview(text) };
 }
 
 /**
@@ -1495,3 +1530,22 @@ export async function fetchImageAsDataUrl(
 }
 
 
+
+/**
+ * 通用二进制下载(arXiv PDF 等):注入 fetchFn(跟随重定向),带取消与
+ * 大小上限。fetchImageAsDataUrl 的泛化——那个只管 CDN 图片且吞错,这个要把
+ * 失败原因如实抛给用户。
+ */
+export async function downloadToBuffer(
+  url: string,
+  fetchFn: typeof fetch,
+  opts: { signal?: AbortSignal; maxBytes?: number; headers?: Record<string, string> } = {},
+): Promise<Buffer> {
+  const maxBytes = opts.maxBytes ?? 64 * 1024 * 1024;
+  const r = await fetchFn(url, { signal: opts.signal, headers: opts.headers });
+  if (!r.ok) throw new Error(`下载失败(HTTP ${r.status}):${url}`);
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (buf.length === 0) throw new Error(`下载内容为空:${url}`);
+  if (buf.length > maxBytes) throw new Error(`文件超过 ${Math.round(maxBytes / 1024 / 1024)}MB 上限,放弃导入`);
+  return buf;
+}

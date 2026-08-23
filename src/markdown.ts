@@ -12,13 +12,33 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
 
-/** Render inline markup (code, bold, italic, links) over escaped text. */
+/** Render inline markup (code, bold, italic, links, images) over escaped text.
+ * Image src allowlist: https?:// or data:image/ — folder imports inline local
+ * images as data URLs (capped), GitHub imports reference jsDelivr; anything
+ * else stays literal text (no broken relative images, no exotic schemes). */
 function inline(escaped: string): string {
   return escaped
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+    .replace(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+|data:image\/[^)\s]+)\)/g, (_m, alt: string, src: string) => `<img src="${src}" alt="${alt}" loading="lazy">`)
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+}
+
+/** Interleave one body with its translation, paragraph by paragraph (upstream
+ * translation-layout "microsoft" semantics: original paragraph then its
+ * translation as a quote, tight pairing for bilingual reading; length
+ * mismatches append the remainder in order). Pure. */
+export function renderBilingual(bodyMd: string, translationMd: string): string {
+  const par = (md: string): string[] => md.split(/\n\s*\n/).map(p => p.trim()).filter(p => p !== '')
+  const a = par(bodyMd)
+  const b = par(translationMd)
+  const out: string[] = []
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    if (a[i] !== undefined) out.push(a[i]!)
+    if (b[i] !== undefined) out.push(`> ${b[i]!.split('\n').join('\n> ')}`)
+  }
+  return out.join('\n\n')
 }
 
 /** True when the line opens a GFM table row (pipes with a delimiter row next). */

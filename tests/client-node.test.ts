@@ -9,6 +9,7 @@ import assert from 'node:assert/strict'
 import { pickPane, quizOptions, sectionDefaultOpen, statusTitle, toolChipLabel, transcriptRows } from '../src/client/views.tsx'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import { studyStore, type StudyState } from '../src/client/data.ts'
+import { STUDY_CSS } from '../src/client/styles.ts'
 
 test('pickPane keeps only valid pane ids and defaults to the tutor', () => {
   assert.equal(pickPane('rail'), 'rail')
@@ -187,4 +188,76 @@ test('the shared store polls once per cycle and posts write actions to the host 
     unsubscribe?.()
     globalThis.fetch = originalFetch
   }
+})
+
+test('the stylesheet keeps the width-adaptation contract (tutor proportional, blackboard floor, content guards)', () => {
+  // Tripwires for the width bugs seen live (2026-08-23): the tutor column's
+  // fixed 780px starved the blackboard to its 230px floor on 1256px-wide
+  // containers, and mermaid/KaTeX artifacts could stretch the column.
+  assert.match(STUDY_CSS, /\.lks-col-tutor\{[^}]*42cqi/, 'the tutor column is capped at 42% of the tab container')
+  assert.match(STUDY_CSS, /\.lks-col-tutor\{[^}]*min-width:360px/, 'the tutor column keeps a readable floor')
+  assert.match(STUDY_CSS, /\.lks-col-bb\{[^}]*min-width:320px/, 'the blackboard keeps a 320px floor (was 230)')
+  assert.match(STUDY_CSS, /\[data-composer-card\]\.lks-composer-follow\{[^}]*--lks-composer-follow-width/,
+    'the docked composer card tracks the tutor column live width')
+  assert.match(STUDY_CSS, /\.lks-prose svg\{max-width:100%;height:auto\}/, 'SVGs (mermaid/markmap/ELK) fit the column')
+  assert.match(STUDY_CSS, /\.lks-prose \.katex-display\{overflow-x:auto/, 'display math scrolls instead of stretching')
+  assert.match(STUDY_CSS, /\.lks-prose table\{[^}]*overflow-x:auto/, 'tables scroll instead of stretching')
+})
+
+test('the lookatstudy locale dictionaries keep zh/en parity and translate with fallback', async () => {
+  const { ZH, EN, makeT } = await import('../src/client/locale.ts')
+  const zhKeys = Object.keys(ZH).sort()
+  const enKeys = Object.keys(EN).sort()
+  assert.deepEqual(enKeys, zhKeys, 'en and zh dictionaries carry the exact same key set')
+  assert.ok(zhKeys.length >= 70, `expected a full dictionary, got ${zhKeys.length} keys`)
+  for (const key of zhKeys) {
+    assert.ok(ZH[key]!.trim() !== '', `zh "${key}" is non-empty`)
+    assert.ok(EN[key]!.trim() !== '', `en "${key}" is non-empty`)
+  }
+  const tEn = makeT('en')
+  assert.equal(tEn('tab.label'), 'Study')
+  assert.equal(tEn('rail.due', { count: 3 }), '🔁 3 due')
+  assert.equal(tEn('rail.due.over', { days: 2 }), '2d overdue')
+  const tZh = makeT('zh')
+  assert.equal(tZh('tab.label'), '学习')
+  assert.equal(tZh('quiz.answer', { letter: 'A', text: 'x' }), '选 A:x')
+  // Unknown ids fall back to zh; unknown keys surface the key itself (fail-loud).
+  assert.equal(makeT('fr')('tab.label'), '学习')
+  assert.equal(tEn('no.such.key'), 'no.such.key')
+  // Missing params keep the placeholder verbatim (the service's semantics).
+  assert.equal(tEn('rail.due'), '🔁 {count} due')
+})
+
+test('the pure projections translate through an injected translator', async () => {
+  const { makeT } = await import('../src/client/locale.ts')
+  const tEn = makeT('en')
+  assert.match(statusTitle('exam', 'locked', tEn), /Section exam/)
+  assert.match(toolChipLabel('study_record_answer', '{"correct":true,"concept":"KC"}', tEn)!.label, /correct · KC/)
+  const { transcriptRows: rows } = await import('../src/client/views.tsx')
+  const partial = { blocks: [] } as never
+  const thinking = rows([], partial, tEn)
+  assert.equal(thinking[0]!.text, 'tutor is thinking…')
+})
+
+test('the dock pill projection renders due/streak/level segments', async () => {
+  const { dockSegments } = await import('../src/client/dock.tsx')
+  const segs = dockSegments({ dueCount: 2, streak: 4, level: 3 })
+  assert.deepEqual(segs.map(s => s.text), ['⚡2', '🔥4d', 'Lv3'])
+})
+
+test('the toolview projections parse answer args and meta lines', async () => {
+  const { answerTone, metaLines } = await import('../src/client/toolviews.tsx')
+  const tone = answerTone('{"lessonId":"x","correct":true,"concept":"链式法则"}')
+  assert.deepEqual(tone, { correct: true, concept: '链式法则' })
+  assert.equal(answerTone('not json'), null)
+  assert.equal(answerTone(undefined), null)
+  assert.deepEqual(
+    metaLines({ meta: ['🔁 2 due', '  ⏰ 优化器 [lessonId course:0:2] — 深度学习入门'] }),
+    ['🔁 2 due', '  ⏰ 优化器 [lessonId course:0:2] — 深度学习入门'],
+  )
+  assert.deepEqual(
+    metaLines({ content: [{ type: 'text', text: 'line one\nline two' }] }),
+    ['line one', 'line two'],
+  )
+  assert.deepEqual(metaLines({}), [])
 })

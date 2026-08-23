@@ -8,3 +8,7 @@ livetest-design-state.json
 livetest-design-err.log
 .zcode/
 lks-*.png
+.livetest-fixture/
+livetest-align-output.md
+livetest-align-err.log
+livetest-state.json

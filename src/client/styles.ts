@@ -15,7 +15,7 @@ const STYLE_ID = 'data-dsh-plugin-lookatstudy'
  * The study tab's stylesheet. Class names are `lks-*` namespaced; colors,
  * fonts, and radii come from `--dsw-*` tokens wherever the concept exists.
  */
-const CSS = `
+export const STUDY_CSS = `
 .lks-root{font-family:var(--dsw-font-family)}
 .lks-root :where(button){font-family:var(--dsw-font-family);cursor:pointer;border:none;background:none;padding:0}
 .lks-root :where(a){color:var(--dsw-alias-state-business-primary)}
@@ -26,24 +26,28 @@ const CSS = `
    non-growing host and the composer floats over the tab's bottom band, so
    the tab itself never feeds the page scroll. The bottom padding clears the
    floating composer via the host-published live --dsh-composer-height. The
-   center strip reuses the conversation column's width axis
-   (--dsh-composer-card-max-width inherits from ConversationRoot's root), so
-   the tutor transcript is exactly as wide as the native composer; the
-   flanking columns absorb the remaining width and scroll independently. */
+   tutor column shares the conversation column's width axis
+   (--dsh-composer-card-max-width inherits from ConversationRoot's root) but
+   is capped at 42% of the tab so the BLACKBOARD — the reading surface —
+   keeps the lion's share at every wide width; the composer card follows the
+   tutor column's real measured width (views.tsx), so the two stay visually
+   tied. Flanking columns absorb the remaining width and scroll independently. */
 .lks-study{height:100%;min-height:0;width:100%;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;padding:10px 14px calc(var(--dsh-composer-height, 152px) + 12px);color:var(--dsw-alias-label-primary);container:lksstudy/inline-size}
 /* Direction carrier (a container query cannot style the container itself). */
 .lks-body{flex:1;min-height:0;min-width:0;display:flex;gap:16px}
 .lks-col{display:flex;flex-direction:column;min-width:0}
 .lks-colhead{flex:none;font-size:12px;font-weight:600;color:var(--dsw-alias-label-tertiary);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
 .lks-col-rail{flex:0 1 260px;min-width:180px;overflow-y:auto;padding:2px 6px}
-.lks-col-tutor{flex:0 0 auto;width:min(100%,var(--dsh-composer-card-max-width,780px))}
-.lks-col-bb{flex:1 1 0;min-width:230px;overflow-y:auto;padding:2px 6px}
+.lks-col-tutor{flex:0 1 auto;width:min(100%,var(--dsh-composer-card-max-width,780px),42cqi);min-width:360px}
+.lks-col-bb{flex:1 1 0;min-width:320px;overflow-y:auto;padding:2px 6px}
 /* While the study view is mounted in wide mode, the host composer card is
    shifted under the tutor column (the transcript's width axis) instead of the
-   scroll body's center — views.tsx measures the offset, sets the variable and
-   toggles the class, and removes both whenever the shift collapses (narrow
-   pane, hidden view) so the host's natural centering comes back. */
-[data-composer-card].lks-composer-follow{align-self:flex-start;margin-left:var(--lks-composer-shift,0px)}
+   scroll body's center — views.tsx measures the offset, sets the variables
+   and toggles the class, and removes all three whenever the shift collapses
+   (narrow pane, hidden view) so the host's natural centering and width come
+   back. max-width tracks the tutor column's live width: the tutor shrinks
+   proportionally below ~1857px containers, and the card shrinks with it. */
+[data-composer-card].lks-composer-follow{align-self:flex-start;margin-left:var(--lks-composer-shift,0px);max-width:var(--lks-composer-follow-width,var(--dsh-composer-card-max-width,780px))}
 /* narrow (<1220px): one composer-width pane at a time, chosen by a centered
    segmented pill group (joined buttons in one capsule — button language, not
    tab language, against the host's view tabs right above). */
@@ -178,12 +182,18 @@ const CSS = `
 .lks-prose pre{background:var(--dsw-alias-markdown-code-block);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px;overflow-x:auto;margin:8px 0;font-size:13.5px;font-family:var(--dsw-font-markdown-code-block-small)}
 .lks-prose code{font-family:var(--dsw-font-markdown-code);background:var(--dsw-alias-bg-layer-3);border-radius:4px;padding:1px 5px;font-size:.92em}
 .lks-prose pre code{background:none;padding:0}
-.lks-prose table{border-collapse:collapse;margin:8px 0}
+.lks-prose table{border-collapse:collapse;margin:8px 0;display:block;max-width:100%;overflow-x:auto}
 .lks-prose th,.lks-prose td{border:1px solid var(--dsw-alias-border-l2);padding:5px 11px;font-size:14px}
 .lks-prose th{background:var(--dsw-alias-bg-layer-2)}
 .lks-prose blockquote{border-left:3px solid var(--dsw-alias-state-business-primary);padding:2px 12px;color:var(--dsw-alias-label-secondary);margin:8px 0}
 .lks-prose ul,.lks-prose ol{padding-left:22px;margin:6px 0}
 .lks-prose img{max-width:100%}
+/* width guards for CDN-rendered artifacts (both teach and diagram panes are
+   .lks-prose): mermaid/markmap/elk SVGs carry fixed width attributes; KaTeX
+   display math can exceed the column; both must degrade to fit/scroll
+   internally instead of stretching the blackboard. */
+.lks-prose svg{max-width:100%;height:auto}
+.lks-prose .katex-display{overflow-x:auto;overflow-y:hidden;padding:2px 0}
 
 /* Cornell notes zones */
 .lks-bb-notes{margin-top:14px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l1)}
@@ -197,6 +207,29 @@ const CSS = `
 
 /* inline error text (write-action failures) */
 .lks-propcard-err{color:var(--dsw-alias-state-error-primary);font-size:12px;margin-top:6px;flex:none}
+
+/* settings section (settings.section entry inside the host settings shell) */
+.lks-settings{display:flex;flex-direction:column;gap:18px;font-family:var(--dsw-font-family);color:var(--dsw-alias-label-primary)}
+.lks-set-row h3{margin:0 0 4px;font-size:15px;font-weight:600}
+.lks-set-hint{margin:0 0 10px;font-size:13px;color:var(--dsw-alias-label-tertiary)}
+.lks-set-state{margin-left:10px;font-size:13px;color:var(--dsw-alias-label-secondary)}
+.lks-set-stats{margin:0;padding-left:18px;font-size:14px;line-height:1.9}
+.lks-set-path{font-family:var(--dsw-font-markdown-code);font-size:12.5px;background:var(--dsw-alias-bg-layer-3);border-radius:6px;padding:3px 8px;word-break:break-all}
+
+/* composer dock status pill (conversation.composer.dock entry) */
+.lks-dockpill{display:inline-flex;gap:10px;align-items:center;font-size:12px;color:var(--dsw-alias-label-tertiary)}
+.lks-dockseg{white-space:nowrap}
+.lks-dock-due{color:var(--dsw-alias-state-warn-label)}
+.lks-dock-streak{color:var(--dsw-alias-state-business-primary)}
+
+/* keyed tool.call.toolview cards (conversation tab tool rows) */
+.lks-tv{display:flex;flex-direction:column;gap:4px;padding:6px 10px;border-radius:10px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);font-size:13px}
+.lks-tv.err{border-color:var(--dsw-alias-state-error-primary)}
+.lks-tv-head{font-weight:600;color:var(--dsw-alias-label-secondary);font-size:12px}
+.lks-tv-chip{align-self:flex-start;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600}
+.lks-tv-chip.ok{background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-label)}
+.lks-tv-chip.bad{background:var(--dsw-alias-state-error-tertiary);color:var(--dsw-alias-state-error-label)}
+.lks-tv-line{color:var(--dsw-alias-label-secondary);line-height:1.6;white-space:pre-wrap}
 `
 
 /**
@@ -208,7 +241,7 @@ export function ensureStudyStyles(): HTMLStyleElement {
   if (existing !== null) return existing
   const style = document.createElement('style')
   style.setAttribute(STYLE_ID, '')
-  style.textContent = CSS
+  style.textContent = STUDY_CSS
   document.head.appendChild(style)
   return style
 }

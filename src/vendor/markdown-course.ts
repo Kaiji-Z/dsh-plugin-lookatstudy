@@ -21,6 +21,10 @@ export interface ParsedLesson {
   uncertain?: boolean;
   /** 原始文件路径（如 lessons/3-NN/03-Perceptron/README.md），用于翻译匹配/图片关联 */
   sourceFilePath?: string;
+  /** Paired translation body (translations/{lang}/{same path}), sliced by the same anchor. */
+  translation?: string;
+  /** Translation language code (e.g. zh-CN) when translation is present. */
+  translationLang?: string;
   /** 两个世界: null=未定(LLM 判), "study"=学习讲解, "practice"=实操练习 */
   world?: "study" | "practice" | null;
 }
@@ -51,7 +55,7 @@ export function titleToAnchor(title: string): string {
     .toLowerCase()
     .trim()
     // GitHub slugger 移除的标点集（保留字母/数字/中文/下划线/连字符）
-    .replace(/[!"#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]/g, "")
+    .replace(/[!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~]/g, "")
     .replace(/ /g, "-") // 每个空格单独转 -（不合并）
     .replace(/^-|-$/g, ""); // 去首尾 -
 }
@@ -73,7 +77,7 @@ export function cleanTitle(raw: string): string {
     .trim()
     .replace(/\s+/g, " ")
     // 去首尾标点
-    .replace(/^[·\-\.\s]+|[·\-\.\s]+$/g, "")
+    .replace(/^[·\-.\s]+|[·\-.\s]+$/g, "")
     .trim();
 }
 

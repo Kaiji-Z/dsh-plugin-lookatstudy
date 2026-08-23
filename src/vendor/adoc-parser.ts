@@ -71,7 +71,7 @@ export function parseAdoc(adocText: string): ParsedAdoc {
     });
 
     // link:url[text] → [text](url)
-    processed = processed.replace(/link:(\S+?)\[([^\]]*)\]/g, "[\$2](\$1)");
+    processed = processed.replace(/link:(\S+?)\[([^\]]*)\]/g, "[$2]($1)");
 
     // *bold* → **bold**(单词包围的 * → markdown **)
     processed = processed.replace(/(\s|^)\*([^\s*][^*]*?)\*(?=\s|[.,;:!?)])/gm, "$1**$2**");

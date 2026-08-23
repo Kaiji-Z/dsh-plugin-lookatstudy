@@ -13,6 +13,9 @@ import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { computeSm2, type ReviewQuality, type Sm2State } from './vendor/sm2.ts'
 import { masteryToCrown, updateMastery } from './vendor/bkt.ts'
+import { accuracyToStars } from './vendor/exam-logic.ts'
+import { computeStreakTransition } from './vendor/streak-transition.ts'
+import { XP_CORRECT, XP_WRONG, XP_MASTERED } from './vendor/xp.ts'
 import type { ParsedCourse } from './vendor/markdown-course.ts'
 
 /** Lesson position on the mastery-gated path (LookatStudy NodeStatus). */
@@ -101,6 +104,16 @@ export interface LessonState {
   memory: string | null
   /** Cornell notebook entries across the three zones. */
   notes: LessonNote[]
+  /** Exam nodes only: best star result (0-3, upstream accuracyToStars). */
+  examStars?: number
+  /** Exam nodes only: graded exam attempts recorded. */
+  examAttempts?: number
+  /** 1–2 sentence lesson summary (upstream lesson-summary-kc: generated once with the concepts). */
+  summary?: string
+  /** Paired translation body (bilingual blackboard rendering). */
+  translation?: string
+  /** Translation language code when translation is present. */
+  translationLang?: string
 }
 
 /** A section holding an ordered list of lessons. */
@@ -111,7 +124,7 @@ export interface SectionState {
 }
 
 /** Where a course came from. */
-export type CourseSource = 'markdown' | 'folder' | 'github'
+export type CourseSource = 'markdown' | 'folder' | 'github' | 'url'
 
 /** One imported course. */
 export interface CourseState {
@@ -142,6 +155,13 @@ export interface LearningState {
   proposals: MasteryProposal[]
   /** Lesson id → dsh session id (the simplified thread system: one session per lesson node). */
   lessonSessions: Record<string, string>
+  /** Consolidation watermark (ISO): study_consolidate gathers friction/notes
+   *  after this instant and advances it (upstream memory-service watermark). */
+  lastConsolidatedAt: string | null
+  /** XP ledger (upstream xp-service): cumulative total + today's bucket. */
+  xp: { total: number; todayKey: string; todayXp: number }
+  /** Streak state (upstream streak-transition: freeze semantics included). */
+  streak: { currentStreak: number; longestStreak: number; lastActiveDate: string | null; freezeCount: number }
 }
 
 /** A lesson located inside its course, for mutation results. */
@@ -164,7 +184,12 @@ const FRICTION_CAP = 10
 
 /** Fresh empty state for a first run: dormant until the learner clicks 开始学习. */
 export function emptyState(): LearningState {
-  return { version: 2, courses: [], active: false, mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, proposals: [], lessonSessions: {} }
+  return {
+    version: 2, courses: [], active: false, mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {},
+    proposals: [], lessonSessions: {}, lastConsolidatedAt: null,
+    xp: { total: 0, todayKey: '', todayXp: 0 },
+    streak: { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
+  }
 }
 
 /**
@@ -240,6 +265,9 @@ export function loadState(path: string): LearningState {
     memoryPatterns: raw.memoryPatterns ?? {},
     proposals: raw.proposals ?? [],
     lessonSessions: raw.lessonSessions ?? {},
+    lastConsolidatedAt: raw.lastConsolidatedAt ?? null,
+    xp: raw.xp ?? { total: 0, todayKey: '', todayXp: 0 },
+    streak: raw.streak ?? { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
   }
 }
 
@@ -318,7 +346,11 @@ export function importCourse(
     createdAt: new Date().toISOString(),
     sections: parsed.sections.map(section => {
       const lessons = section.lessons.map(lesson =>
-        freshLesson(lesson.title, lesson.anchor, lesson.body, lesson.world === 'practice' ? 'practice' : 'study'))
+        (() => {
+          const st = freshLesson(lesson.title, lesson.anchor, lesson.body, lesson.world === 'practice' ? 'practice' : 'study')
+          if (lesson.translation !== undefined) { st.translation = lesson.translation; st.translationLang = lesson.translationLang ?? '' }
+          return st
+        })())
       if (section.world !== 'practice' && lessons.filter(l => l.kind === 'study').length >= 2) {
         lessons.push(freshLesson(`${section.title} · 章节测验`, `${section.anchor}#exam`, section.examBody ?? '', 'exam'))
       }
@@ -537,6 +569,33 @@ export function attemptLesson(
 }
 
 /**
+ * Record one graded exam attempt on an exam node: stars from accuracy
+ * (upstream accuracyToStars thresholds), best-of retained across attempts
+ * (upstream crownLevel-takes-max semantics). Study/practice lessons are
+ * refused — this is the exam surface only.
+ */
+export function recordExamResult(
+  state: LearningState,
+  lessonId: string,
+  correct: number,
+  total: number,
+): { ref: LessonRef; stars: number; bestStars: number; attempts: number } {
+  const ref = findLesson(state, lessonId)
+  if (ref.lesson.kind !== 'exam') {
+    throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is not an exam node — study_exam_result is for section exams`)
+  }
+  if (!Number.isInteger(correct) || !Number.isInteger(total) || total <= 0 || correct < 0 || correct > total) {
+    throw new Error(`lookatstudy-plugin: invalid exam score ${correct}/${total}`)
+  }
+  const stars = accuracyToStars(correct / total)
+  const prevBest = ref.lesson.examStars ?? -1
+  ref.lesson.examStars = Math.max(prevBest, stars)
+  ref.lesson.examAttempts = (ref.lesson.examAttempts ?? 0) + 1
+  ref.lesson.lastAnsweredAt = new Date().toISOString()
+  return { ref, stars, bestStars: ref.lesson.examStars, attempts: ref.lesson.examAttempts }
+}
+
+/**
  * Record one graded answer against a lesson: attribute it to one knowledge
  * component when named, update BKT (per-KC, aggregated as the weakest),
  * nudge the SM-2 schedule when one exists, and apply mastery-driven
@@ -596,6 +655,9 @@ export function recordAnswer(
     ref.lesson.dueAt = result.dueAt
   }
   const progression = applyProgression(ref, now)
+  // XP (upstream xp-service): +10 correct / +1 wrong / +50 on graduation; every event checks the streak in.
+  const xpEvent = progression.graduated ? XP_MASTERED : correct ? XP_CORRECT : XP_WRONG
+  const xp = noteXpActivity(state, xpEvent, now)
   return {
     ref,
     concept: kcIndex === undefined ? null : { title: concept!, mastery: ref.lesson.conceptMastery![kcIndex]! },
@@ -604,6 +666,7 @@ export function recordAnswer(
     crown: masteryToCrown(ref.lesson.mastery),
     mastered: (ref.lesson.mastery ?? 0) >= MASTERED_THRESHOLD,
     progression,
+    xp,
   }
 }
 
@@ -640,7 +703,7 @@ export function completeLesson(
  * @param lessonId - lesson to describe.
  * @param concepts - 2–7 short concepts.
  */
-export function defineConcepts(state: LearningState, lessonId: string, concepts: ConceptDef[]): void {
+export function defineConcepts(state: LearningState, lessonId: string, concepts: ConceptDef[], summary?: string): void {
   const ref = findLesson(state, lessonId)
   if (concepts.length < 2 || concepts.length > 7) {
     throw new Error(`lookatstudy-plugin: define 2–7 concepts (got ${concepts.length})`)
@@ -652,6 +715,7 @@ export function defineConcepts(state: LearningState, lessonId: string, concepts:
   }
   ref.lesson.concepts = concepts.map(c => ({ title: c.title.trim(), description: c.description.trim() }))
   ref.lesson.conceptMastery = {}
+  if (summary !== undefined && summary.trim() !== '') ref.lesson.summary = summary.trim()
   aggregateMastery(ref.lesson)
 }
 
@@ -984,7 +1048,7 @@ export function starterPrompts(lessonTitle: string): Array<{ label: string; mess
 
 /** Structured learner snapshot for prompt injection (one home, pure read). */
 export interface LearnerSnapshot {
-  focus: { lessonId: string; courseTitle: string; lessonTitle: string; masteryPct: number | null; status: LessonStatus } | null
+  focus: { lessonId: string; courseId: string; courseTitle: string; lessonTitle: string; masteryPct: number | null; status: LessonStatus } | null
   strategy: string | null
   concepts: ConceptView[] | null
   friction: FrictionEntry[]
@@ -1015,6 +1079,7 @@ export function learnerSnapshot(state: LearningState, now: Date): LearnerSnapsho
   return {
     focus: ref === null ? null : {
       lessonId: ref.lesson.id,
+      courseId: ref.course.id,
       courseTitle: ref.course.title,
       lessonTitle: ref.lesson.title,
       masteryPct: ref.lesson.mastery === null ? null : Math.round(ref.lesson.mastery * 100),
@@ -1038,4 +1103,136 @@ function tryFindLesson(state: LearningState, lessonId: string): LessonRef | null
   } catch {
     return null
   }
+}
+
+/**
+ * The consolidation window (upstream memory-service gatherConsolidationWindow,
+ * dsh-adapted): timestamped raw material since the watermark — friction entries
+ * and practice-zone notes — for the TUTOR to distill into memory slots. The
+ * conversation half of upstream's window lives in the dsh session log (the
+ * tutor already sees it), so state contributes the persisted traces only.
+ * Pure read; the caller advances the watermark on gather.
+ */
+export interface ConsolidationWindow {
+  since: string | null
+  entries: Array<{ lessonId: string; lessonTitle: string; kind: 'friction' | 'practice'; category?: string; text: string; at: string }>
+  counts: { friction: number; practice: number }
+}
+
+export function gatherConsolidationWindow(state: LearningState, capPerLesson = 10): ConsolidationWindow {
+  const since = state.lastConsolidatedAt
+  const entries: ConsolidationWindow['entries'] = []
+  let frictionCount = 0
+  let practiceCount = 0
+  for (const course of state.courses) {
+    for (const section of course.sections) {
+      for (const lesson of section.lessons) {
+        let perLesson = 0
+        const collect = (kind: 'friction' | 'practice', at: string, push: () => void) => {
+          if (since !== null && at <= since) return
+          if (perLesson >= capPerLesson) return
+          perLesson++
+          push()
+        }
+        for (const f of lesson.friction) {
+          collect('friction', f.at, () => {
+            entries.push({ lessonId: lesson.id, lessonTitle: lesson.title, kind: 'friction', category: f.category, text: f.summary ?? '(no summary)', at: f.at })
+            frictionCount++
+          })
+        }
+        for (const n of lesson.notes) {
+          if (n.zone !== 'practice') continue
+          collect('practice', n.at, () => {
+            entries.push({ lessonId: lesson.id, lessonTitle: lesson.title, kind: 'practice', text: n.text.slice(0, 200), at: n.at })
+            practiceCount++
+          })
+        }
+      }
+    }
+  }
+  entries.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
+  return { since, entries, counts: { friction: frictionCount, practice: practiceCount } }
+}
+
+/**
+ * Record one XP event + advance the streak (upstream xp-service addXp +
+ * streak.ts applyStreak, state-ified). New-day rollover resets the today
+ * bucket first. The streak transition runs on every XP event — activity IS
+ * the check-in (upstream 打卡 semantics).
+ */
+export function noteXpActivity(
+  state: LearningState,
+  xp: number,
+  now: Date,
+): { totalXp: number; todayXp: number; streak: LearningState['streak'] } {
+  const key = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  if (state.xp.todayKey !== key) {
+    state.xp.todayKey = key
+    state.xp.todayXp = 0
+  }
+  state.xp.total += xp
+  state.xp.todayXp += xp
+  state.streak = computeStreakTransition({ ...state.streak, lastActiveDate: state.streak.lastActiveDate ?? null }, now)
+  return { totalXp: state.xp.total, todayXp: state.xp.todayXp, streak: { ...state.streak } }
+}
+
+/**
+ * Full-text lesson search (upstream course-tree-filter's multi-keyword AND,
+ * extended to bodies): every keyword must hit the title OR body (case-insensitive).
+ * Returns matches with a snippet around the first keyword hit in the body.
+ * Pure read.
+ */
+export interface LessonSearchHit {
+  courseId: string
+  courseTitle: string
+  lessonId: string
+  lessonTitle: string
+  snippet: string
+}
+
+export function searchLessons(state: LearningState, query: string, limit = 20): LessonSearchHit[] {
+  const keys = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (keys.length === 0) return []
+  const hits: LessonSearchHit[] = []
+  for (const course of state.courses) {
+    for (const section of course.sections) {
+      for (const lesson of section.lessons) {
+        const title = lesson.title.toLowerCase()
+        const body = lesson.body.toLowerCase()
+        if (!keys.every(k => title.includes(k) || body.includes(k))) continue
+        let snippet = lesson.body.replace(/\s+/g, ' ').trim()
+        for (const k of keys) {
+          const idx = snippet.toLowerCase().indexOf(k)
+          if (idx >= 0) {
+            const start = Math.max(0, idx - 30)
+            snippet = (start > 0 ? '…' : '') + snippet.slice(start, start + 100) + (start + 100 < snippet.length ? '…' : '')
+            break
+          }
+        }
+        hits.push({ courseId: course.id, courseTitle: course.title, lessonId: lesson.id, lessonTitle: lesson.title, snippet: snippet.slice(0, 120) })
+        if (hits.length >= limit) return hits
+      }
+    }
+  }
+  return hits
+}
+
+/**
+ * Serialize one course into a single markdown learning pack (upstream
+ * pack-export's zero-LLS sharing semantics, dsh-adapted: the receiver imports
+ * through the existing study_import_markdown — no new import path, no network).
+ * Sections become ##, lessons ###, bodies verbatim; exam nodes keep their intro.
+ * Pure.
+ */
+export function courseToPackMarkdown(course: CourseState): string {
+  const parts: string[] = [`# ${course.title}`]
+  for (const section of course.sections) {
+    parts.push(`## ${section.title}`)
+    for (const lesson of section.lessons) {
+      if (lesson.kind === 'exam') continue // import re-creates exam nodes per section
+      parts.push(`### ${lesson.title}`)
+      parts.push(lesson.body)
+    }
+  }
+  return parts.join('\n\n').trim() + '\n'
 }

@@ -106,7 +106,7 @@ test('workbenchState assembles map, lesson html, notes, proposals, and due list'
 test('routes: state API, focus switching, and unknown paths', async () => {
   const { state, lessonId } = fixture()
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', onActiveChange: () => {} })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
 
   const page = await handle(routes, new FakeRequest('GET', '/lookatstudy/'), new FakeResponse())
   assert.equal(page.status, 404, 'the standalone workbench page is gone; only the API remains')
@@ -117,7 +117,7 @@ test('routes: state API, focus switching, and unknown paths', async () => {
 
   let saved = 0
   const routes2: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes2.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', onActiveChange: () => {} })
+  registerDashboard({ register: (route) => { routes2.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
   const focus = await handle(routes2, new FakeRequest('POST', '/lookatstudy/api/focus', { lessonId: `${state.courses[0]!.id}:0:1` }), new FakeResponse())
   assert.equal(focus.status, 200)
   assert.equal(saved, 1)
@@ -136,7 +136,7 @@ test('mode route: switches and persists the soul mode; 400 on bad values', async
   assert.equal(state.mode, 'guide')
   let saved = 0
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', onActiveChange: () => {} })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
 
   const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/mode', { mode: 'practice' }), new FakeResponse())
   assert.equal(ok.status, 200)
@@ -159,11 +159,20 @@ test('active route: flips activation, persists, and syncs the surface before res
   registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, {
     store: { get: () => state, save: () => { saved += 1 } },
     studyAreaPath: 'C:/study-area',
+    statePath: 'C:/state.json',
     onActiveChange: (active) => { flips.push(active) },
   })
 
   const feed = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
   assert.equal((feed.json() as { active: boolean }).active, false, 'the state feed carries the flag')
+
+  // The settings page and the composer dock pill ride the same feed: the
+  // progress block and the state-file path must be present (W2/W4 contract).
+  const feedValue = feed.json() as { progress: { totalXp: number; level: number; streak: number }; statePath: string }
+  assert.ok(typeof feedValue.progress.totalXp === 'number', 'the feed carries the XP total')
+  assert.ok(typeof feedValue.progress.level === 'number', 'the feed carries the level')
+  assert.ok(typeof feedValue.progress.streak === 'number', 'the feed carries the streak')
+  assert.equal(feedValue.statePath, 'C:/state.json', 'the feed carries the state-file path for the settings page')
 
   const on = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/active', { active: true }), new FakeResponse())
   assert.equal(on.status, 200)
@@ -180,4 +189,41 @@ test('active route: flips activation, persists, and syncs the surface before res
   assert.equal(bad.status, 400)
   assert.equal(state.active, false, 'a rejected value leaves activation untouched')
   assert.equal(saved, 2)
+})
+
+test('/study activates a dormant install and queues the kickoff through followup', async () => {
+  const { executeStudyCommand, registerStudyCommand, studyKickoffPrompt } = await import('../src/commands.ts')
+  const { state } = fixture()
+  state.active = false
+  let saved = 0
+  const flips: boolean[] = []
+  const followups: unknown[] = []
+  const deps = {
+    store: { get: () => state, save: () => { saved += 1 } },
+    onActiveChange: (active: boolean) => { flips.push(active) },
+  }
+  // Bare /study on a dormant install: activate + persist + sync BEFORE the prompt.
+  const result = executeStudyCommand(deps, { agent: { followup: m => { followups.push(m) } }, rawInput: '   ' })
+  assert.equal(result.kind, 'success')
+  assert.equal(state.active, true, 'the dormant install activated')
+  assert.equal(saved, 1)
+  assert.deepEqual(flips, [true], 'the tool registry synced before the prompt landed')
+  const message = followups[0] as { id: string; role: string; content: Array<{ type: string; text: string }>; source: { kind: string } }
+  assert.equal(message.role, 'user')
+  assert.equal(message.content[0]!.text, studyKickoffPrompt(), 'bare /study queues the hero kickoff prompt')
+  assert.equal(message.source.kind, 'plugin')
+  assert.ok(typeof message.id === 'string' && message.id !== '', 'the message carries a minted id')
+  // /study <text> passes the text through as the learning request.
+  executeStudyCommand(deps, { agent: { followup: m => { followups.push(m) } }, rawInput: ' teach me backprop ' })
+  assert.equal((followups[1] as { content: Array<{ text: string }> }).content[0]!.text, 'teach me backprop')
+  // An already-active install does not re-save or re-sync.
+  const savedBefore = saved
+  const flipsBefore = flips.length
+  executeStudyCommand(deps, { agent: { followup: () => {} }, rawInput: '' })
+  assert.equal(saved, savedBefore, 'no redundant save when already active')
+  assert.equal(flips.length, flipsBefore, 'no redundant sync when already active')
+  // Registration shape: the /study definition on the commands service.
+  let def: { name: string } | undefined
+  registerStudyCommand({ register: d => { def = d; return () => {} } }, deps)
+  assert.equal(def!.name, 'study')
 })

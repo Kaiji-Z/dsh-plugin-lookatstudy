@@ -21,19 +21,22 @@ import type {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import { useStudy } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
+import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
+import { renderMindmap, renderLessonConceptMap } from './diagrams.ts'
+import { tr, type StudyT } from './locale.ts'
 
 /** The three souls, in pill order (labels from LookatStudy's mode switcher). */
-const MODES: ReadonlyArray<{ id: 'direct' | 'guide' | 'practice'; label: string; hint: string }> = [
-  { id: 'direct', label: '直讲', hint: 'direct 精讲:先讲清楚,再确认懂没懂' },
-  { id: 'guide', label: '引导', hint: 'guide 引导:让你自己往前推一步,导师递台阶' },
-  { id: 'practice', label: '实战', hint: 'practice 实战:在真实世界的乱问题里学' },
+const MODES: ReadonlyArray<{ id: 'direct' | 'guide' | 'practice'; labelKey: string; hintKey: string }> = [
+  { id: 'direct', labelKey: 'soul.direct', hintKey: 'soul.direct.hint' },
+  { id: 'guide', labelKey: 'soul.guide', hintKey: 'soul.guide.hint' },
+  { id: 'practice', labelKey: 'soul.practice', hintKey: 'soul.practice.hint' },
 ]
 
-/** Zone labels for the Cornell notebook (understand / record / practice). */
+/** Zone keys for the Cornell notebook (understand / record / practice). */
 const ZONES: ReadonlyArray<readonly [string, string]> = [
-  ['understand', '🧠 理解区 — 知识结构'],
-  ['record', '📝 记录区 — 我的话'],
-  ['practice', '✍️ 练习区 — 答题日志'],
+  ['understand', 'zone.understand'],
+  ['record', 'zone.record'],
+  ['practice', 'zone.practice'],
 ]
 
 /** Status glyph for one lesson row (LookatStudy's map icons). */
@@ -76,22 +79,22 @@ function ImportRow({ send }: { send: StudySend }): ReactNode {
       createElement('input', {
         className: 'lks-input',
         type: 'url',
-        placeholder: 'GitHub 仓库链接,如 microsoft/AI-For-Beginners',
+        placeholder: tr('rail.empty.placeholder'),
         value: url,
         onChange: (e: { target: { value: string } }) => { setUrl(e.target.value) },
         onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
-          if (e.key === 'Enter' && url.trim() !== '') send(`导入课程:用 study_import_github 抓取 ${url.trim()}`)
+          if (e.key === 'Enter' && url.trim() !== '') send(tr('prompt.import', { url: url.trim() }))
         },
       }),
       createElement('button', {
         className: 'lks-btn primary',
         disabled: url.trim() === '',
-        onClick: () => { send(`导入课程:用 study_import_github 抓取 ${url.trim()}`) },
-      }, '导入'),
+        onClick: () => { send(tr('prompt.import', { url: url.trim() })) },
+      }, tr('rail.empty.button')),
     ),
     createElement('div', { className: 'lks-import-hint' },
-      '粘贴 markdown → 说「导入为课程」', createElement('br'),
-      '本地文件夹 → 说「导入 D:/path/to/folder」'),
+      tr('rail.empty.hint'), createElement('br'),
+      tr('rail.empty.hint2')),
   )
 }
 
@@ -105,17 +108,19 @@ export interface ChatRow {
 }
 
 /**
- * Tooltip text for one course-tree status glyph. Pure.
+ * Tooltip text for one course-tree status glyph. Pure (the translator is an
+ * optional parameter defaulting to the active one, evaluated per call).
  * @param kind - lesson kind ('study' | 'practice' | 'exam').
  * @param status - lesson status ('locked' | 'available' | 'in_progress' | 'mastered').
+ * @param t - translator (defaults to the module's active translator).
  */
-export function statusTitle(kind: string, status: string): string {
-  if (kind === 'exam') return '章节测验:本节全部课时掌握度 ≥50% 后开放'
+export function statusTitle(kind: string, status: string, t: StudyT = tr): string {
+  if (kind === 'exam') return t('status.exam')
   switch (status) {
-    case 'mastered': return '已毕业:掌握度 ≥90%(或你接受了掌握提案)'
-    case 'in_progress': return '学习中:已开课,掌握度从 50% 起步'
-    case 'available': return '可开始:已解锁,尚未学习'
-    default: return '未解锁:先完成前面的课时'
+    case 'mastered': return t('status.mastered')
+    case 'in_progress': return t('status.in_progress')
+    case 'available': return t('status.available')
+    default: return t('status.locked')
   }
 }
 
@@ -152,13 +157,14 @@ export function quizOptions(text: string): ReadonlyArray<{ letter: string; text:
 
 /**
  * Learning-aware label for one settled tool call; null keeps the generic
- * 🔧-name chip. Pure.
+ * 🔧-name chip. Pure (translator defaults to the active one, per call).
  * @param name - tool call name.
  * @param argsRaw - the call's raw JSON args.
+ * @param t - translator.
  */
-export function toolChipLabel(name: string, argsRaw: string): { label: string; tone: 'ok' | 'bad' } | null {
+export function toolChipLabel(name: string, argsRaw: string, t: StudyT = tr): { label: string; tone: 'ok' | 'bad' } | null {
   if (name === 'study_record_answer') {
-    let concept = '未归因'
+    let concept = t('chip.unattributed')
     let correct = false
     try {
       const args = JSON.parse(argsRaw) as { concept?: unknown; correct?: unknown }
@@ -166,11 +172,11 @@ export function toolChipLabel(name: string, argsRaw: string): { label: string; t
       correct = args.correct === true
     } catch { /* malformed argsRaw falls back to the unattributed/incorrect label */ }
     return correct
-      ? { label: `✓ 答对 · ${concept}`, tone: 'ok' }
-      : { label: `✗ 答错 · ${concept}`, tone: 'bad' }
+      ? { label: t('chip.correct', { concept }), tone: 'ok' }
+      : { label: t('chip.wrong', { concept }), tone: 'bad' }
   }
-  if (name === 'study_import_github' || name === 'study_import_markdown' || name === 'study_import_folder') return { label: '📦 导入课程', tone: 'ok' }
-  if (name === 'study_define_concepts') return { label: '🧠 提炼知识点', tone: 'ok' }
+  if (name === 'study_import_github' || name === 'study_import_markdown' || name === 'study_import_folder') return { label: t('chip.import'), tone: 'ok' }
+  if (name === 'study_define_concepts') return { label: t('chip.concepts'), tone: 'ok' }
   return null
 }
 
@@ -187,9 +193,10 @@ function assistantText(blocks: readonly AssistantBlock[]): string {
  * tool activity condenses to one muted chip per settled call.
  * @param nodes - finalized conversation nodes from the snapshot.
  * @param partial - the in-flight assistant partial, or null.
+ * @param t - translator (defaults to the active one, per call).
  * @returns ordered rows; never mutates its inputs.
  */
-export function transcriptRows(nodes: readonly ConversationNode[], partial: PartialAssistant | null): readonly ChatRow[] {
+export function transcriptRows(nodes: readonly ConversationNode[], partial: PartialAssistant | null, t: StudyT = tr): readonly ChatRow[] {
   const rows: ChatRow[] = []
   for (const node of nodes) {
     switch (node.kind) {
@@ -219,13 +226,13 @@ export function transcriptRows(nodes: readonly ConversationNode[], partial: Part
     if (text !== '') rows.push({ key: 'streaming', role: 'streaming', text })
     // No text yet means the tutor is reasoning (or lining up tool calls) —
     // without this row the column sits dead silent through the whole phase.
-    else rows.push({ key: 'thinking', role: 'thinking', text: '导师思考中…' })
+    else rows.push({ key: 'thinking', role: 'thinking', text: t('row.thinking') })
   }
   return rows
 }
 
-/** Small inline error surface for failed write actions. */
-function ActionError({ error }: { error: string | null }): ReactNode {
+/** Small inline error surface for failed write actions (shared with the settings page). */
+export function ActionError({ error }: { error: string | null }): ReactNode {
   if (error === null) return null
   return createElement('div', { className: 'lks-propcard-err' }, error)
 }
@@ -257,6 +264,14 @@ function storedPane(): StudyPane {
   }
 }
 
+/**
+ * The framework's branded `SessionId`, minted locally (structural twin of the
+ * brand — session ids are plain strings on the wire; the brand exists to keep
+ * opaque ids out of string APIs). Replaces the former `as never` casts.
+ */
+type SessionId = string & { readonly __sessionBrand: 'SessionId' }
+const sessionId = (id: string): SessionId => id as SessionId
+
 /** The whole study tab. Wide = three columns (课程 | 导师 | 黑板); narrow (<1220px) = one composer-width pane with a three-way switcher. */
 export function studyView(ctx: ClientContext): (props: ConvViewProps) => ReactNode {
   return function StudyView(props: ConvViewProps): ReactNode {
@@ -266,7 +281,7 @@ export function studyView(ctx: ClientContext): (props: ConvViewProps) => ReactNo
 
 /** Tab body: the factory-bound ctx carries workspaces/sessions for the per-lesson session jumps. */
 function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: ClientContext }): ReactNode {
-  const { data, activate, setMode, setFocus, deleteCourse, bindLessonSession } = useStudy()
+  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, bindLessonSession } = useStudy()
   const snapshot = useSession((s: ConversationSnapshot) => s)
   const [pane, setPane] = useState<StudyPane>(storedPane)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -285,6 +300,7 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
     const clear = (): void => {
       card.classList.remove('lks-composer-follow')
       card.style.removeProperty('--lks-composer-shift')
+      card.style.removeProperty('--lks-composer-follow-width')
     }
     const apply = (): void => {
       const tutor = root.querySelector<HTMLElement>('.lks-col-tutor')
@@ -299,6 +315,10 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
       const shift = Math.round(Math.max(0, Math.min(tutorRect.left - (seatRect.left + pad), max)))
       if (shift < 2) return clear()
       card.style.setProperty('--lks-composer-shift', `${shift}px`)
+      // The tutor column shrinks proportionally below ~1857px containers
+      // (42cqi cap) — the docked composer card tracks that live width so the
+      // card never overhangs the transcript column it sits under.
+      card.style.setProperty('--lks-composer-follow-width', `${Math.round(tutorRect.width)}px`)
       card.classList.add('lks-composer-follow')
     }
     apply()
@@ -322,10 +342,19 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
       inputActions.submit()
     })()
   }
-  const panes: ReadonlyArray<{ id: StudyPane; label: string }> = [
-    { id: 'rail', label: '课程' },
-    { id: 'tutor', label: '导师' },
-    { id: 'bb', label: '黑板' },
+  // The bound translator reads the active locale at call time; a locale
+  // switch must re-render to pick the new strings (the framework `t` seat
+  // does this for slot entries — the deep component tree rides this bump).
+  const [, bumpLocale] = useState(0)
+  useEffect(() => {
+    const localeSvc = (ctx as { locale?: { subscribe(fn: () => void): () => void } }).locale
+    if (localeSvc === undefined) return
+    return localeSvc.subscribe(() => { bumpLocale(v => v + 1) })
+  }, [ctx])
+  const panes: ReadonlyArray<{ id: StudyPane; labelKey: string }> = [
+    { id: 'rail', labelKey: 'pane.rail' },
+    { id: 'tutor', labelKey: 'pane.tutor' },
+    { id: 'bb', labelKey: 'pane.bb' },
   ]
   return createElement('div', {
     ref: rootRef,
@@ -338,11 +367,9 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
   createElement('div', { className: 'lks-actbar' },
     data === null ? null : createElement('button', {
       className: `lks-btn ${data.active ? 'ghost' : 'primary'}`,
-      title: data.active
-        ? '注销 study 工具与导师人格;学习进度保留,可随时重新开启'
-        : '注册 study 工具并载入导师人格,之后普通对话和现在一样',
+      title: data.active ? tr('active.on.title') : tr('active.off.title'),
       onClick: () => { void activate(!data.active) },
-    }, data.active ? '⏻ 退出学习模式' : '▶ 开始学习'),
+    }, data.active ? tr('active.on') : tr('active.off')),
   ),
   // .lks-body carries the row/column direction so the container query can
   // flip it — a container query cannot style the container element itself.
@@ -359,9 +386,9 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
           // Privacy modes forbid storage writes; the in-memory choice still holds this page.
         }
       },
-      }, p.label)),
+      }, tr(p.labelKey))),
     ),
-    createElement(CourseRail, { data, activate, setFocus, deleteCourse, bindLessonSession, send, ctx, currentSessionId: snapshot.sessionId }),
+    createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, bindLessonSession, send, ctx, currentSessionId: snapshot.sessionId }),
     createElement(TutorColumn, { data, setMode, send, snapshot }),
     createElement(BlackboardColumn, { data }),
   ),
@@ -371,10 +398,11 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
 type StudyData = ReturnType<typeof useStudy>['data']
 
 /** Left column: course management (pick/delete/search/import), lesson tree, due box. */
-function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession, send, ctx, currentSessionId }: {
+function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bindLessonSession, send, ctx, currentSessionId }: {
   data: StudyData
   activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
+  searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>
   deleteCourse: (courseId: string) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string) => Promise<void>
   send: StudySend
@@ -390,9 +418,9 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
       void setFocus(lesson.id).catch(reportError)
       return
     }
-    if (mapped !== undefined && ctx.sessions.binding(mapped as never) !== undefined) {
+    if (mapped !== undefined && ctx.sessions.binding(sessionId(mapped)) !== undefined) {
       void setFocus(lesson.id).catch(reportError)
-      ctx.sessions.open(mapped as never)
+      ctx.sessions.open(sessionId(mapped))
       return
     }
     setJumping(lesson.id)
@@ -410,7 +438,7 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
       const actx = ctx.sessions.scope(sessionId)
       const face = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
       if (face === undefined) throw new Error('lesson session is not addressable yet')
-      const result = await face.prompt([{ type: 'text', text: `学习「${lesson.title}」:用 study_lesson 打开这一课开始学习。` }], 'queue')
+      const result = await face.prompt([{ type: 'text', text: tr('prompt.lesson', { title: lesson.title }) }], 'queue')
       if (!result.ok) throw new Error(`lesson prompt rejected: ${result.error.code}: ${result.error.message}`)
       await bindLessonSession(lesson.id, sessionId)
       ctx.sessions.open(sessionId)
@@ -428,15 +456,15 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
   const [error, setError] = useState<string | null>(null)
   const reportError = (err: unknown): void => { setError(err instanceof Error ? err.message : String(err)) }
   const body: ReactNode = data === null
-    ? createElement('div', { className: 'lks-empty' }, '加载中…')
+    ? createElement('div', { className: 'lks-empty' }, tr('loading'))
     : data.courses.length === 0
       ? createElement('div', { className: 'lks-empty' },
-        '暂无课程', createElement('br'),
+        tr('rail.empty.title'), createElement('br'),
         createElement('button', {
           className: 'lks-btn primary',
           style: { margin: '10px 0' },
-          onClick: () => { send('导入课程:用 study_import_github 抓取 https://github.com/microsoft/AI-For-Beginners') },
-        }, createElement(IconDownloadOutline16, null), '导入示例课程'),
+          onClick: () => { send(tr('prompt.import', { url: 'https://github.com/microsoft/AI-For-Beginners' })) },
+        }, createElement(IconDownloadOutline16, null), tr('rail.empty.demo')),
         createElement(ImportRow, { send }),
       )
       : (() => {
@@ -455,23 +483,23 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
               : createElement('div', { className: 'lks-rail-title' }, course.title),
             createElement('button', {
               className: `lks-btn ${confirmDelete ? 'primary' : 'ghost'}`,
-              title: confirmDelete ? '再点一次确认删除(含全部进度与笔记)' : '删除本课程',
+              title: confirmDelete ? tr('rail.delete.title.confirm') : tr('rail.delete'),
               onClick: () => {
                 if (!confirmDelete) { setConfirmDelete(true); return }
                 setConfirmDelete(false)
                 deleteCourse(courseId).then(() => { setSelectedCourse('') }, reportError)
               },
-            }, confirmDelete ? '确认删除?' : '🗑'),
+            }, confirmDelete ? tr('rail.delete.confirm') : '🗑'),
           ),
-          createElement('div', { className: 'lks-rail-sub' }, `${course.mastered}/${course.total} 已掌握`),
+          createElement('div', { className: 'lks-rail-sub' }, tr('rail.mastered', { mastered: course.mastered, total: course.total })),
           createElement('div', {
             className: `lks-masterybar${course.avgMasteryPct === 100 ? ' gold' : ''}`,
-            title: course.avgMasteryPct === null ? '尚无掌握度数据' : `平均掌握度 ${course.avgMasteryPct}%`,
+            title: course.avgMasteryPct === null ? tr('rail.avg.none') : tr('rail.avg', { pct: course.avgMasteryPct }),
           }, createElement('i', { style: { width: `${course.avgMasteryPct ?? 0}%` } })),
           createElement('input', {
             className: 'lks-search',
             type: 'search',
-            placeholder: '搜索课时…(多关键词空格分隔)',
+            placeholder: tr('rail.search'),
             value: query,
             onChange: (e: { target: { value: string } }) => { setQuery(e.target.value) },
             onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -483,13 +511,18 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
                   return
                 }
               }
+              // No title hit → full-text over lesson bodies (host-side search)
+              void searchLessons(query).then(hits => {
+                const hit = hits.find(h => h.lessonId.startsWith(`${courseId}:`)) ?? hits[0]
+                if (hit !== undefined) { setQuery(''); void setFocus(hit.lessonId).catch(reportError) }
+              }).catch(reportError)
             },
           }),
           course.sections.some(s => s.lessons.some(l => l.focus))
             ? createElement('button', {
               className: 'lks-btn ghost',
               style: { margin: '0 0 6px', padding: '3px 8px', fontSize: '13px' },
-              title: '在课程树中定位当前焦点课时(自动展开所在章节)',
+              title: tr('rail.locate.title'),
               onClick: () => {
                 const focusSection = course.sections.find(s => s.lessons.some(l => l.focus))
                 if (focusSection === undefined) return
@@ -499,19 +532,19 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
                   document.querySelector('.lks-col-rail .lks-node.focus')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
                 }, 60)
               },
-            }, '📍 回到当前课时')
+            }, tr('rail.locate'))
             : null,
           data.dueCount > 0
             ? createElement('div', { className: 'lks-duebox' },
-              `🔁 待复习 ${data.dueCount}`,
+              tr('rail.due', { count: data.dueCount }),
               ...data.due.map(d => createElement('div', { key: d.lessonId, className: 'lks-due-item' },
                 createElement('span', null, d.lessonTitle),
-                d.overdueDays > 0 ? createElement('span', { className: 'lks-over' }, `超${d.overdueDays}天`) : null)),
+                d.overdueDays > 0 ? createElement('span', { className: 'lks-over' }, tr('rail.due.over', { days: d.overdueDays })) : null)),
               createElement('button', {
                 className: 'lks-btn ghost',
                 style: { marginTop: '6px' },
-                onClick: () => { send('开始今天的复习,从最到期的课时开始') },
-              }, '开始复习'),
+                onClick: () => { send(tr('prompt.review')) },
+              }, tr('rail.due.start')),
             )
             : null,
           ...course.sections.flatMap(section => {
@@ -528,12 +561,12 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
                 type: 'button',
                 className: 'lks-sechead',
                 'aria-expanded': String(open),
-                title: open ? '折叠本章节' : `展开本章节(${section.lessons.length} 课时)`,
+                title: open ? tr('rail.section.collapse') : tr('rail.section.expand', { count: section.lessons.length }),
                 onClick: () => { setSecOpen(m => ({ ...m, [secKey]: !open })) },
               },
               createElement('span', { className: 'lks-sec-num' }, String(section.index + 1)),
               createElement('span', { className: 'lks-sechead-t' }, section.title),
-              open ? null : createElement('span', { className: 'lks-sechead-n' }, `${section.lessons.length} 课`),
+              open ? null : createElement('span', { className: 'lks-sechead-n' }, tr('rail.section.count', { count: section.lessons.length })),
               createElement('span', { className: 'lks-sechead-c' }, open ? '▾' : '▸')),
               ...(open ? lessons.map(lesson => {
                 const locked = lesson.status === 'locked' || (lesson.kind === 'exam' && !examAllowed)
@@ -544,12 +577,12 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
                   type: 'button',
                   className: `lks-node${lesson.focus ? ' focus' : ''}`,
                   'aria-disabled': locked || undefined,
-                  title: jumping === lesson.id ? '正在打开课时会话…' : statusTitle(lesson.kind, locked ? 'locked' : lesson.status),
+                  title: jumping === lesson.id ? tr('rail.lesson.opening') : statusTitle(lesson.kind, locked ? 'locked' : lesson.status),
                   onClick: () => {
                     if (locked) return
                     if (lesson.kind === 'exam') {
                       void setFocus(lesson.id).catch(reportError)
-                      send(`开始「${section.title}」的章节测验:按本节课时出题,答完逐题判分`)
+                      send(tr('prompt.exam', { section: section.title }))
                       return
                     }
                     openLessonThread(lesson)
@@ -557,13 +590,13 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
                 },
                 createElement('span', { className: 'lks-g' }, jumping === lesson.id ? '⏳' : glyph(lesson.kind, locked ? 'locked' : lesson.status)),
                 createElement('span', { className: 'lks-t' }, lesson.title),
-                lesson.due ? createElement('span', { className: 'lks-tag due', title: '这课时的复习今天到期(SM-2)' }, '🔁') : null,
-                lesson.weakConcepts > 0 ? createElement('span', { className: 'lks-tag weak', title: `${lesson.weakConcepts} 个薄弱知识点,测验会优先考察` }, `⚡${lesson.weakConcepts}`) : null,
-                lesson.frictionCount > 0 ? createElement('span', { className: 'lks-tag fric', title: `${lesson.frictionCount} 次卡点记录(你说"不懂"时导师记下的)` }, `😣${lesson.frictionCount}`) : null,
+                lesson.due ? createElement('span', { className: 'lks-tag due', title: tr('rail.due.tag') }, '🔁') : null,
+                lesson.weakConcepts > 0 ? createElement('span', { className: 'lks-tag weak', title: tr('tag.weak', { count: lesson.weakConcepts }) }, `⚡${lesson.weakConcepts}`) : null,
+                lesson.frictionCount > 0 ? createElement('span', { className: 'lks-tag fric', title: tr('tag.friction', { count: lesson.frictionCount }) }, `😣${lesson.frictionCount}`) : null,
                 lesson.masteryPct !== null
-                  ? createElement('span', { className: 'lks-bar', title: `课时掌握度 ${lesson.masteryPct}%(取最薄弱知识点)` }, createElement('i', { style: { width: `${lesson.masteryPct}%` } }))
+                  ? createElement('span', { className: 'lks-bar', title: tr('tag.mastery', { pct: lesson.masteryPct }) }, createElement('i', { style: { width: `${lesson.masteryPct}%` } }))
                   : null,
-                lesson.masteryPct !== null ? createElement('span', { className: 'lks-pct', title: '课时掌握度 = 最薄弱知识点的掌握度' }, `${lesson.masteryPct}%`) : null,
+                lesson.masteryPct !== null ? createElement('span', { className: 'lks-pct', title: tr('tag.mastery.short') }, `${lesson.masteryPct}%`) : null,
                 )
               }) : []),
             ]
@@ -572,12 +605,12 @@ function CourseRail({ data, activate, setFocus, deleteCourse, bindLessonSession,
             className: 'lks-btn ghost',
             style: { marginTop: '10px' },
             onClick: () => { setShowImport(!showImport) },
-          }, showImport ? '收起导入' : '＋ 导入课程'),
+          }, showImport ? tr('rail.import.close') : tr('rail.import.toggle')),
           showImport ? createElement(ImportRow, { send }) : null,
         )
       })()
   return createElement('div', { className: 'lks-col lks-col-rail' },
-    createElement('div', { className: 'lks-colhead' }, '课程'),
+    createElement('div', { className: 'lks-colhead' }, tr('col.rail')),
     body,
     createElement(ActionError, { error }),
   )
@@ -599,7 +632,7 @@ function chatRowElement(row: ChatRow, interactive?: { send: StudySend }): ReactN
     return createElement('div', { key: row.key, className: 'lks-msg error' }, `⚠ ${row.text}`)
   }
   if (row.role === 'thinking') {
-    return createElement('div', { key: row.key, className: 'lks-msg thinking', title: '导师正在推理,回复马上就来' },
+    return createElement('div', { key: row.key, className: 'lks-msg thinking', title: tr('row.thinking.title') },
       createElement(IconLoadingOutline16, { size: 14, className: 'lks-spin' }),
       row.text)
   }
@@ -613,11 +646,11 @@ function chatRowElement(row: ChatRow, interactive?: { send: StudySend }): ReactN
   if (options.length < 2) return body
   return createElement('div', { key: row.key, className: 'lks-turn' },
     body,
-    createElement('div', { className: 'lks-quiz', title: '点击选项作答,也可以直接打字回答' },
+    createElement('div', { className: 'lks-quiz', title: tr('quiz.title') },
       ...options.map(opt => createElement('button', {
         key: opt.letter,
         className: 'lks-opt',
-        onClick: () => { interactive.send(`选 ${opt.letter}:${opt.text}`) },
+        onClick: () => { interactive.send(tr('quiz.answer', { letter: opt.letter, text: opt.text })) },
       },
         createElement('span', { className: 'lks-optletter' }, opt.letter),
         createElement('span', null, opt.text))),
@@ -641,6 +674,12 @@ function TutorColumn({ data, setMode, send, snapshot }: {
     const el = scrollRef.current
     if (el !== null) el.scrollTop = el.scrollHeight
   }, [rows.length])
+  // Transcript enhancement rides the same scroll container: assistant math/code
+  // diagrams get their CDN pass after every row change (idempotent per element).
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el !== null && rows.length > 0) void enhanceRendered(el).catch(() => { /* degrade */ })
+  }, [rows.length])
   const proposal = data?.pendingProposals[0] ?? null
   const lesson = data?.lesson ?? null
   /** Mode switches are the only fallible write left here (host route); surface failures inline. */
@@ -648,33 +687,33 @@ function TutorColumn({ data, setMode, send, snapshot }: {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
   }
   return createElement('div', { className: 'lks-col lks-col-tutor' },
-    createElement('div', { className: 'lks-colhead' }, '导师'),
+    createElement('div', { className: 'lks-colhead' }, tr('col.tutor')),
     createElement('div', { className: 'lks-transcript', ref: scrollRef },
       rows.length === 0
-        ? createElement('div', { className: 'lks-empty' }, '对话会出现在这里', createElement('br'), '在下方输入框和导师说话')
+        ? createElement('div', { className: 'lks-empty' }, tr('tutor.empty'), createElement('br'), tr('tutor.empty.hint'))
         : rows.map((row, i) => chatRowElement(row, i === lastAssistant ? { send } : undefined)),
     ),
     proposal !== null
       ? createElement('div', { className: 'lks-banner' },
         createElement('span', null, '🎓'),
-        createElement('span', { className: 'lks-why' }, `导师提议你已掌握「${proposal.lessonTitle}」:${proposal.rationale}`),
+        createElement('span', { className: 'lks-why' }, tr('proposal.text', { lesson: proposal.lessonTitle, rationale: proposal.rationale })),
         createElement('button', {
           className: 'lks-btn primary',
-          onClick: () => { send(`接受提案 ${proposal.id} —— 确认标记这课为已掌握`) },
-        }, '接受'),
+          onClick: () => { send(tr('prompt.proposal.accept', { id: proposal.id })) },
+        }, tr('proposal.accept')),
         createElement('button', {
           className: 'lks-btn ghost',
-          onClick: () => { send(`拒绝提案 ${proposal.id} —— 我想再练练`) },
-        }, '再练练'),
+          onClick: () => { send(tr('prompt.proposal.decline', { id: proposal.id })) },
+        }, tr('proposal.decline')),
       )
       : null,
     createElement('div', { className: 'lks-pills', style: { height: 'auto', padding: '4px 0' } },
       ...MODES.map(mode => createElement('button', {
         key: mode.id,
         className: `lks-pill${data?.mode === mode.id ? ' on' : ''}`,
-        title: mode.hint,
+        title: tr(mode.hintKey),
         onClick: () => { fire(setMode(mode.id)) },
-      }, mode.label)),
+      }, tr(mode.labelKey))),
     ),
     lesson !== null && lesson.starters.length > 0
       ? createElement('div', { className: 'lks-dock', style: { padding: '0 0 6px' } },
@@ -690,17 +729,46 @@ function TutorColumn({ data, setMode, send, snapshot }: {
   )
 }
 
-/** Right column: the blackboard — focus-lesson 讲解 plus the Cornell 笔记. */
+/** Right column: the blackboard — focus-lesson 讲解/脑图/概念图 plus the Cornell 笔记. */
 function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
   const lesson = data?.lesson ?? null
+  const [pane, setPane] = useState<'teach' | 'mind' | 'cmap'>('teach')
+  const proseRef = useRef<HTMLDivElement | null>(null)
+  const diagRef = useRef<HTMLDivElement | null>(null)
+  // Post-render enhancement: math/shiki/mermaid via CDN, every failure degrades silently.
+  useEffect(() => {
+    if (pane !== 'teach' || proseRef.current === null || lesson === null) return
+    const el = proseRef.current
+    void enhanceRendered(el).catch(() => { /* degrade */ })
+  }, [pane, lesson?.html])
+  // Diagram panes (also CDN + vendored layout, honest one-line failure notice).
+  useEffect(() => {
+    if ((pane !== 'mind' && pane !== 'cmap') || diagRef.current === null || lesson === null) return
+    const el = diagRef.current
+    el.textContent = ''
+    const run = pane === 'mind'
+      ? renderMindmap(el, lesson.markdown)
+      : lesson.concepts.length === 0
+        ? Promise.reject(new Error('no concepts'))
+        : renderLessonConceptMap(el, lesson.title, lesson.concepts.map(c => ({ title: c.title, masteryPct: c.masteryPct })))
+    run.catch((err) => {
+      console.error('lks diagram pane failed:', pane, err)
+      el.textContent = pane === 'mind'
+        ? tr('bb.fallback.mind')
+        : lesson.concepts.length === 0
+          ? tr('bb.fallback.cmap.empty')
+          : tr('bb.fallback.cmap')
+    })
+  }, [pane, lesson?.lessonId, lesson?.concepts.length])
+
   const body: ReactNode = lesson === null
-    ? createElement('div', { className: 'lks-empty' }, '黑板还空着', createElement('br'), '在左侧课程树选择一课')
+    ? createElement('div', { className: 'lks-empty' }, tr('bb.empty'), createElement('br'), tr('bb.empty.hint'))
     : createElement('div', null,
       createElement('div', { className: 'lks-lessonhead' },
         createElement('h2', null, lesson.title),
         createElement('div', { className: 'lks-meta' },
           `${lesson.courseTitle} · ${lesson.status}`
-          + (lesson.masteryPct === null ? '' : ` · 掌握度 ${lesson.masteryPct}%`)
+          + (lesson.masteryPct === null ? '' : ` · ${tr('bb.mastery', { pct: lesson.masteryPct })}`)
           + ` · ${lesson.strategy}`),
         lesson.concepts.length > 0
           ? createElement('div', { className: 'lks-chips' },
@@ -710,14 +778,21 @@ function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
             }, `${c.title} ${c.masteryPct}%${c.weak ? ' ⚡' : ''}`)))
           : null,
       ),
-      createElement('div', { className: 'lks-prose', dangerouslySetInnerHTML: { __html: lesson.html } }),
+      createElement('div', { className: 'lks-viewtabs' },
+        createElement('button', { className: `lks-viewtab${pane === 'teach' ? ' on' : ''}`, onClick: () => { setPane('teach') } }, tr('viewtab.teach')),
+        createElement('button', { className: `lks-viewtab${pane === 'mind' ? ' on' : ''}`, title: tr('viewtab.mind.title'), onClick: () => { setPane('mind') } }, tr('viewtab.mind')),
+        createElement('button', { className: `lks-viewtab${pane === 'cmap' ? ' on' : ''}`, title: tr('viewtab.cmap.title'), onClick: () => { setPane('cmap') } }, tr('viewtab.cmap')),
+      ),
+      pane === 'teach'
+        ? createElement('div', { className: 'lks-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: lesson.html } })
+        : createElement('div', { className: 'lks-prose', ref: diagRef }),
       createElement('div', { className: 'lks-bb-notes' },
-        createElement('div', { className: 'lks-sec' }, '笔记'),
+        createElement('div', { className: 'lks-sec' }, tr('bb.notes')),
         lesson.notes.length === 0
-          ? createElement('div', { className: 'lks-empty', style: { padding: '16px 0' } }, '这一课还没有笔记')
-          : ZONES.filter(([zone]) => lesson.notes.some(n => n.zone === zone)).map(([zone, label]) =>
+          ? createElement('div', { className: 'lks-empty', style: { padding: '16px 0' } }, tr('bb.notes.empty'))
+          : ZONES.filter(([zone]) => lesson.notes.some(n => n.zone === zone)).map(([zone, labelKey]) =>
             createElement('div', { key: zone, className: 'lks-zone' },
-              createElement('h4', null, label),
+              createElement('h4', null, tr(labelKey)),
               ...lesson.notes.filter(n => n.zone === zone).map(n => createElement('div', { key: n.id, className: 'lks-note' },
                 createElement('span', { className: 'lks-note-src' }, n.source),
                 createElement('div', { className: 'lks-note-title' }, n.title),
@@ -728,7 +803,7 @@ function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
       ),
     )
   return createElement('div', { className: 'lks-col lks-col-bb' },
-    createElement('div', { className: 'lks-colhead' }, '黑板'),
+    createElement('div', { className: 'lks-colhead' }, tr('col.bb')),
     body,
   )
 }

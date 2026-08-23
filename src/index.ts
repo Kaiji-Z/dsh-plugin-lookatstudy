@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { Config } from './config.ts'
 import { registerDashboard } from './dashboard.ts'
+import { registerStudyCommand, type CommandsServiceFace } from './commands.ts'
 import { createStudySurface, snapshotSectionText, soulText, tutorCoreText } from './surface.ts'
 import { loadState, resolveStatePath, saveState } from './state.ts'
 
@@ -21,10 +22,11 @@ export const name = 'lookatstudy-plugin'
 export const inject = ['tools', 'systemPrompt']
 
 /**
- * Register the activation-gated study surface: the 20 `study_*` tools (kept
- * unregistered while dormant), the tutor persona (stable core + soul), and
- * the dynamic learner-snapshot context — every prompt text renders empty
- * while inactive, and empty sections are dropped at assembly.
+ * Register the activation-gated study surface: the 25 `study_*` tools (kept
+ * unregistered while dormant), the tutor persona (stable core + soul), the
+ * dynamic learner-snapshot context, and the `/study` command — every prompt
+ * text renders empty while inactive, and empty sections are dropped at
+ * assembly.
  * @param ctx - plugin context carrying the tool registry and system prompt.
  * @param config - validated plugin configuration.
  */
@@ -60,6 +62,15 @@ export function apply(ctx: Context, config: Config): void {
     order: 50,
     text: () => snapshotSectionText(store.get()),
   })
+  // `/study` — the keyboard/headless discovery path. Compositions without a
+  // command adapter (none today) simply skip it.
+  ctx.inject(['commands'], (cmdCtx) => {
+    const disposeCommand = registerStudyCommand((cmdCtx as unknown as { commands: CommandsServiceFace }).commands, {
+      store,
+      onActiveChange: surface.sync,
+    })
+    cmdCtx.effect(() => disposeCommand, 'lookatstudy.studyCommand()')
+  })
   // The study tab's HTTP API and its dedicated workspace directory exist only
   // in compositions carrying a webserver (web profile); headless assemblies
   // keep the plain tool surface.
@@ -68,7 +79,7 @@ export function apply(ctx: Context, config: Config): void {
     // state file, created eagerly so the client can adopt it as a workspace.
     const studyAreaPath = join(dirname(statePath), 'study-area')
     mkdirSync(studyAreaPath, { recursive: true })
-    const disposeDashboard = registerDashboard(webCtx.webServer, { store, studyAreaPath, onActiveChange: surface.sync })
+    const disposeDashboard = registerDashboard(webCtx.webServer, { store, studyAreaPath, statePath, onActiveChange: surface.sync })
     webCtx.effect(() => disposeDashboard, 'lookatstudy.dashboard()')
   })
 }

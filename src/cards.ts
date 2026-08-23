@@ -127,7 +127,7 @@ export function designBriefLines(value: DesignBriefValue): string[] {
  */
 export function mapLines(value: MapValue): string[] {
   const lines = [
-    `🗺 ${value.title} — ${value.counts.mastered}/${value.counts.total} mastered`,
+    `🗺 ${value.title} [courseId ${value.courseId}] — ${value.counts.mastered}/${value.counts.total} mastered`,
   ]
   for (const section of value.tree) {
     lines.push(`▍${section.title}`)
@@ -135,7 +135,7 @@ export function mapLines(value: MapValue): string[] {
       const mastery = lesson.masteryPct === null ? '' : ` · ${lesson.masteryPct}%${lesson.crown >= 4 ? ' 👑' : ''}`
       const weak = lesson.weakConcepts > 0 ? ` · ⚡${lesson.weakConcepts}` : ''
       const friction = lesson.frictionCount > 0 ? ` · 😣${lesson.frictionCount}` : ''
-      lines.push(`  ${statusGlyph(lesson.kind, lesson.status)} ${lesson.title}${mastery}${weak}${friction}`)
+      lines.push(`  ${statusGlyph(lesson.kind, lesson.status)} ${lesson.title} [lessonId ${lesson.id}]${mastery}${weak}${friction}`)
     }
   }
   return lines
@@ -162,7 +162,7 @@ export function dueLines(value: DueValue): string[] {
   const lines = [`🔁 ${value.total} due`]
   for (const item of value.due) {
     const overdue = item.overdueDays > 0 ? ` · ${item.overdueDays}d overdue` : ''
-    lines.push(`  ⏰ ${item.lessonTitle} — ${item.courseTitle}${overdue}`)
+    lines.push(`  ⏰ ${item.lessonTitle} [lessonId ${item.lessonId}] — ${item.courseTitle}${overdue}`)
   }
   return lines
 }
