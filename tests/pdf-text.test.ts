@@ -81,3 +81,22 @@ test('encrypted PDFs return "" (honest empty, never throw)', () => {
 test('garbage input returns "" without crashing', () => {
   assert.equal(parsePdfText(enc.encode('this is not a pdf at all')), '')
 })
+
+// --- upstream v0.23.1 port: Kangxi radical normalization at the parser exit ---
+
+import { normalizeRadicals } from '../src/vendor/pdf-text.ts'
+
+test('normalizeRadicals maps Kangxi-radical codepoints to their CJK equivalents', () => {
+  const radicals = '⼿⼀⽅' // U+2F49 U+2F00 U+2F45
+  assert.equal(normalizeRadicals(radicals), '手一方', 'radicals become the real characters (d2l-zh live-sample shape)')
+  assert.equal(normalizeRadicals('plain ASCII stays 手方'), 'plain ASCII stays 手方')
+  assert.equal(normalizeRadicals(''), '')
+})
+
+test('parsePdfText output passes through radical normalization', () => {
+  const utf16 = '<FEFF' + [...'⼿⼿之模型'].map((ch) => ch.charCodeAt(0).toString(16).padStart(4, '0')).join('') + '>'
+  const pdf = pdfBytes([{ data: 'BT /F1 12 Tf 10 100 Td ' + utf16 + ' Tj ET' }])
+  const text = parsePdfText(pdf)
+  assert.ok(text.includes('手手之模型'), `radical text exits normalized, got ${JSON.stringify(text)}`)
+  assert.ok(!/[\u2F00-\u2FDF]/.test(text))
+})

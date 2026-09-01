@@ -56,13 +56,14 @@ test('parseDocx rejects archives without document.xml / without text', () => {
   assert.throws(() => parseDocx(empty), /没有可识别/)
 })
 
-function buildPptx(slides: { no: number; texts: string[]; notes?: string[] }[], deckTitle = '测试演示'): Uint8Array {
+function buildPptx(slides: { no: number; texts: string[]; notes?: string[]; tableXml?: string }[], deckTitle = '测试演示'): Uint8Array {
   const files: { name: string; data: Uint8Array }[] = [
     { name: 'docProps/app.xml', data: enc.encode(`<Properties><TitlesOfParts><vt:vector><vt:lpstr>${deckTitle}</vt:lpstr></vt:vector></TitlesOfParts></Properties>`) },
   ]
   for (const s of slides) {
+    const table = s.tableXml ? `<p:graphicFrame><a:tbl>${s.tableXml}</a:tbl></p:graphicFrame>` : ''
     const shapes = s.texts.map((t) => `<p:sp><p:txBody>${t.split('\n').map((line) => `<a:p><a:r><a:t>${line}</a:t></a:r></a:p>`).join('')}</p:txBody></p:sp>`).join('')
-    files.push({ name: `ppt/slides/slide${s.no}.xml`, data: enc.encode(`<p:sld xmlns:p="p" xmlns:a="a">${shapes}</p:sld>`) })
+    files.push({ name: `ppt/slides/slide${s.no}.xml`, data: enc.encode(`<p:sld xmlns:p="p" xmlns:a="a">${shapes}${table}</p:sld>`) })
     if (s.notes) {
       const noteShapes = s.notes.map((t) => `<a:p><a:r><a:t>${t}</a:t></a:r></a:p>`).join('')
       files.push({ name: `ppt/notesSlides/notesSlide${s.no}.xml`, data: enc.encode(`<p:notes><p:txBody>${noteShapes}</p:txBody></p:notes>`) })
@@ -91,4 +92,34 @@ test('parsePptx handles slides without text (无标题 placeholder) and rejects 
   const r = parsePptx(buildPptx([{ no: 3, texts: [] }]))
   assert.ok(r.markdown.includes('## Slide 3: (无标题)'))
   assert.throws(() => parsePptx(buildZip([{ name: 'x', data: enc.encode('x') }])), /幻灯片/)
+})
+
+// --- upstream v0.23.1 port: table nodes become GFM markdown (previously dropped wholesale) ---
+
+const CELL = (t: string, attrs = '') => `<a:tc${attrs}><a:txBody><a:p><a:r><a:t>${t}</a:t></a:r></a:p></a:txBody></a:tc>`
+
+test('parsePptx renders a:tbl tables as GFM markdown in the body', () => {
+  const tr = (cells: string) => `<a:tr>${cells}</a:tr>`
+  const tableXml = tr(CELL('概念') + CELL('含义')) + tr(CELL('BKT') + CELL('知识追踪')) + tr(CELL('SM|2') + CELL('间隔重复'))
+  const r = parsePptx(buildPptx([
+    { no: 1, texts: ['课件标题页'], tableXml },
+  ]))
+  assert.ok(r.markdown.includes('| 概念 | 含义 |'), 'header row renders')
+  assert.ok(r.markdown.includes('| --- | --- |'), 'GFM separator')
+  assert.ok(r.markdown.includes('| BKT | 知识追踪 |'))
+  assert.ok(r.markdown.includes('SM\\|2'), 'pipes inside cells are escaped')
+  assert.ok(r.markdown.includes('## Slide 1: 课件标题页'), 'title still comes from the first paragraph, not the table')
+  assert.equal(r.markdown.split('概念').length - 1, 1, 'cell text is not double-emitted as plain paragraphs')
+
+})
+
+test('parsePptx gridSpan advances the column index and empty tables are skipped', () => {
+  const tr = (cells: string) => `<a:tr>${cells}</a:tr>`
+  const spanTable = tr(CELL('合并头', ' gridSpan="2"')) + tr(CELL('甲') + CELL('乙'))
+  const r = parsePptx(buildPptx([{ no: 1, texts: ['标题'], tableXml: spanTable }]))
+  assert.ok(r.markdown.includes('| 合并头 |  |'), 'spanned column padded')
+
+  const emptyTable = tr(CELL('')) + tr(CELL(''))
+  const r2 = parsePptx(buildPptx([{ no: 2, texts: ['标题二'], tableXml: emptyTable }]))
+  assert.ok(!r2.markdown.includes('| --- |'), 'all-empty placeholder table produces no noise rows')
 })

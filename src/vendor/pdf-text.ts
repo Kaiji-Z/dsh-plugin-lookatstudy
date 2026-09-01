@@ -95,5 +95,18 @@ export function parsePdfText(buf: Uint8Array): string {
     streamRe.lastIndex = end + 9; // 跳过 endstream 关键词本身,防止其中的 "stream" 二次匹配
   }
   const joined = parts.join("\n");
-  return joined.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return normalizeRadicals(joined.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim());
+}
+
+/**
+ * 康熙部首区(U+2F00-U+2FDF)→CJK 统一表意区归一(upstream v0.23.1 port, verbatim)。
+ * 部分中文 PDF 的 ToUnicode 映射落在部首区(d2l-zh 真书采样实测:"⼿⼀⽅"应读
+ * "手一方"),部首区上检索/匹配全部断裂。逐字符 NFKC(部首→汉字是 Unicode 标准
+ * 一对一兼容映射,不动其他任何字符)。
+ */
+export function normalizeRadicals(md: string): string {
+  if (!md) return md;
+  return /[\u2F00-\u2FDF]/.test(md)
+    ? md.replace(/[\u2F00-\u2FDF]/g, (c) => c.normalize("NFKC"))
+    : md;
 }

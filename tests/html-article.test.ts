@@ -7,7 +7,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { htmlToMarkdown, extractArticle, parseHtml } from '../src/vendor/html-article.ts'
+import { htmlToMarkdown, extractArticle, parseHtml, stripTailNavigation } from '../src/vendor/html-article.ts'
 
 test('htmlToMarkdown converts structure: headings, paragraphs, inline marks, links', () => {
   const html = `<html><body>
@@ -94,4 +94,51 @@ test('parseHtml survives malformed nesting without crashing', () => {
   const nodes = parseHtml('<p>a<div>b</p>c</div><p>d')
   const text = JSON.stringify(nodes)
   assert.ok(text.includes('a') && text.includes('b') && text.includes('c') && text.includes('d'))
+})
+
+// --- upstream v0.23.1 port: tail site-template fingerprint stripping ---
+
+test('stripTailNavigation removes machine-generated tail templates (sohu/aliyun/END)', () => {
+  const base = '# 标题\n\n正文第一段,讲清楚了某个知识点,足够长以通过密度判定。\n\n正文第二段继续展开,内容依然扎实。\n'
+  const sohu = base + '\n返回搜狐，查看更多\n'
+  const sohu2 = base + '\n点击进入搜狐首页\n'
+  const aliyun = base + '\n## 热门文章\n\n## 最新文章\n\n## 目录\n'
+  const gzh = base + '\nEND 本文版权所有\n'
+  for (const md of [sohu, sohu2, aliyun, gzh]) {
+    const out = stripTailNavigation(md)
+    assert.ok(out.includes('正文第二段'), 'real content survives')
+    assert.ok(!/返回搜狐|热门文章|最新文章|END/.test(out), `template stripped in ${JSON.stringify(md.slice(-30))}`)
+  }
+})
+
+test('stripTailNavigation removes bare-image tail template lines (CSDN)', () => {
+  const md = '# T\n\n正文讲了一个完整的知识点,内容扎实不是模板。\n\n![img](https://static.example/x.png)\n\n/images/2024/foo.jpeg\n'
+  const out = stripTailNavigation(md)
+  assert.ok(out.includes('正文讲了'))
+  assert.ok(!out.includes('foo.jpeg') && !out.includes('static.example'))
+})
+
+test('stripTailNavigation never touches an author-written promo paragraph', () => {
+  const md = '# T\n\n正文内容完整讲透一个概念,长度足够。\n\n欢迎关注我的公众号「某技术笔记」,每周更新实战文章。\n'
+  const out = stripTailNavigation(md)
+  assert.ok(out.includes('欢迎关注我的公众号'), 'author prose is content, not template (upstream live incident)')
+})
+
+test('stripTailNavigation only scans the last 25 lines — mid-text template lines stay', () => {
+  const filler = Array.from({ length: 30 }, (_, i) => `第${i}段正文,内容扎实,不构成模板。`).join('\n\n')
+  const md = `# T\n\n正文开始。\n\n## 热门文章\n\n${filler}\n\n收尾一段正文。\n`
+  const out = stripTailNavigation(md)
+  assert.ok(out.includes('热门文章'), 'out-of-window template lines are Step4/tutor territory, not the parser\'s')
+  assert.ok(out.includes('收尾一段正文'))
+})
+
+test('extractArticle output passes through stripTailNavigation', () => {
+  const html = `<html><head><title>一篇好文章</title></head><body><article>
+    <p>${'正文内容,反复陈述知识点,'.repeat(20)}</p>
+    <p>返回搜狐，查看更多</p>
+  </article></body></html>`
+  const art = extractArticle(html)
+  assert.ok(art !== null)
+  assert.ok(!art!.markdown.includes('返回搜狐'), 'template tail is stripped from extracted articles')
+  assert.ok(art!.markdown.includes('正文内容'))
 })

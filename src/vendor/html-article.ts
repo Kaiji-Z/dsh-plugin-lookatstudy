@@ -6,6 +6,10 @@
 // (honest failure — nav noise as course content is worse than an error), and
 // htmlToMarkdown salvages MathJax v2 / KaTeX TeX sources into $..$/$$..$$
 // BEFORE stripping scripts, same as upstream.
+// 2026-09-01 port (upstream v0.23.1): stripTailNavigation vendored VERBATIM —
+// tail site-template fingerprint stripping (sohu/aliyun/CSDN tail junk); the
+// principle in its comment is upstream's, learned from a live incident (an
+// author's own promo paragraph was once deleted by an over-eager rule).
 
 export interface ExtractedArticle {
   title: string;
@@ -331,8 +335,45 @@ export function extractArticle(html: string, baseUrl = ""): ExtractedArticle | n
   const body = htmlToMarkdownOf(contentRoots, false);
   if (!body || body.replace(/[#\s>*|-]/g, "").length < 40) return null;
   const alreadyHasTitleH1 = body.split("\n")[0]?.replace(/^#\s+/, "").trim() === title && body.startsWith("# ");
-  const markdown = alreadyHasTitleH1 ? body : `# ${title}\n\n${body}`;
+  const markdown = stripTailNavigation(alreadyHasTitleH1 ? body : `# ${title}\n\n${body}`);
   return { title, markdown };
+}
+
+/**
+ * 尾部**站点模板指纹**清理(upstream v0.23.1, 2026-08-23 真实站点采样驱动; vendored verbatim)。
+ * 原则:规则只管高置信度的**机器生成模板**(跨文章稳定、作为正文出现概率≈0);
+ * 除此之外的不确定判断(作者自己写的推广段/水印/相关阅读算不算正文)一律不猜——
+ * 那是课程设计层(tutor/Step4)的职责,解析层动了就是误删正文
+ * (实测:按"欢迎关注公众号"删规则,把 CSDN 作者自己写的推广段删了)。
+ */
+const NAV_TAIL_PATTERNS = [
+  /返回\S{0,6}[，,]?\s*查看更多/,   // 搜狐模板
+  /点击进入\S{0,8}首页/,             // 搜狐模板
+  /^热门文章$/,                       // 阿里云侧栏
+  /^最新文章$/,                       // 阿里云侧栏
+  /^目录\s*$/,                        // 阿里云侧栏(尾部窗口内)
+  /^END\b.*版权/,                     // 公众号转载页模板
+];
+/** 行内导航后缀:正文与模板被并成一行时剥掉(精确短语,全文安全) */
+const INLINE_NAV_SUFFIXES = ["目录 热门文章 最新文章"];
+export function stripTailNavigation(md: string): string {
+  if (!md) return md;
+  for (const suffix of INLINE_NAV_SUFFIXES) md = md.split(suffix).join("");
+  const lines = md.split("\n");
+  let end = lines.length;
+  for (let i = lines.length - 1; i >= Math.max(0, lines.length - 25); i--) {
+    const ln = lines[i]!.trim();
+    if (!ln) continue;
+    // markdown 标记前缀剥掉再判(模板可能被转成 "## " 标题行)
+    const bare = ln.replace(/^#{1,6}\s*/, "").replace(/^[>\-*]\s*/, "");
+    const isNav = NAV_TAIL_PATTERNS.some((re) => re.test(bare) || re.test(ln));
+    // 纯图片行:整行就是一张图或无空格裸图路径(CSDN 尾模板图)
+    const isBareImage = /^!\[[^\]]*\]\([^)]*\)$/.test(ln) || /^\S+\.(jpeg|jpg|png|gif|webp)\)?$/i.test(ln);
+    if (isNav || isBareImage) continue;
+    end = i + 1;
+    break;
+  }
+  return lines.slice(0, end).join("\n").trimEnd();
 }
 
 function htmlToMarkdownOf(roots: DomNode[], stripImages: boolean): string {

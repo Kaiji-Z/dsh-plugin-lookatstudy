@@ -37,23 +37,23 @@
 
 全部零依赖红线内移植（纯字符串/XML 处理），每项更新 vendor 文件 provenance header 记录偏差。
 
-- [ ] B1. **html-article 尾部模板清理**（src/vendor/html-article.ts ← 上游
+- [x] B1. **html-article 尾部模板清理**（src/vendor/html-article.ts ← 上游
   src/main/services/pure/html-article.ts `stripTailNavigation` :97）：指纹式清尾部机器模板
   （搜狐「返回搜狐」/阿里云侧栏三行/行内导航后缀/CSDN 裸图路径行）。原则写进注释：只删跨文章
   稳定的机器生成模板，作者亲笔推广段是正文（上游教训：「欢迎关注公众号」规则误删过作者亲笔段）。
   挂 extractArticle 的 markdown 出口。测试：tests/html-article.test.ts 增搜狐/CSDN/阿里云各一例
   + 作者推广段不删反例。
-- [ ] B2. **epub 章节对齐全套**（src/vendor/epub-parser.ts，161 行 → 参照上游 378 行版
+- [x] B2. **epub 章节对齐全套**（src/vendor/epub-parser.ts，161 行 → 参照上游 378 行版
   `sanitizeEpubBody`(:202) + `splitChaptersInBody`(:126) + 0.24.0 三修）：Gutenberg 头/尾截断；
   多章一文件拆分（CH/Letter 标记 heading 或裸行两形态，裸行限行长防误切，罗马数字/裸序号连续
   递增 ≥3 才切，license 单标记也切救末章、大内容保附录）；出版社形态（无标题兜底「未命名章节」
   不编造编号；短扉页+紧随无标题正文配对合并、后章有标题绝不合并不连锁；版权页著录字段密度
   ≥3 过滤、目录页链接密度 ≥60% 过滤）。zip-reader 交换不动。测试：tests/epub-parser.test.ts
   增合成 fixture（上游 verify-epub-parser T5-T15 形状，CI 无网络）。
-- [ ] B3. **pptx 表格提取**（src/vendor/pptx-parser.ts）：slide XML walker 处理 `a:tbl` →
+- [x] B3. **pptx 表格提取**（src/vendor/pptx-parser.ts）：slide XML walker 处理 `a:tbl` →
   GFM markdown 表（参照上游 `tableToMarkdown` :42）：竖线转义防破表、全空表整张跳过。
   测试：tests/docx-pptx-parser.test.ts 增含表格 slide fixture。
-- [ ] B4. **pdf 康熙部首归一**（src/vendor/pdf-text.ts）：`normalizeRadicals` 纯函数
+- [x] B4. **pdf 康熙部首归一**（src/vendor/pdf-text.ts）：`normalizeRadicals` 纯函数
   （U+2F00-2FDF 逐字符 NFKC）挂 parsePdfText 出口。测试：tests/pdf-text.test.ts 增部首区
   字形用例。
 
