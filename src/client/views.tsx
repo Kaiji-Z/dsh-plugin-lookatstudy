@@ -2,10 +2,11 @@
  * The study tab: one `conversation.view` entry rendering the whole plugin —
  * a simplified LookatStudy inside dsh, three columns in the tab. Left: the
  * course map (selector, tree, due box, one-click demo import). Middle: the
- * tutor conversation — a read-only mini transcript folded from the session
+ * tutor conversation — a read-only transcript folded from the session
  * snapshot (user text, assistant text rendered through the plugin's own
- * markdown pipeline, tool chips) plus the soul pills, starters, pending
- * proposal banner, and a reverse-channel input. Right: the blackboard —
+ * markdown pipeline; tool calls stay in the host conversation's toolview
+ * cards — a mirrored second record diverged) plus the soul pills, starters,
+ * pending proposal banner, and a reverse-channel input. Right: the blackboard —
  * focus-lesson 讲解 and the Cornell 笔记 zones. Nothing outside this tab
  * touches dsh chrome.
  * @module dsh-plugin-lookatstudy/client/views
@@ -101,10 +102,8 @@ function ImportRow({ send }: { send: StudySend }): ReactNode {
 /** One rendered transcript row (pure fold of the conversation snapshot). */
 export interface ChatRow {
   readonly key: string
-  readonly role: 'user' | 'assistant' | 'tool' | 'error' | 'streaming' | 'thinking'
+  readonly role: 'user' | 'assistant' | 'error' | 'streaming' | 'thinking'
   readonly text: string
-  /** The settled tool call head for `tool` rows; drives the learning-aware chip. */
-  readonly call?: { name: string; argsRaw: string } | null
 }
 
 /**
@@ -155,31 +154,6 @@ export function quizOptions(text: string): ReadonlyArray<{ letter: string; text:
   return runs.at(-1) ?? []
 }
 
-/**
- * Learning-aware label for one settled tool call; null keeps the generic
- * 🔧-name chip. Pure (translator defaults to the active one, per call).
- * @param name - tool call name.
- * @param argsRaw - the call's raw JSON args.
- * @param t - translator.
- */
-export function toolChipLabel(name: string, argsRaw: string, t: StudyT = tr): { label: string; tone: 'ok' | 'bad' } | null {
-  if (name === 'study_record_answer') {
-    let concept = t('chip.unattributed')
-    let correct = false
-    try {
-      const args = JSON.parse(argsRaw) as { concept?: unknown; correct?: unknown }
-      if (typeof args.concept === 'string' && args.concept !== '') concept = args.concept
-      correct = args.correct === true
-    } catch { /* malformed argsRaw falls back to the unattributed/incorrect label */ }
-    return correct
-      ? { label: t('chip.correct', { concept }), tone: 'ok' }
-      : { label: t('chip.wrong', { concept }), tone: 'bad' }
-  }
-  if (name === 'study_import_github' || name === 'study_import_markdown' || name === 'study_import_folder') return { label: t('chip.import'), tone: 'ok' }
-  if (name === 'study_define_concepts') return { label: t('chip.concepts'), tone: 'ok' }
-  return null
-}
-
 function textOf(blocks: readonly { type: string; text?: string }[]): string {
   return blocks.filter(b => b.type === 'text').map(b => b.text ?? '').join('\n\n').trim()
 }
@@ -189,8 +163,10 @@ function assistantText(blocks: readonly AssistantBlock[]): string {
 }
 
 /**
- * Fold conversation nodes (plus the streaming partial) into render rows;
- * tool activity condenses to one muted chip per settled call.
+ * Fold conversation nodes (plus the streaming partial) into render rows.
+ * Tool results are skipped: the host conversation renders the rich
+ * `tool.call.toolview` cards, and the tutor column stays a pure persona
+ * surface (a transcript mirror there grew a second, diverging record).
  * @param nodes - finalized conversation nodes from the snapshot.
  * @param partial - the in-flight assistant partial, or null.
  * @param t - translator (defaults to the active one, per call).
@@ -211,9 +187,6 @@ export function transcriptRows(nodes: readonly ConversationNode[], partial: Part
         if (text !== '') rows.push({ key: `a${node.seq}`, role: 'assistant', text })
         break
       }
-      case 'tool-result':
-        rows.push({ key: `t${node.seq}`, role: 'tool', text: node.call?.name ?? node.callId, call: node.call })
-        break
       case 'turn-error':
         rows.push({ key: `e${node.seq}`, role: 'error', text: node.message })
         break
@@ -378,6 +351,7 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
       ...panes.map(p => createElement('button', {
         key: p.id,
         className: `lks-switch-btn${pane === p.id ? ' on' : ''}`,
+        'aria-pressed': String(pane === p.id),
         onClick: () => {
         setPane(p.id)
         try {
@@ -450,6 +424,19 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
   const [selectedCourse, setSelectedCourse] = useState('')
   const [query, setQuery] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
+  // An armed delete disarms on outside click or Escape — a stray second
+  // click anywhere else must not be able to confirm destruction.
+  useEffect(() => {
+    if (!confirmDelete) return
+    const disarm = (): void => { setConfirmDelete(false) }
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') disarm() }
+    window.addEventListener('click', disarm)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('click', disarm)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [confirmDelete])
   const [showImport, setShowImport] = useState(false)
   /** Per-section open overrides (courseId/sectionTitle → open?), on top of the frontier default. */
   const [secOpen, setSecOpen] = useState<Record<string, boolean>>({})
@@ -480,11 +467,12 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
                 value: courseId,
                 onChange: (e: { target: { value: string } }) => { setSelectedCourse(e.target.value); setConfirmDelete(false) },
               }, ...data.courses.map(c => createElement('option', { key: c.courseId, value: c.courseId }, c.title)))
-              : createElement('div', { className: 'lks-rail-title' }, course.title),
+              : createElement('div', { className: 'lks-rail-title', title: course.title }, course.title),
             createElement('button', {
               className: `lks-btn ${confirmDelete ? 'primary' : 'ghost'}`,
               title: confirmDelete ? tr('rail.delete.title.confirm') : tr('rail.delete'),
-              onClick: () => {
+              onClick: (e: { stopPropagation: () => void }) => {
+                e.stopPropagation()
                 if (!confirmDelete) { setConfirmDelete(true); return }
                 setConfirmDelete(false)
                 deleteCourse(courseId).then(() => { setSelectedCourse('') }, reportError)
@@ -495,7 +483,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
           createElement('div', {
             className: `lks-masterybar${course.avgMasteryPct === 100 ? ' gold' : ''}`,
             title: course.avgMasteryPct === null ? tr('rail.avg.none') : tr('rail.avg', { pct: course.avgMasteryPct }),
-          }, createElement('i', { style: { width: `${course.avgMasteryPct ?? 0}%` } })),
+          }, createElement('i', { style: { transform: `scaleX(${(course.avgMasteryPct ?? 0) / 100})` } })),
           createElement('input', {
             className: 'lks-search',
             type: 'search',
@@ -577,7 +565,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
                   type: 'button',
                   className: `lks-node${lesson.focus ? ' focus' : ''}`,
                   'aria-disabled': locked || undefined,
-                  title: jumping === lesson.id ? tr('rail.lesson.opening') : statusTitle(lesson.kind, locked ? 'locked' : lesson.status),
+                  title: jumping === lesson.id ? tr('rail.lesson.opening') : `${lesson.title} — ${statusTitle(lesson.kind, locked ? 'locked' : lesson.status)}`,
                   onClick: () => {
                     if (locked) return
                     if (lesson.kind === 'exam') {
@@ -594,7 +582,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
                 lesson.weakConcepts > 0 ? createElement('span', { className: 'lks-tag weak', title: tr('tag.weak', { count: lesson.weakConcepts }) }, `⚡${lesson.weakConcepts}`) : null,
                 lesson.frictionCount > 0 ? createElement('span', { className: 'lks-tag fric', title: tr('tag.friction', { count: lesson.frictionCount }) }, `😣${lesson.frictionCount}`) : null,
                 lesson.masteryPct !== null
-                  ? createElement('span', { className: 'lks-bar', title: tr('tag.mastery', { pct: lesson.masteryPct }) }, createElement('i', { style: { width: `${lesson.masteryPct}%` } }))
+                  ? createElement('span', { className: 'lks-bar', title: tr('tag.mastery', { pct: lesson.masteryPct }) }, createElement('i', { style: { transform: `scaleX(${lesson.masteryPct / 100})` } }))
                   : null,
                 lesson.masteryPct !== null ? createElement('span', { className: 'lks-pct', title: tr('tag.mastery.short') }, `${lesson.masteryPct}%`) : null,
                 )
@@ -620,13 +608,6 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
 function chatRowElement(row: ChatRow, interactive?: { send: StudySend }): ReactNode {
   if (row.role === 'user') {
     return createElement('div', { key: row.key, className: 'lks-msg user' }, row.text)
-  }
-  if (row.role === 'tool') {
-    const chip = row.call === undefined || row.call === null ? null : toolChipLabel(row.call.name, row.call.argsRaw)
-    if (chip !== null) {
-      return createElement('div', { key: row.key, className: `lks-msg tool ${chip.tone}` }, chip.label)
-    }
-    return createElement('div', { key: row.key, className: 'lks-msg tool' }, `🔧 ${row.text}`)
   }
   if (row.role === 'error') {
     return createElement('div', { key: row.key, className: 'lks-msg error' }, `⚠ ${row.text}`)
@@ -682,16 +663,20 @@ function TutorColumn({ data, setMode, send, snapshot }: {
   }, [rows.length])
   const proposal = data?.pendingProposals[0] ?? null
   const lesson = data?.lesson ?? null
+  const dormant = data?.active !== true
   /** Mode switches are the only fallible write left here (host route); surface failures inline. */
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
   }
   return createElement('div', { className: 'lks-col lks-col-tutor' },
     createElement('div', { className: 'lks-colhead' }, tr('col.tutor')),
+    dormant
+      ? createElement('div', { className: 'lks-dormant' }, tr('tutor.dormant'))
+      : null,
     createElement('div', { className: 'lks-transcript', ref: scrollRef },
-      rows.length === 0
+      rows.length === 0 && !dormant
         ? createElement('div', { className: 'lks-empty' }, tr('tutor.empty'), createElement('br'), tr('tutor.empty.hint'))
-        : rows.map((row, i) => chatRowElement(row, i === lastAssistant ? { send } : undefined)),
+        : rows.map((row, i) => chatRowElement(row, !dormant && i === lastAssistant ? { send } : undefined)),
     ),
     proposal !== null
       ? createElement('div', { className: 'lks-banner' },
@@ -711,8 +696,10 @@ function TutorColumn({ data, setMode, send, snapshot }: {
       ...MODES.map(mode => createElement('button', {
         key: mode.id,
         className: `lks-pill${data?.mode === mode.id ? ' on' : ''}`,
-        title: tr(mode.hintKey),
-        onClick: () => { fire(setMode(mode.id)) },
+        'aria-pressed': String(data?.mode === mode.id),
+        'aria-disabled': dormant || undefined,
+        title: dormant ? tr('tutor.dormant') : tr(mode.hintKey),
+        onClick: () => { if (!dormant) fire(setMode(mode.id)) },
       }, tr(mode.labelKey))),
     ),
     lesson !== null && lesson.starters.length > 0
@@ -720,8 +707,9 @@ function TutorColumn({ data, setMode, send, snapshot }: {
         ...lesson.starters.map(s => createElement('button', {
           key: s.label,
           className: 'lks-starter',
-          title: s.message,
-          onClick: () => { send(s.message) },
+          'aria-disabled': dormant || undefined,
+          title: dormant ? tr('tutor.dormant') : s.message,
+          onClick: () => { if (!dormant) send(s.message) },
         }, s.label)),
       )
       : null,
@@ -763,9 +751,9 @@ function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
       createElement('div', { className: 'lks-lessonhead' },
         createElement('h2', null, lesson.title),
         createElement('div', { className: 'lks-meta' },
-          `${lesson.courseTitle} · ${lesson.status}`
-          + (lesson.masteryPct === null ? '' : ` · ${tr('bb.mastery', { pct: lesson.masteryPct })}`)
-          + ` · ${lesson.strategy}`),
+          `${lesson.courseTitle} · ${statusTitle('study', lesson.status)}`
+          + (lesson.masteryPct === null ? '' : ` · ${tr('bb.mastery', { pct: lesson.masteryPct })}`)),
+        createElement('div', { className: 'lks-meta' }, `${tr('bb.strategy')}：${lesson.strategy}`),
         lesson.concepts.length > 0
           ? createElement('div', { className: 'lks-chips' },
             ...lesson.concepts.map(c => createElement('span', {
@@ -775,8 +763,8 @@ function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
           : null,
       ),
       createElement('div', { className: 'lks-viewtabs' },
-        createElement('button', { className: `lks-viewtab${pane === 'teach' ? ' on' : ''}`, onClick: () => { setPane('teach') } }, tr('viewtab.teach')),
-        createElement('button', { className: `lks-viewtab${pane === 'cmap' ? ' on' : ''}`, title: tr('viewtab.cmap.title'), onClick: () => { setPane('cmap') } }, tr('viewtab.cmap')),
+        createElement('button', { className: `lks-viewtab${pane === 'teach' ? ' on' : ''}`, 'aria-pressed': String(pane === 'teach'), onClick: () => { setPane('teach') } }, tr('viewtab.teach')),
+        createElement('button', { className: `lks-viewtab${pane === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(pane === 'cmap'), title: tr('viewtab.cmap.title'), onClick: () => { setPane('cmap') } }, tr('viewtab.cmap')),
       ),
       pane === 'teach'
         ? createElement('div', { className: 'lks-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: lesson.html } })
@@ -787,11 +775,11 @@ function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
           ? createElement('div', { className: 'lks-empty', style: { padding: '16px 0' } }, tr('bb.notes.empty'))
           : ZONES.filter(([zone]) => lesson.notes.some(n => n.zone === zone)).map(([zone, labelKey]) =>
             createElement('div', { key: zone, className: 'lks-zone' },
-              createElement('h4', null, tr(labelKey)),
+              createElement('div', { className: 'lks-zone-h' }, tr(labelKey)),
               ...lesson.notes.filter(n => n.zone === zone).map(n => createElement('div', { key: n.id, className: 'lks-note' },
                 createElement('span', { className: 'lks-note-src' }, n.source),
                 createElement('div', { className: 'lks-note-title' }, n.title),
-                createElement('div', { className: 'lks-note-text' }, n.text),
+                createElement('div', { className: 'lks-note-text', dangerouslySetInnerHTML: { __html: renderMarkdown(n.text) } }),
                 n.quote !== null ? createElement('div', { className: 'lks-note-q' }, `“${n.quote}”`) : null,
               )),
             )),

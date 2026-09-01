@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { pickPane, quizOptions, sectionDefaultOpen, statusTitle, toolChipLabel, transcriptRows } from '../src/client/views.tsx'
+import { pickPane, quizOptions, sectionDefaultOpen, statusTitle, transcriptRows } from '../src/client/views.tsx'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import { studyStore, type StudyState } from '../src/client/data.ts'
 import { STUDY_CSS } from '../src/client/styles.ts'
@@ -69,20 +69,6 @@ test('quizOptions extracts the last consecutive A–D block and rejects noise', 
   assert.deepEqual(quizOptions('普通列表:\n- A. 不是选项'), [])
 })
 
-test('toolChipLabel turns record_answer calls into graded chips', () => {
-  assert.deepEqual(
-    toolChipLabel('study_record_answer', JSON.stringify({ correct: true, concept: '梯度下降' })),
-    { label: '✓ 答对 · 梯度下降', tone: 'ok' },
-  )
-  assert.deepEqual(
-    toolChipLabel('study_record_answer', JSON.stringify({ correct: false })),
-    { label: '✗ 答错 · 未归因', tone: 'bad' },
-  )
-  assert.deepEqual(toolChipLabel('study_import_github', '{}'), { label: '📦 导入课程', tone: 'ok' })
-  assert.equal(toolChipLabel('study_map', '{}'), null, 'unmapped tools keep the generic chip')
-  assert.equal(toolChipLabel('study_record_answer', 'not-json').label, '✗ 答错 · 未归因', 'malformed args fall back, not throw')
-})
-
 /** Synthesize one finalized conversation node (durable shapes, cast at the boundary). */
 function node(shape: Record<string, unknown>): ConversationNode {
   return shape as never
@@ -103,7 +89,7 @@ test('transcriptRows folds user and assistant text in order', () => {
   assert.equal(rows[1]!.text, '梯度下降是...\n\n第二段', 'assistant text blocks join with a blank line; reasoning excluded')
 })
 
-test('transcriptRows condenses tool results to chips, skips noise, and appends the partial', () => {
+test('transcriptRows skips tool results, skips noise, and appends the partial', () => {
   const rows = transcriptRows([
     node({ kind: 'assistant', seq: 2, time: 0, turn: 1, step: 1, blocks: [{ kind: 'tool-call', callId: 'c1', name: 'study_record_answer', argsRaw: '{}' }] }),
     node({ kind: 'tool-result', seq: 3, time: 0, callId: 'c1', call: { name: 'study_record_answer', argsRaw: '{}' }, content: [], isError: false, subCalls: [] }),
@@ -113,11 +99,9 @@ test('transcriptRows condenses tool results to chips, skips noise, and appends t
     node({ kind: 'user', seq: 7, time: 0, content: [{ type: 'image', attachment: {} }], source: {} }),
   ], { turn: 1, step: 3, blocks: [{ kind: 'text', text: '正在打字…' }] })
   assert.deepEqual(rows.map(r => [r.role, r.text]), [
-    ['tool', 'study_record_answer'],
-    ['tool', 'c2'],
     ['error', 'provider down'],
     ['streaming', '正在打字…'],
-  ], 'image-only user rows skip; the partial lands last')
+  ], 'tool results skip entirely (host toolviews own them); image-only user rows skip; the partial lands last')
 })
 
 test('a text-less partial shows the thinking row instead of dead air', () => {
@@ -232,17 +216,18 @@ test('the pure projections translate through an injected translator', async () =
   const { makeT } = await import('../src/client/locale.ts')
   const tEn = makeT('en')
   assert.match(statusTitle('exam', 'locked', tEn), /Section exam/)
-  assert.match(toolChipLabel('study_record_answer', '{"correct":true,"concept":"KC"}', tEn)!.label, /correct · KC/)
   const { transcriptRows: rows } = await import('../src/client/views.tsx')
   const partial = { blocks: [] } as never
   const thinking = rows([], partial, tEn)
   assert.equal(thinking[0]!.text, 'tutor is thinking…')
 })
 
-test('the dock pill projection renders due/streak/level segments', async () => {
+test('the dock pill projection renders due/streak/level segments, muted when zero', async () => {
   const { dockSegments } = await import('../src/client/dock.tsx')
   const segs = dockSegments({ dueCount: 2, streak: 4, level: 3 })
-  assert.deepEqual(segs.map(s => s.text), ['⚡2', '🔥4d', 'Lv3'])
+  assert.deepEqual(segs.map(s => [s.text, s.muted]), [['⚡2', false], ['🔥4天', false], ['Lv3', false]])
+  const zeros = dockSegments({ dueCount: 0, streak: 0, level: 0 })
+  assert.deepEqual(zeros.map(s => s.muted), [true, true, false], 'zero due/streak must not wear the warning/success tones')
 })
 
 test('the toolview projections parse answer args and meta lines', async () => {

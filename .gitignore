@@ -12,3 +12,4 @@ lks-*.png
 livetest-align-output.md
 livetest-align-err.log
 livetest-state.json
+.playwright-mcp/

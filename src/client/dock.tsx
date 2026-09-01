@@ -14,12 +14,12 @@ import type { ReactNode } from 'react'
 import { useStudy } from './data.ts'
 import { tr } from './locale.ts'
 
-/** Pure projection of the pill's segments (testable without React). */
-export function dockSegments(progress: { dueCount: number; streak: number; level: number }): ReadonlyArray<{ key: string; text: string }> {
+/** Pure projection of the pill's segments (testable without React). `muted` marks zero-value segments — an empty state must not wear a warning color. */
+export function dockSegments(progress: { dueCount: number; streak: number; level: number }): ReadonlyArray<{ key: string; text: string; muted: boolean }> {
   return [
-    { key: 'due', text: tr('dock.due', { count: progress.dueCount }) },
-    { key: 'streak', text: tr('dock.streak', { days: progress.streak }) },
-    { key: 'lv', text: tr('dock.lv', { level: progress.level }) },
+    { key: 'due', text: tr('dock.due', { count: progress.dueCount }), muted: progress.dueCount === 0 },
+    { key: 'streak', text: tr('dock.streak', { days: progress.streak }), muted: progress.streak === 0 },
+    { key: 'lv', text: tr('dock.lv', { level: progress.level }), muted: false },
   ]
 }
 
@@ -32,6 +32,6 @@ export function StudyDockPill(): ReactNode {
     className: 'lks-root lks-dockpill',
     title: tr('dock.title', { due: data.dueCount, streak: data.progress.streak, level: data.progress.level }),
   },
-  ...segments.map(s => createElement('span', { key: s.key, className: `lks-dockseg lks-dock-${s.key}` }, s.text)),
+  ...segments.map(s => createElement('span', { key: s.key, className: `lks-dockseg lks-dock-${s.key}${s.muted ? ' lks-muted' : ''}` }, s.text)),
   )
 }

@@ -16,7 +16,14 @@ const STYLE_ID = 'data-dsh-plugin-lookatstudy'
  * fonts, and radii come from `--dsw-*` tokens wherever the concept exists.
  */
 export const STUDY_CSS = `
-.lks-root{font-family:var(--dsw-font-family)}
+/* State inks: small colored text must clear WCAG AA (4.5:1), but the host's
+   raw state tokens (success/warn primaries) sit at 2.3–2.6:1 on light
+   backgrounds, and success/error *label* aliases are not published by this
+   host at all (the tv-chip used to reference them and silently inherit).
+   Mixing the state color toward label-primary keeps the hue while pulling
+   luminance to the readable pole — and works in BOTH themes, because
+   label-primary is always the current theme's high-contrast ink. */
+.lks-root{--lks-warn-ink:color-mix(in srgb,var(--dsw-alias-state-warn-label) 45%,var(--dsw-alias-label-primary));--lks-ok-ink:color-mix(in srgb,var(--dsw-alias-state-success-primary) 40%,var(--dsw-alias-label-primary));--lks-err-ink:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,var(--dsw-alias-label-primary));font-family:var(--dsw-font-family)}
 .lks-root :where(button){font-family:var(--dsw-font-family);cursor:pointer;border:none;background:none;padding:0}
 .lks-root :where(a){color:var(--dsw-alias-state-business-primary)}
 
@@ -36,9 +43,9 @@ export const STUDY_CSS = `
 /* Direction carrier (a container query cannot style the container itself). */
 .lks-body{flex:1;min-height:0;min-width:0;display:flex;gap:16px}
 .lks-col{display:flex;flex-direction:column;min-width:0}
-.lks-colhead{flex:none;font-size:12px;font-weight:600;color:var(--dsw-alias-label-tertiary);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
+.lks-colhead{flex:none;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
 .lks-col-rail{flex:0 1 260px;min-width:180px;overflow-y:auto;padding:2px 6px}
-.lks-col-tutor{flex:0 1 auto;width:min(100%,var(--dsh-composer-card-max-width,780px),42cqi);min-width:360px}
+.lks-col-tutor{flex:0 1 auto;width:min(100%,var(--dsh-composer-card-max-width,780px),42cqi);min-width:360px;overflow:hidden}
 .lks-col-bb{flex:1 1 0;min-width:320px;overflow-y:auto;padding:2px 6px}
 /* While the study view is mounted in wide mode, the host composer card is
    shifted under the tutor column (the transcript's width axis) instead of the
@@ -71,29 +78,29 @@ export const STUDY_CSS = `
 .lks-rail-head .lks-rail-select{flex:1;min-width:0;margin-bottom:0}
 .lks-rail-head .lks-btn{padding:3px 8px;font-size:13px}
 .lks-rail-title{font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lks-rail-sub{font-size:13px;color:var(--dsw-alias-label-tertiary);margin:4px 0 6px}
+.lks-rail-sub{font-size:13px;color:var(--dsw-alias-label-secondary);margin:4px 0 6px}
 .lks-masterybar{height:5px;border-radius:3px;background:var(--dsw-alias-bg-layer-3);overflow:hidden;margin-bottom:8px}
-.lks-masterybar i{display:block;height:100%;background:var(--dsw-alias-state-business-primary);transition:width .3s ease}
+.lks-masterybar i{display:block;height:100%;width:100%;background:var(--dsw-alias-state-success-primary);transform-origin:0 50%;transition:transform .3s ease}
 .lks-masterybar.gold i{background:var(--dsw-alias-state-warn-primary)}
 .lks-search{width:100%;box-sizing:border-box;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13.5px;padding:5px 9px;margin-bottom:4px}
 .lks-search:focus{outline:none;border-color:var(--dsw-alias-state-business-primary);box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}
-.lks-sec-num{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:50%;background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-label);font-size:11px;font-weight:700;margin-right:4px}
-.lks-tag.due{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-label)}
+.lks-sec-num{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:50%;background:var(--dsw-alias-state-warn-tertiary);color:var(--lks-warn-ink);font-size:11px;font-weight:700;margin-right:4px}
+.lks-tag.due{background:var(--dsw-alias-state-warn-tertiary);color:var(--lks-warn-ink)}
 .lks-import{margin-top:8px}
 .lks-import .lks-inputrow{margin-top:0}
 .lks-inputrow{display:flex;gap:8px;align-items:flex-end;flex:none;margin-top:8px}
 .lks-input{flex:1;min-width:0;resize:none;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:1.6;padding:8px 10px}
 .lks-input:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
 .lks-input:disabled{opacity:.55}
-.lks-import-hint{font-size:12.5px;color:var(--dsw-alias-label-tertiary);margin-top:6px;line-height:1.7}
+.lks-import-hint{font-size:12.5px;color:var(--dsw-alias-label-secondary);margin-top:6px;line-height:1.7}
 .lks-duebox{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;margin:8px 0 14px;font-size:13.5px}
 .lks-duebox .lks-due-item{color:var(--dsw-alias-label-secondary);margin-top:4px;display:flex;justify-content:space-between;gap:10px}
-.lks-duebox .lks-over{color:var(--dsw-alias-state-warn-label);flex:none}
+.lks-duebox .lks-over{color:var(--lks-warn-ink);flex:none}
 
-.lks-sec{font-size:12px;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 4px}
+.lks-sec{font-size:12px;color:var(--dsw-alias-label-secondary);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 4px}
 /* Collapsible section head: a real button (keyboard can toggle it), sticky so
    the current chapter stays identified while 4000px of nodes scroll under it. */
-.lks-sechead{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;font-size:12px;font-weight:600;color:var(--dsw-alias-label-tertiary);text-transform:uppercase;letter-spacing:.05em;text-align:left;padding:6px 4px;margin:14px 0 4px;border-radius:6px;position:sticky;top:0;z-index:1;background:var(--dsw-alias-bg-base)}
+.lks-sechead{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary);text-transform:uppercase;letter-spacing:.05em;text-align:left;padding:6px 4px;margin:14px 0 4px;border-radius:6px;position:sticky;top:0;z-index:1;background:var(--dsw-alias-bg-base)}
 .lks-sechead:hover{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg-hover)}
 .lks-sechead:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none}
 .lks-sechead-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -111,13 +118,13 @@ export const STUDY_CSS = `
 .lks-node[aria-disabled='true']{opacity:.45;cursor:not-allowed}
 .lks-node[aria-disabled='true']:hover{background:none}
 .lks-tag{font-size:11px;border-radius:4px;padding:0 4px;flex:none}
-.lks-tag.weak{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-label)}
-.lks-tag.fric{background:var(--dsw-alias-state-error-primary);color:#fff}
+.lks-tag.weak{background:var(--dsw-alias-state-warn-tertiary);color:var(--lks-warn-ink)}
+.lks-tag.fric{background:var(--dsw-alias-state-error-tertiary);color:var(--lks-err-ink)}
 .lks-bar{width:44px;height:4px;border-radius:2px;background:var(--dsw-alias-bg-layer-3);overflow:hidden;flex:none}
-.lks-bar i{display:block;height:100%;background:var(--dsw-alias-state-success-primary)}
-.lks-pct{font-size:12px;color:var(--dsw-alias-label-tertiary);flex:none;width:32px;text-align:right}
+.lks-bar i{display:block;height:100%;width:100%;background:var(--dsw-alias-state-success-primary);transform-origin:0 50%}
+.lks-pct{font-size:12px;color:var(--dsw-alias-label-secondary);flex:none;width:32px;text-align:right}
 
-.lks-empty{color:var(--dsw-alias-label-tertiary);text-align:center;padding:48px 8px;font-size:14px;line-height:2}
+.lks-empty{color:var(--dsw-alias-label-secondary);text-align:center;padding:48px 8px;font-size:14px;line-height:2}
 .lks-actbar{display:flex;flex-direction:row;justify-content:flex-end;flex:none;padding-bottom:8px}
 
 /* ── middle column: the tutor ── */
@@ -126,10 +133,7 @@ export const STUDY_CSS = `
 .lks-msg.user{align-self:flex-end;white-space:pre-wrap;background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish)}
 .lks-msg.assistant{align-self:flex-start;background:var(--dsw-alias-bg-layer-2)}
 .lks-msg.streaming{opacity:.7}
-.lks-msg.thinking{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--dsw-alias-label-tertiary);background:none;border-radius:0;padding:2px}
-.lks-msg.tool{align-self:flex-start;font-size:12px;color:var(--dsw-alias-label-tertiary);background:none;border-radius:0;padding:1px 2px}
-.lks-msg.tool.ok{color:var(--dsw-alias-state-success-primary)}
-.lks-msg.tool.bad{color:var(--dsw-alias-state-error-primary)}
+.lks-msg.thinking{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--dsw-alias-label-secondary);background:none;border-radius:0;padding:2px}
 .lks-msg.error{align-self:stretch;color:var(--dsw-alias-state-error-primary);font-size:13px;background:none;border-radius:0;padding:1px 2px}
 /* quiz-taking surface: the tutor's A–D options become clickable answers on the last settled reply */
 .lks-turn{display:flex;flex-direction:column;align-items:flex-start;max-width:94%}
@@ -151,6 +155,12 @@ export const STUDY_CSS = `
 @keyframes lks-spin{to{transform:rotate(360deg)}}
 .lks-spin{animation:lks-spin .8s linear infinite}
 
+/* dormant state: pills/starters stay visible but inert (aria-disabled, same
+   contract as locked lesson rows — focusable so the hint explains why) */
+.lks-pill[aria-disabled='true'],.lks-starter[aria-disabled='true']{opacity:.45;cursor:not-allowed}
+.lks-pill[aria-disabled='true']:hover,.lks-starter[aria-disabled='true']:hover{background:transparent;border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}
+.lks-dormant{font-size:13px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px dashed var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;margin:8px 0;line-height:1.7}
+
 /* starter chips */
 .lks-dock{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:0 2px 6px;flex:none}
 .lks-starter{border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);transition:border-color .12s ease,color .12s ease}
@@ -162,6 +172,7 @@ export const STUDY_CSS = `
 .lks-banner{display:flex;align-items:center;gap:10px;background:var(--dsw-alias-state-business-tertiary);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 14px;margin:8px 0;font-size:14px;flex:none}
 .lks-banner .lks-why{flex:1;color:var(--dsw-alias-label-secondary)}
 .lks-btn{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:6px 14px;font-size:13.5px;font-weight:600;flex:none}
+.lks-btn:focus-visible,.lks-starter:focus-visible,.lks-switch-btn:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none}
 .lks-btn.primary{background:var(--dsw-alias-state-business-primary);color:#fff}
 .lks-btn.primary:hover{filter:brightness(1.1)}
 .lks-btn.primary:disabled{opacity:.5;cursor:default;filter:none}
@@ -170,10 +181,18 @@ export const STUDY_CSS = `
 
 /* ── right column: blackboard ── */
 .lks-lessonhead h2{font-size:18px;margin:0 0 4px;font-weight:700}
-.lks-lessonhead .lks-meta{color:var(--dsw-alias-label-tertiary);font-size:13px;margin-bottom:4px}
+.lks-lessonhead .lks-meta{color:var(--dsw-alias-label-secondary);font-size:13px;margin-bottom:4px}
 .lks-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 .lks-chip{border-radius:999px;padding:2px 10px;font-size:12.5px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
-.lks-chip.weak{background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-label)}
+.lks-chip.weak{background:var(--dsw-alias-state-warn-tertiary);color:var(--lks-warn-ink)}
+
+/* blackboard view tabs (same joined-capsule button language as the narrow
+   mode switcher — buttons, not tabs, against the host's view tabs above) */
+.lks-viewtabs{display:flex;gap:2px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:3px;width:max-content;margin:10px 0}
+.lks-viewtab{border-radius:999px;padding:4px 16px;font-size:13.5px;color:var(--dsw-alias-label-secondary);background:transparent;transition:background .12s ease,color .12s ease}
+.lks-viewtab:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.lks-viewtab.on{background:var(--dsw-alias-state-business-primary);color:#fff;font-weight:600}
+.lks-viewtab:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-border-l3);outline:none}
 
 /* rendered markdown (host-sanitized lesson bodies and assistant replies) */
 .lks-prose{font-size:16px;line-height:1.75}
@@ -198,11 +217,15 @@ export const STUDY_CSS = `
 /* Cornell notes zones */
 .lks-bb-notes{margin-top:14px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l1)}
 .lks-zone{margin-bottom:14px}
-.lks-zone h4{font-size:14px;color:var(--dsw-alias-label-secondary);margin:0 0 8px;font-weight:600}
+.lks-zone-h{font-size:14px;color:var(--dsw-alias-label-secondary);margin:0 0 8px;font-weight:600}
 .lks-note{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 14px;margin-bottom:8px}
 .lks-note .lks-note-src{float:right;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
 .lks-note .lks-note-title{font-weight:600;font-size:13px}
-.lks-note .lks-note-text{margin-top:4px;white-space:pre-wrap;font-size:13px;color:var(--dsw-alias-label-secondary)}
+.lks-note .lks-note-text{margin-top:4px;font-size:13px;color:var(--dsw-alias-label-secondary);line-height:1.65}
+.lks-note .lks-note-text p{margin:4px 0}
+.lks-note .lks-note-text table{border-collapse:collapse;margin:6px 0;display:block;max-width:100%;overflow-x:auto}
+.lks-note .lks-note-text th,.lks-note .lks-note-text td{border:1px solid var(--dsw-alias-border-l2);padding:3px 8px;font-size:12.5px}
+.lks-note .lks-note-text code{font-family:var(--dsw-font-markdown-code);background:var(--dsw-alias-bg-layer-3);border-radius:4px;padding:1px 4px;font-size:.95em}
 .lks-note .lks-note-q{margin-top:6px;color:var(--dsw-alias-label-tertiary);font-size:12px;border-left:2px solid var(--dsw-alias-state-warn-primary);padding-left:8px}
 
 /* inline error text (write-action failures) */
@@ -211,24 +234,25 @@ export const STUDY_CSS = `
 /* settings section (settings.section entry inside the host settings shell) */
 .lks-settings{display:flex;flex-direction:column;gap:18px;font-family:var(--dsw-font-family);color:var(--dsw-alias-label-primary)}
 .lks-set-row h3{margin:0 0 4px;font-size:15px;font-weight:600}
-.lks-set-hint{margin:0 0 10px;font-size:13px;color:var(--dsw-alias-label-tertiary)}
+.lks-set-hint{margin:0 0 10px;font-size:13px;color:var(--dsw-alias-label-secondary)}
 .lks-set-state{margin-left:10px;font-size:13px;color:var(--dsw-alias-label-secondary)}
 .lks-set-stats{margin:0;padding-left:18px;font-size:14px;line-height:1.9}
 .lks-set-path{font-family:var(--dsw-font-markdown-code);font-size:12.5px;background:var(--dsw-alias-bg-layer-3);border-radius:6px;padding:3px 8px;word-break:break-all}
 
 /* composer dock status pill (conversation.composer.dock entry) */
-.lks-dockpill{display:inline-flex;gap:10px;align-items:center;font-size:12px;color:var(--dsw-alias-label-tertiary)}
+.lks-dockpill{display:inline-flex;gap:10px;align-items:center;font-size:12px;color:var(--dsw-alias-label-secondary)}
 .lks-dockseg{white-space:nowrap}
-.lks-dock-due{color:var(--dsw-alias-state-warn-label)}
+.lks-dock-due{color:var(--lks-warn-ink)}
 .lks-dock-streak{color:var(--dsw-alias-state-business-primary)}
+.lks-dockseg.lks-muted{color:var(--dsw-alias-label-secondary)}
 
 /* keyed tool.call.toolview cards (conversation tab tool rows) */
 .lks-tv{display:flex;flex-direction:column;gap:4px;padding:6px 10px;border-radius:10px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);font-size:13px}
 .lks-tv.err{border-color:var(--dsw-alias-state-error-primary)}
 .lks-tv-head{font-weight:600;color:var(--dsw-alias-label-secondary);font-size:12px}
 .lks-tv-chip{align-self:flex-start;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600}
-.lks-tv-chip.ok{background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-label)}
-.lks-tv-chip.bad{background:var(--dsw-alias-state-error-tertiary);color:var(--dsw-alias-state-error-label)}
+.lks-tv-chip.ok{background:var(--dsw-alias-state-success-tertiary);color:var(--lks-ok-ink)}
+.lks-tv-chip.bad{background:var(--dsw-alias-state-error-tertiary);color:var(--lks-err-ink)}
 .lks-tv-line{color:var(--dsw-alias-label-secondary);line-height:1.6;white-space:pre-wrap}
 `
 
