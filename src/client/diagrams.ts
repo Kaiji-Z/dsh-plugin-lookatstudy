@@ -12,6 +12,7 @@
  */
 
 import { layoutConceptMap, type CmNode, type CmEdge } from '../vendor/cmap-elk-layout.ts'
+import { tr } from './locale.ts'
 
 
 /** Lesson concept map: the lesson node + its concepts (weak ones accented),
@@ -31,12 +32,12 @@ export async function renderLessonConceptMap(
   svg.setAttribute('width', String(Math.max(320, layout.width)))
   svg.setAttribute('height', String(Math.max(200, layout.height)))
   svg.setAttribute('viewBox', `0 0 ${layout.width} ${layout.height}`)
-  svg.setAttribute('style', 'max-width:100%;background:var(--dsw-surface-1, #fff);border:1px solid var(--dsw-border-1, #d0d7de);border-radius:8px')
+  svg.setAttribute('style', 'max-width:100%;background:var(--dsw-alias-bg-layer-1, #fff);border:1px solid var(--dsw-alias-border-l2, #d0d7de);border-radius:8px')
   for (const e of layout.edges) {
     const path = document.createElementNS(ns, 'path')
     path.setAttribute('d', e.pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' '))
     path.setAttribute('fill', 'none')
-    path.setAttribute('stroke', 'var(--dsw-border-2, #8b949e)')
+    path.setAttribute('stroke', 'var(--dsw-alias-border-l2, #8b949e)')
     path.setAttribute('stroke-width', '1.5')
     svg.append(path)
   }
@@ -49,8 +50,8 @@ export async function renderLessonConceptMap(
     rect.setAttribute('width', String(n.w))
     rect.setAttribute('height', String(n.h))
     rect.setAttribute('rx', '6')
-    rect.setAttribute('fill', mastery !== undefined && mastery < 70 ? '#fff3d9' : 'var(--dsw-surface-2, #f6f8fa)')
-    rect.setAttribute('stroke', isLesson ? 'var(--dsw-accent-1, #0969da)' : 'var(--dsw-border-2, #8b949e)')
+    rect.setAttribute('fill', mastery !== undefined && mastery < 70 ? 'var(--dsw-alias-state-warn-tertiary, #fef5e7)' : 'var(--dsw-alias-bg-layer-2, #f6f8fa)')
+    rect.setAttribute('stroke', isLesson ? 'var(--dsw-alias-state-business-primary, #0969da)' : 'var(--dsw-alias-border-l2, #8b949e)')
     rect.setAttribute('stroke-width', isLesson ? '2' : '1')
     g.append(rect)
     n.lines.forEach((line, li) => {
@@ -60,11 +61,20 @@ export async function renderLessonConceptMap(
       label.setAttribute('text-anchor', 'middle')
       label.setAttribute('font-size', isLesson ? '13' : '12')
       label.setAttribute('font-weight', isLesson ? '600' : '400')
-      label.setAttribute('fill', 'var(--dsw-ink-1, #1f2328)')
+      label.setAttribute('fill', 'var(--dsw-alias-label-primary, #1f2328)')
       label.textContent = line
       g.append(label)
     })
+    const title = document.createElementNS(ns, 'title')
+    const label = n.lines.join(' ')
+    title.textContent = isLesson || mastery === undefined ? label : `${label} · ${tr('cmap.node.pct', { pct: mastery })}`
+    g.append(title)
     svg.append(g)
   }
   container.append(svg)
+  const legend = document.createElement('span')
+  legend.className = 'lks-cmap-legend'
+  const swatch = document.createElement('i')
+  legend.append(swatch, document.createTextNode(tr('cmap.legend')))
+  container.append(legend)
 }

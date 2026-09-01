@@ -230,6 +230,15 @@ test('the dock pill projection renders due/streak/level segments, muted when zer
   assert.deepEqual(zeros.map(s => s.muted), [true, true, false], 'zero due/streak must not wear the warning/success tones')
 })
 
+test('examStars reads the attempt from the card meta; the exam view carries a failure line', async () => {
+  const { examStars } = await import('../src/client/toolviews.tsx')
+  assert.deepEqual(examStars({ meta: ['2★'] }), { stars: 2, best: 2 })
+  assert.deepEqual(examStars({ meta: ['0★', '掌握度 40%'] }), { stars: 0, best: 0 }, '0★ is readable, not treated as absent')
+  assert.equal(examStars({ meta: ['掌握度 40%'] }), null)
+  assert.equal(examStars({ content: [{ type: 'text', text: 'Exam result: 3★ (best 3★, attempt 1).' }] }), null,
+    'render text is not mistaken for meta')
+})
+
 test('the toolview projections parse answer args and meta lines', async () => {
   const { answerTone, metaLines } = await import('../src/client/toolviews.tsx')
   const tone = answerTone('{"lessonId":"x","correct":true,"concept":"链式法则"}')

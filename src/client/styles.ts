@@ -100,7 +100,7 @@ export const STUDY_CSS = `
 .lks-sec{font-size:12px;color:var(--dsw-alias-label-secondary);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 4px}
 /* Collapsible section head: a real button (keyboard can toggle it), sticky so
    the current chapter stays identified while 4000px of nodes scroll under it. */
-.lks-sechead{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary);text-transform:uppercase;letter-spacing:.05em;text-align:left;padding:6px 4px;margin:14px 0 4px;border-radius:6px;position:sticky;top:0;z-index:1;background:var(--dsw-alias-bg-base)}
+.lks-sechead{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary);text-align:left;padding:6px 4px;margin:14px 0 4px;border-radius:6px;position:sticky;top:0;z-index:1;background:var(--dsw-alias-bg-base)}
 .lks-sechead:hover{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg-hover)}
 .lks-sechead:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
 .lks-sechead-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -255,6 +255,10 @@ export const STUDY_CSS = `
 .lks-dock-streak{color:var(--dsw-alias-state-business-primary)}
 .lks-dockseg.lks-muted{color:var(--dsw-alias-label-secondary)}
 
+/* concept map legend (amber = weak) */
+.lks-cmap-legend{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--dsw-alias-label-secondary);margin-top:4px}
+.lks-cmap-legend i{width:10px;height:10px;border-radius:3px;background:var(--dsw-alias-state-warn-tertiary,#fef5e7);border:1px solid var(--dsw-alias-state-warn-primary,#dd8629)}
+
 /* keyed tool.call.toolview cards (conversation tab tool rows) */
 .lks-tv{display:flex;flex-direction:column;gap:4px;padding:6px 10px;border-radius:10px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);font-size:13px}
 .lks-tv.err{border-color:var(--dsw-alias-state-error-primary)}
@@ -263,6 +267,11 @@ export const STUDY_CSS = `
 .lks-tv-chip.ok{background:var(--dsw-alias-state-success-tertiary);color:var(--lks-ok-ink)}
 .lks-tv-chip.bad{background:var(--dsw-alias-state-error-tertiary);color:var(--lks-err-ink)}
 .lks-tv-line{color:var(--dsw-alias-label-secondary);line-height:1.6;white-space:pre-wrap}
+/* exam star card + the failure moment */
+.lks-tv-stars{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--lks-warn-ink)}
+.lks-tv-stars .dim{opacity:.22}
+.lks-tv-stars-label{font-weight:400;color:var(--dsw-alias-label-secondary)}
+.lks-tv-failnote{margin-top:4px;font-size:12.5px;color:var(--dsw-alias-label-secondary);line-height:1.6}
 `
 
 /**

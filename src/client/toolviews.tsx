@@ -96,7 +96,24 @@ export function StudyDueView({ toolName, block }: ToolViewPropsFace): ReactNode 
   return studyToolCard(toolName, block)
 }
 
-/** study_exam_result star card. */
+/** Stars from the exam card's presentationMeta line (`N★`); null when absent. Pure. */
+export function examStars(block: ToolBlockFace): { stars: number; best: number } | null {
+  const lines = metaLines(block)
+  for (const line of lines) {
+    const m = /^([0-3])★\s*\(?(?:best\s*([0-3])★)?/.exec(line.trim()) ?? /^(?:本次\s*)?([0-3])★/.exec(line.trim())
+    if (m !== null) return { stars: Number(m[1]), best: Number(m[2] ?? m[1]) }
+  }
+  return null
+}
+
+/** study_exam_result star card — and the failure moment finally gets its line. */
 export function StudyExamView({ toolName, block }: ToolViewPropsFace): ReactNode {
-  return studyToolCard(toolName, block)
+  const r = examStars(block)
+  const stars = r === null
+    ? null
+    : createElement('span', { className: 'lks-tv-stars' },
+      [0, 1, 2].map(i => createElement('span', { key: i, className: i < r.stars ? 'full' : 'dim' }, '★')),
+      createElement('span', { className: 'lks-tv-stars-label' }, tr('tv.exam.stars', { n: r.stars, best: r.best })))
+  const fail = r !== null && r.stars === 0 ? createElement('div', { className: 'lks-tv-failnote' }, tr('tv.exam.fail')) : null
+  return studyToolCard(toolName, block, createElement('span', null, stars, fail))
 }
