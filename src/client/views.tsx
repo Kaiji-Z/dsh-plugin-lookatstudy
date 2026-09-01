@@ -14,7 +14,12 @@
 
 import { createElement, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
-import { IconDownloadOutline16, IconLoadingOutline16 } from './icons.tsx'
+import {
+  IconBoltFill16, IconBookFill16, IconCrownFill16, IconFlameFill16, IconGlobeOutline14,
+  IconGoalOutline16, IconLockFill16, IconPinFill16, IconPlayOutline16, IconPlusOutline16,
+  IconPowerFill16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16,
+  IconDownloadOutline16, IconLoadingOutline16, IconWarningOutline16,
+} from './icons.tsx'
 import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
@@ -40,13 +45,13 @@ const ZONES: ReadonlyArray<readonly [string, string]> = [
   ['practice', 'zone.practice'],
 ]
 
-/** Status glyph for one lesson row (LookatStudy's map icons). */
-function glyph(kind: string, status: string): string {
-  if (kind === 'exam') return '🎯'
-  if (status === 'mastered') return '👑'
-  if (status === 'in_progress') return '📖'
-  if (status === 'available') return '⭐'
-  return '🔒'
+/** Status icon for one lesson row (LookatStudy's map icon semantics, SVG glyphs). */
+function statusIcon(kind: string, status: string): ReactNode {
+  if (kind === 'exam') return createElement(IconGoalOutline16, { size: 14 })
+  if (status === 'mastered') return createElement(IconCrownFill16, { size: 14 })
+  if (status === 'in_progress') return createElement(IconBookFill16, { size: 14 })
+  if (status === 'available') return createElement(IconStarFill16, { size: 14 })
+  return createElement(IconLockFill16, { size: 14 })
 }
 
 /** LookatStudy's exam gate: an exam node opens only when every sibling study lesson reached mastery ≥50%. */
@@ -342,7 +347,7 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
       className: `lks-btn ${data.active ? 'ghost' : 'primary'}`,
       title: data.active ? tr('active.on.title') : tr('active.off.title'),
       onClick: () => { void activate(!data.active) },
-    }, data.active ? tr('active.on') : tr('active.off')),
+    }, data.active ? createElement(IconPowerFill16, { size: 13 }) : createElement(IconPlayOutline16, { size: 13 }), data.active ? tr('active.on') : tr('active.off')),
   ),
   // .lks-body carries the row/column direction so the container query can
   // flip it — a container query cannot style the container element itself.
@@ -477,7 +482,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
                 setConfirmDelete(false)
                 deleteCourse(courseId).then(() => { setSelectedCourse('') }, reportError)
               },
-            }, confirmDelete ? tr('rail.delete.confirm') : '🗑'),
+            }, confirmDelete ? tr('rail.delete.confirm') : createElement(IconTrashOutline16, { size: 14 })),
           ),
           createElement('div', { className: 'lks-rail-sub' }, tr('rail.mastered', { mastered: course.mastered, total: course.total })),
           createElement('div', {
@@ -520,11 +525,11 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
                   document.querySelector('.lks-col-rail .lks-node.focus')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
                 }, 60)
               },
-            }, tr('rail.locate'))
+            }, createElement(IconPinFill16, { size: 13 }), tr('rail.locate'))
             : null,
           data.dueCount > 0
             ? createElement('div', { className: 'lks-duebox' },
-              tr('rail.due', { count: data.dueCount }),
+              createElement(IconRefreshOutline16, { size: 13 }), tr('rail.due', { count: data.dueCount }),
               ...data.due.map(d => createElement('div', { key: d.lessonId, className: 'lks-due-item' },
                 createElement('span', null, d.lessonTitle),
                 d.overdueDays > 0 ? createElement('span', { className: 'lks-over' }, tr('rail.due.over', { days: d.overdueDays })) : null)),
@@ -565,7 +570,9 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
                   type: 'button',
                   className: `lks-node${lesson.focus ? ' focus' : ''}`,
                   'aria-disabled': locked || undefined,
-                  title: jumping === lesson.id ? tr('rail.lesson.opening') : `${lesson.title} — ${statusTitle(lesson.kind, locked ? 'locked' : lesson.status)}`,
+                  title: jumping === lesson.id
+                    ? tr('rail.lesson.opening')
+                    : `${lesson.title} — ${statusTitle(lesson.kind, locked ? 'locked' : lesson.status)}${locked || lesson.kind === 'exam' ? '' : tr('rail.lesson.openHint')}`,
                   onClick: () => {
                     if (locked) return
                     if (lesson.kind === 'exam') {
@@ -576,11 +583,11 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
                     openLessonThread(lesson)
                   },
                 },
-                createElement('span', { className: 'lks-g' }, jumping === lesson.id ? '⏳' : glyph(lesson.kind, locked ? 'locked' : lesson.status)),
+                createElement('span', { className: 'lks-g' }, jumping === lesson.id ? createElement(IconLoadingOutline16, { size: 14, className: 'lks-spin' }) : statusIcon(lesson.kind, locked ? 'locked' : lesson.status)),
                 createElement('span', { className: 'lks-t' }, lesson.title),
-                lesson.due ? createElement('span', { className: 'lks-tag due', title: tr('rail.due.tag') }, '🔁') : null,
-                lesson.weakConcepts > 0 ? createElement('span', { className: 'lks-tag weak', title: tr('tag.weak', { count: lesson.weakConcepts }) }, `⚡${lesson.weakConcepts}`) : null,
-                lesson.frictionCount > 0 ? createElement('span', { className: 'lks-tag fric', title: tr('tag.friction', { count: lesson.frictionCount }) }, `😣${lesson.frictionCount}`) : null,
+                lesson.due ? createElement('span', { className: 'lks-tag due', title: tr('rail.due.tag') }, createElement(IconRefreshOutline16, { size: 11 })) : null,
+                lesson.weakConcepts > 0 ? createElement('span', { className: 'lks-tag weak', title: tr('tag.weak', { count: lesson.weakConcepts }) }, createElement(IconBoltFill16, { size: 10 }), String(lesson.weakConcepts)) : null,
+                lesson.frictionCount > 0 ? createElement('span', { className: 'lks-tag fric', title: tr('tag.friction', { count: lesson.frictionCount }) }, createElement(IconWarningOutline16, { size: 10 }), String(lesson.frictionCount)) : null,
                 lesson.masteryPct !== null
                   ? createElement('span', { className: 'lks-bar', title: tr('tag.mastery', { pct: lesson.masteryPct }) }, createElement('i', { style: { transform: `scaleX(${lesson.masteryPct / 100})` } }))
                   : null,
@@ -593,7 +600,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
             className: 'lks-btn ghost',
             style: { marginTop: '10px' },
             onClick: () => { setShowImport(!showImport) },
-          }, showImport ? tr('rail.import.close') : tr('rail.import.toggle')),
+          }, showImport ? tr('rail.import.close') : createElement(IconPlusOutline16, { size: 13 }), tr('rail.import.toggle')),
           showImport ? createElement(ImportRow, { send }) : null,
         )
       })()
@@ -764,7 +771,7 @@ function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
       ),
       createElement('div', { className: 'lks-viewtabs' },
         createElement('button', { className: `lks-viewtab${pane === 'teach' ? ' on' : ''}`, 'aria-pressed': String(pane === 'teach'), onClick: () => { setPane('teach') } }, tr('viewtab.teach')),
-        createElement('button', { className: `lks-viewtab${pane === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(pane === 'cmap'), title: tr('viewtab.cmap.title'), onClick: () => { setPane('cmap') } }, tr('viewtab.cmap')),
+        createElement('button', { className: `lks-viewtab${pane === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(pane === 'cmap'), title: tr('viewtab.cmap.title'), onClick: () => { setPane('cmap') } }, createElement(IconGlobeOutline14, { size: 13 }), tr('viewtab.cmap')),
       ),
       pane === 'teach'
         ? createElement('div', { className: 'lks-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: lesson.html } })

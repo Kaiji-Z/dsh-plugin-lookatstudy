@@ -10,6 +10,7 @@
  */
 
 import { createElement } from 'react'
+import { IconBoltFill16, IconFlameFill16 } from './icons.tsx'
 import type { ReactNode } from 'react'
 import { useStudy } from './data.ts'
 import { tr } from './locale.ts'
@@ -32,6 +33,7 @@ export function StudyDockPill(): ReactNode {
     className: 'lks-root lks-dockpill',
     title: tr('dock.title', { due: data.dueCount, streak: data.progress.streak, level: data.progress.level }),
   },
-  ...segments.map(s => createElement('span', { key: s.key, className: `lks-dockseg lks-dock-${s.key}${s.muted ? ' lks-muted' : ''}` }, s.text)),
+  ...segments.map(s => createElement('span', { key: s.key, className: `lks-dockseg lks-dock-${s.key}${s.muted ? ' lks-muted' : ''}` },
+    s.key === 'due' ? createElement(IconBoltFill16, { size: 11 }) : s.key === 'streak' ? createElement(IconFlameFill16, { size: 11 }) : null, s.text)),
   )
 }

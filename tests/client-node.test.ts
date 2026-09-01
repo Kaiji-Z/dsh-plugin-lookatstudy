@@ -200,7 +200,7 @@ test('the lookatstudy locale dictionaries keep zh/en parity and translate with f
   }
   const tEn = makeT('en')
   assert.equal(tEn('tab.label'), 'Study')
-  assert.equal(tEn('rail.due', { count: 3 }), '🔁 3 due')
+  assert.equal(tEn('rail.due', { count: 3 }), '3 due')
   assert.equal(tEn('rail.due.over', { days: 2 }), '2d overdue')
   const tZh = makeT('zh')
   assert.equal(tZh('tab.label'), '学习')
@@ -209,7 +209,7 @@ test('the lookatstudy locale dictionaries keep zh/en parity and translate with f
   assert.equal(makeT('fr')('tab.label'), '学习')
   assert.equal(tEn('no.such.key'), 'no.such.key')
   // Missing params keep the placeholder verbatim (the service's semantics).
-  assert.equal(tEn('rail.due'), '🔁 {count} due')
+  assert.equal(tEn('rail.due'), '{count} due')
 })
 
 test('the pure projections translate through an injected translator', async () => {
@@ -225,7 +225,7 @@ test('the pure projections translate through an injected translator', async () =
 test('the dock pill projection renders due/streak/level segments, muted when zero', async () => {
   const { dockSegments } = await import('../src/client/dock.tsx')
   const segs = dockSegments({ dueCount: 2, streak: 4, level: 3 })
-  assert.deepEqual(segs.map(s => [s.text, s.muted]), [['⚡2', false], ['🔥4天', false], ['Lv3', false]])
+  assert.deepEqual(segs.map(s => [s.text, s.muted]), [['2', false], ['4天', false], ['Lv3', false]])
   const zeros = dockSegments({ dueCount: 0, streak: 0, level: 0 })
   assert.deepEqual(zeros.map(s => s.muted), [true, true, false], 'zero due/streak must not wear the warning/success tones')
 })
