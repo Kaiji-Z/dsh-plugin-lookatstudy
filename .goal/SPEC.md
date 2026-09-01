@@ -78,9 +78,9 @@
 
 ## 发版（owner 已确认）
 
-- [ ] R1. `node scripts/release.mjs 0.12.0 "<一轮信息>"` —— verify 重跑、bump、commit、tag、
+- [x] R1. `node scripts/release.mjs 0.12.0 "<一轮信息>"` —— verify 重跑、bump、commit、tag、
   push、CI、npm 轮询至 live。
-- [ ] R2.（可选）web profile 重装验证：按 AGENTS.md 的 profile package.json 编辑法 +
+- [x] R2.（可选）web profile 重装验证：按 AGENTS.md 的 profile package.json 编辑法 +
   corepack install，勿用 dsh plugin remove/add。
 
 ## 完成判据（逐条可验证）
