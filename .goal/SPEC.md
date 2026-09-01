@@ -72,9 +72,9 @@
 
 ## live 验证（批次 C 后）
 
-- [ ] L1. 刷新 livetest transcript：harness root 跑 headless livetest（命令见 AGENTS.md
+- [x] L1. 刷新 livetest transcript：harness root 跑 headless livetest（命令见 AGENTS.md
   「Headless livetest」节；key 从 ../deepseek-harness/.env source，绝不写入回显）。
-- [ ] L2. `pnpm run judge`（live）全判据 ≥8 PASS，报告落 livetest-judge-output.md（gitignored）。
+- [x] L2. `pnpm run judge`（live）全判据 ≥8 PASS，报告落 livetest-judge-output.md（gitignored）。
 
 ## 发版（owner 已确认）
 
