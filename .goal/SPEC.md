@@ -1,116 +1,111 @@
-# dsh 原生适应轮 · SPEC（harness dsh-v0.1.1-rc.2 基准）
+# SPEC · 上游 v0.23.0–v0.27.0 七项迭代跟进（目标 0.12.0）
 
-上游对齐轮（见 SPEC.archive-2026-08-23-alignment.md，40/40 完成）之后，本插件的功能面已齐，
-但它对 dsh 宿主的"原生感"还停在两个 slot（conversation.view + conversation.input.left）。
-本轮把审计出的六项宿主能力全部接上。审计基准：harness 已 checkout 到 tag `dsh-v0.1.1-rc.2`
-（b150a551b8），七项关键 API 逐条 grep 复核过（locale / settings.section / commands /
-composer.dock / toolview / immediately / connectWorkspace），契约与审计结论一致。
+上游本地 checkout：`D:/Users/kaiji/vibecodingKJ/projects/LookatStudy`（main == remote @ v0.27.0）。
+本插件当前对齐 v0.22.1（0.11.1）。上一轮（dsh-native，见 SPEC.archive-2026-08-31-dsh-native.md）已完成。
+本地文件 CRLF，diff 上游时 strip-trailing-cr。
 
-## 前置步骤（一次性）
+**执行顺序：批次 A（persona/行为）→ 批次 B（解析器四修）→ 批次 C（markmap 退役 + 版本行）→ live livetest + judge → 发版 0.12.0。**
+每个批次内：先证新守卫红（mutation），再实现转绿，再跑 `pnpm test`。
+每完成一项勾选下方复选框；全部勾完才算本轮完成。
 
-- [x] harness 根 `corepack pnpm install`（937 包，30.3s 完成；tests/client-node.test.ts 两个新 locale 测试）
+## 基线（2026-09-01，开工前实测一次留档）
 
-## 基线（2026-08-23，全部本会话实测）
+- [x] `pnpm run verify` PASS（2026-09-01，main @ cdb26dd，树干净）；测试数 N₀ = 174
 
-- 测试 169/169 绿；`pnpm run verify` PASS
-- 依赖数 0；lib/client.js gzip 30,708B
-- 审计证据行号基于 rc.2 复核后的位置（见各工作流）
+## 批次 A · persona 反伪造 + 三级分层（上游 0.27.0）
 
-## W1 · 客户端 i18n 双语（最大差距）
+上游事故：模型不真正调用 `mark_mastered`，在正文手写「[工具调用已执行]」假标记 → 无确认卡片。
+我们同暴露面：`study_propose_mastery` / `study_resolve_proposal`（src/tools.ts:1365/1412）。
+现状：src/surface.ts persona 为英文本体（上游「英文本体」项天然满足），有工具指引（:43-53），
+**无反伪造条款**。
 
-现状：学习页/启动按钮全部硬编码中文；dsh 有第一方 locale 系统
-（`ctx.locale.register(ns, {zh, en})`，zh/en 平衡由 API 强制；slot `register` 传
-`locale: 'lookatstudy'` 即给组件注入 `t` 标准席位；`FALLBACK_LOCALE='zh'`）。
-证据：packages/client/locale/src/client/index.ts:253-254、packages/client/runtime/src/client/slots.ts:82。
+- [x] A1. persona 重组为三级（全部现有条款原句保留，仅重组 + 优先级标记）：
+  - 【Safety redlines · highest priority】反幻觉 + 工具调用真实性（新增反伪造条款：markers are
+    injected by the system into history ONLY; hand-writing them in reply text produces NO UI
+    artifact; the only way to propose mastery is a REAL tool call）+ 显式声明冲突时以本段为准。
+  - 【Teaching behavior】模糊提问引导、工具使用流程（现有 numbered flow）。
+  - 【Answer formatting · preferences】自声明次级地位。
+- [x] A2. 工具指引补全：propose/resolve 使用时机在指引里点名（现有 :47，检查上下文完整）。
+- [x] A3. 回归测试（tests/activation.test.ts 扩或新 tests/persona.test.ts）：
+  三级结构锁（分块存在 + 顺序）；反伪造关键句存在（先证红：临时删句确认红，复原，记录）；
+  工具清单点名 propose/resolve。
+- [x] A4. judge 判据扩充：judge-criteria.md 增「正文零手写工具标记」「提议必须真调
+  study_propose_mastery」两判据；scripts/livetest-judge.mjs 模板若动则同步
+  tests/livetest-judge.test.ts（结构性铁律）。判据只增不减。
 
-- [x] 建 `src/client/locale.ts`：`lookatstudy` 命名空间 zh/en 两份字典（78 键），键集一致
-      （tests/client-node.test.ts 'lookatstudy locale dictionaries keep zh/en parity'）
-- [x] views.tsx / starter.tsx 全部用户可见文案走 `tr()`（含 viewtab 标签、按钮 title、
-      空态、窄模式切换器、quiz 选项、发给模型的提示词模板）；两处 register 都带
-      `locale: 'lookatstudy'`，view tab label 走 thunk 跟随 locale；locale/change 订阅触发重渲
-- [x] 回归测试：键集 deepEqual + 全 78 键双语非空 + 插值/回退/占位语义 + 纯投影注入
-      en 翻译器（'pure projections translate through an injected translator'）
-- [x] live：设置→通用→语言切 English 后,DOM 断言通过:页签名 Study,列头 Courses/Tutor/
-      Blackboard,视图页签 Teach/🧠 Mind map/🕸 Concepts,窄模式切换器/激活条全英文,chrome
-      元素中文残留扫描为空(2026-08-23,rc.2 web profile + file: 构建)
+## 批次 B · 解析器四修（上游 0.23.1 / 0.24.0）
 
-## W2 · 插件设置页
+全部零依赖红线内移植（纯字符串/XML 处理），每项更新 vendor 文件 provenance header 记录偏差。
 
-现状：mode/statePath/active 只能手编 cordis.yml。宿主有 `settings.section`
-（一插件一页，root 作用域，证据 packages/client/ui-settings/src/client/contract/slots.ts:53）。
-我们已有 POST /api/mode、POST /api/active 两条写路由，直接复用。
+- [ ] B1. **html-article 尾部模板清理**（src/vendor/html-article.ts ← 上游
+  src/main/services/pure/html-article.ts `stripTailNavigation` :97）：指纹式清尾部机器模板
+  （搜狐「返回搜狐」/阿里云侧栏三行/行内导航后缀/CSDN 裸图路径行）。原则写进注释：只删跨文章
+  稳定的机器生成模板，作者亲笔推广段是正文（上游教训：「欢迎关注公众号」规则误删过作者亲笔段）。
+  挂 extractArticle 的 markdown 出口。测试：tests/html-article.test.ts 增搜狐/CSDN/阿里云各一例
+  + 作者推广段不删反例。
+- [ ] B2. **epub 章节对齐全套**（src/vendor/epub-parser.ts，161 行 → 参照上游 378 行版
+  `sanitizeEpubBody`(:202) + `splitChaptersInBody`(:126) + 0.24.0 三修）：Gutenberg 头/尾截断；
+  多章一文件拆分（CH/Letter 标记 heading 或裸行两形态，裸行限行长防误切，罗马数字/裸序号连续
+  递增 ≥3 才切，license 单标记也切救末章、大内容保附录）；出版社形态（无标题兜底「未命名章节」
+  不编造编号；短扉页+紧随无标题正文配对合并、后章有标题绝不合并不连锁；版权页著录字段密度
+  ≥3 过滤、目录页链接密度 ≥60% 过滤）。zip-reader 交换不动。测试：tests/epub-parser.test.ts
+  增合成 fixture（上游 verify-epub-parser T5-T15 形状，CI 无网络）。
+- [ ] B3. **pptx 表格提取**（src/vendor/pptx-parser.ts）：slide XML walker 处理 `a:tbl` →
+  GFM markdown 表（参照上游 `tableToMarkdown` :42）：竖线转义防破表、全空表整张跳过。
+  测试：tests/docx-pptx-parser.test.ts 增含表格 slide fixture。
+- [ ] B4. **pdf 康熙部首归一**（src/vendor/pdf-text.ts）：`normalizeRadicals` 纯函数
+  （U+2F00-2FDF 逐字符 NFKC）挂 parsePdfText 出口。测试：tests/pdf-text.test.ts 增部首区
+  字形用例。
 
-- [x] 注册 `settings.section` 一页（label 走 W1 字典）：教学风格三选（→ POST /api/mode）、学习模式
-      开关（→ POST /api/active，onActiveChange 同步）、statePath 与统计只读展示（src/client/settings.tsx +
-      dashboard.ts progress 块与 statePath 注入；tests/dashboard.test.ts state-feed 断言）
-- [x] 回归测试：state feed 携带 progress 三项 + statePath（dashboard.test.ts）；组件走共享 store 既有
-      mode/activate 写路径（client-node.test.ts 已覆盖 store 层）
-- [x] live：设置页翻 mode 引导→实战后 /api/state 回读 mode=practice;翻学习模式关闭后
-      feed active=false 且 dock pill 随之消失(渲染级门控 live 证实),再翻回;mode 恢复 guide
+## 批次 C · markmap 退役 + 设置页版本行（上游 0.26.0 / 0.24.0）
 
-## W3 · /study 斜杠命令（发现入口）
+- [ ] C1. **markmap 整体退役**：删 src/client/diagrams.ts mindmap 视图 + CDN 三件套
+  （markmap-lib@0.18.12 / markmap-view@0.18.10 / d3）+ src/vendor/mindmap-markdown.ts +
+  views.tsx 触发 UI（Brain 按钮/页签）+ 相关 locale 键。ELK concept map / mermaid 不动。
+  上游论证随删随记：有标题结构不需画图、无标题截首句图看不懂、LLM 概念图已覆盖且质量更高。
+  守卫：测试断言源码 + lib 产物零 markmap 残留（参照上游 verify-build-manifest 思路）。
+  AGENTS.md CDN 清单表述同步更新。
+- [ ] C2. **设置页 About 版本行**（src/client/settings.tsx + locale.ts）：「关于」分组显示
+  版本号，构建期内联（bundler JSON import 或 tsdown define），禁止运行时网络取版本；
+  点击跳 GitHub releases。zh/en 双语，版本与 package.json 严格一致。测试：client-node.test.ts
+  断言 locale 键 + 版本字符串等于 package.json。
 
-现状：headless/键盘用户没有发现路径。宿主 `ctx.commands.register(CommandDefinition)`
-（全局或 agent 域，execute 绕过模型；证据 packages/interaction/commands/src/index.ts:262）。
+## live 验证（批次 C 后）
 
-- [x] 注册全局 `/study`：激活（若 dormant）+ followup 注入 kickoff（与 hero 按钮同文，zh 字典单源）；
-      带参数透传（src/commands.ts；宿主侧命令发现 UI 即列出，客户端 commandUi 贡献判定为冗余未加）
-- [x] 客户端 commandUi 判定为冗余未加:宿主命令注册已进发现 UI——composer 输入 /study
-      即出现 Commands→study 建议项(live 证实);命令经宿主 execute 通道,无需客户端贡献
-- [x] 回归测试：dashboard.test.ts '/study activates a dormant install...'（激活顺序/幂等/透传/注册形状）
-- [x] live：composer 输入 /study(命令建议列表命中)回车 → 命令结果(学习模式已就位)+
-      中文 kickoff 入队,模型真实跑完一轮;headless 冒烟:Config.active=on 语义不变,rc.2
-      一-shot 跑通,回复含新 id 格式(course-materials:0:1)
+- [ ] L1. 刷新 livetest transcript：harness root 跑 headless livetest（命令见 AGENTS.md
+  「Headless livetest」节；key 从 ../deepseek-harness/.env source，绝不写入回显）。
+- [ ] L2. `pnpm run judge`（live）全判据 ≥8 PASS，报告落 livetest-judge-output.md（gitignored）。
 
-## W4 · composer 环境状态条
+## 发版（owner 已确认）
 
-现状：XP/连续/待复习只在插件页内。`conversation.composer.dock`（list、session 作用域，
-token 统计条同款位置；证据 packages/client/ui-conversation/src/client/contract/slots.ts:214）。
-
-- [x] 注册 dock 条目（src/client/dock.tsx）：active 时显示 ⚡n · 🔥d · Lvn，数据来自共享 poll store；
-      dormant/加载中渲染 null（渲染级门控——conversation.view 页签切换是 ui-conversation 私有，
-      点击跳转不可达，改为 tooltip 指路，与 starter 按钮同一约束）
-- [x] 点击行为改为 tooltip 指路:conversation.view 页签切换是 ui-conversation 私有 API
-      (与 starter 按钮同一约束),live 证实 dock tooltip 完整显示学习状态并指路学习页签
-- [x] 回归测试：dockSegments 投影（client-node.test.ts）；dormant null 分支在组件内（live 检查单覆盖）
-- [x] live：真实 state(已激活)下 dock 渲染 ⚡0 · 🔥0d · Lv0 且数值与 /api/state 一致;
-      dormant 翻面后 dock 消失(settings live 检查中一并证实)
-
-## W5 · 对话页 toolview（study_* 自定义视图）
-
-现状：对话页签里 study_* 调用是通用样式。`tool.call.toolview`（keyed by 工具名、
-session 作用域；证据 packages/client/ui-tool/src/client/contract/slots.ts:24）。
-
-- [x] 为高价值工具注册 keyed 视图（src/client/toolviews.tsx）：record_answer（args 实时 ✓/✗ 色 +
-      meta 行）、lesson/due/exam（meta 行卡片，meta 即 presentationMeta 卡片线，回放安全）——其余走默认
-- [x] 回归测试：answerTone 解析 + metaLines 两条来源（meta 数组 / content 文本）（client-node.test.ts）
-- [x] live：对话页签 .lks-tv 卡 7 张(study_due_reviews/study_lesson 各带 meta 行);真实模型
-      一轮出题判分后 study_record_answer 卡落位:✓ correct — mastery 50% → 50% (crown 3) /
-      concept: conda环境 84%
-
-## W6 · 预取与类型清理（收尾）
-
-- [x] package.json `dsh.client` 加 `"immediately": true` + locale 注入边；verify bundle 门禁新增
-      manifest 断言（scripts/verify.mjs）+ 六条新 bundle 内容断言（settings.section/dock/toolview 等）
-- [x] `as never` 换本地 SessionId 品牌助手（views.tsx sessionId()）
-- [x] README 增补 'dsh-native surfaces' 一节；AGENTS.md Layout 增补新客户端模块与 src/commands.ts
-- [x] index.ts 注释更正为 25 并纳入 /study 命令
+- [ ] R1. `node scripts/release.mjs 0.12.0 "<一轮信息>"` —— verify 重跑、bump、commit、tag、
+  push、CI、npm 轮询至 live。
+- [ ] R2.（可选）web profile 重装验证：按 AGENTS.md 的 profile package.json 编辑法 +
+  corepack install，勿用 dsh plugin remove/add。
 
 ## 完成判据（逐条可验证）
 
 1. `grep -c '\[ \]' .goal/SPEC.md` = 0
-2. `pnpm run verify` exit 0，测试数 ≥ 169 + 本轮新增
-3. 依赖数仍为 0；lib/client.js gzip 相对 30,708B 增量 < 20KB
-4. live 检查单（Playwright 结构断言，web profile + 本地 file: 构建）：
-   a. en locale 下学习页无中文残留；b. 设置页翻 mode/active 生效；c. /study 命令
-   注入 kickoff；d. dock 显示 XP/连续/待复习；e. 对话页 study_record_answer 自定义视图
-5. headless 冒烟：`Config.active` 语义不变，`pnpm dsh --profile headless` 一-shot 可跑
+2. `pnpm run verify` exit 0，测试数 ≥ N₀ + 本轮新增（每项新守卫具名）
+3. `grep -ril markmap src/ lib/` 零命中
+4. 依赖数仍为 0（markmap 是删 CDN import，package.json 本就无此依赖）
+5. live judge 全判据 ≥8（新增两条在内）
+6. npm registry 出现 0.12.0（release 脚本自轮询确认）
 
-## 范围与停止条件
+## 范围与禁区（全程）
 
-- 只许动：src/、tests/、scripts/、docs/、README.md、AGENTS.md、package.json
-  （仅 dsh.client 字段与版本号）、.goal/SPEC.md
-- 禁碰：../deepseek-harness（已按指示更新至 dsh-v0.1.1-rc.2，之后只读参照）；
-  不装任何新依赖；工具 output schema 只增不删；不发版（等 owner 口令）
-- 停止条件：rc.2 之后宿主再变导致 API 与本 SPEC 证据不符（需用户决策是否追）；
-  同一思路连续 3 次失败；gzip 增量判据无法满足（需用户放宽或砍 W5）
+- 只许动：src/、tests/、judge-criteria.md、scripts/livetest-judge.mjs（判据配套）、
+  scripts/verify.mjs（如需加 markmap 残留守卫）、README.md/AGENTS.md（表述同步）、
+  package.json（仅版本号，由 release 脚本动）、.goal/SPEC.md（勾选进度）
+- 禁碰：零依赖红线（不新增任何 runtime npm 依赖）；../deepseek-harness（只读）；
+  dsh profiles（除 R2 可选验证）；state.json 持久化格式；Z_AI_API_KEY 绝不写入仓库/回显；
+  不为凑绿删既有测试断言或削减 judge 既有判据；工具 output schema 只增不删
+- 上游修复若依赖插件禁区（模型客户端 / yt-dlp spawn / linkedom 等 npm deps）→ 按零依赖
+  方式改写并在 provenance header 记录，不是停机理由
+
+## 停止条件（停下来问 owner）
+
+- harness .env 缺 Z_AI_API_KEY → live judge 跑不了，报告后停（勿伪造判据）
+- 同一移植思路连续 3 轮失败
+- release 脚本 CI 或 npm 轮询失败 → 停，附日志
+- 发现必须动零依赖红线或持久化 schema 才能继续
