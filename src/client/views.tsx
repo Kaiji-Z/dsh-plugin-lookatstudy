@@ -22,7 +22,7 @@ import type {
 import { useStudy } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
 import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
-import { renderMindmap, renderLessonConceptMap } from './diagrams.ts'
+import { renderLessonConceptMap } from './diagrams.ts'
 import { tr, type StudyT } from './locale.ts'
 
 /** The three souls, in pill order (labels from LookatStudy's mode switcher). */
@@ -732,7 +732,7 @@ function TutorColumn({ data, setMode, send, snapshot }: {
 /** Right column: the blackboard — focus-lesson 讲解/脑图/概念图 plus the Cornell 笔记. */
 function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
   const lesson = data?.lesson ?? null
-  const [pane, setPane] = useState<'teach' | 'mind' | 'cmap'>('teach')
+  const [pane, setPane] = useState<'teach' | 'cmap'>('teach')
   const proseRef = useRef<HTMLDivElement | null>(null)
   const diagRef = useRef<HTMLDivElement | null>(null)
   // Post-render enhancement: math/shiki/mermaid via CDN, every failure degrades silently.
@@ -743,21 +743,17 @@ function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
   }, [pane, lesson?.html])
   // Diagram panes (also CDN + vendored layout, honest one-line failure notice).
   useEffect(() => {
-    if ((pane !== 'mind' && pane !== 'cmap') || diagRef.current === null || lesson === null) return
+    if (pane !== 'cmap' || diagRef.current === null || lesson === null) return
     const el = diagRef.current
     el.textContent = ''
-    const run = pane === 'mind'
-      ? renderMindmap(el, lesson.markdown)
-      : lesson.concepts.length === 0
-        ? Promise.reject(new Error('no concepts'))
-        : renderLessonConceptMap(el, lesson.title, lesson.concepts.map(c => ({ title: c.title, masteryPct: c.masteryPct })))
+    const run = lesson.concepts.length === 0
+      ? Promise.reject(new Error('no concepts'))
+      : renderLessonConceptMap(el, lesson.title, lesson.concepts.map(c => ({ title: c.title, masteryPct: c.masteryPct })))
     run.catch((err) => {
       console.error('lks diagram pane failed:', pane, err)
-      el.textContent = pane === 'mind'
-        ? tr('bb.fallback.mind')
-        : lesson.concepts.length === 0
-          ? tr('bb.fallback.cmap.empty')
-          : tr('bb.fallback.cmap')
+      el.textContent = lesson.concepts.length === 0
+        ? tr('bb.fallback.cmap.empty')
+        : tr('bb.fallback.cmap')
     })
   }, [pane, lesson?.lessonId, lesson?.concepts.length])
 
@@ -780,7 +776,6 @@ function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
       ),
       createElement('div', { className: 'lks-viewtabs' },
         createElement('button', { className: `lks-viewtab${pane === 'teach' ? ' on' : ''}`, onClick: () => { setPane('teach') } }, tr('viewtab.teach')),
-        createElement('button', { className: `lks-viewtab${pane === 'mind' ? ' on' : ''}`, title: tr('viewtab.mind.title'), onClick: () => { setPane('mind') } }, tr('viewtab.mind')),
         createElement('button', { className: `lks-viewtab${pane === 'cmap' ? ' on' : ''}`, title: tr('viewtab.cmap.title'), onClick: () => { setPane('cmap') } }, tr('viewtab.cmap')),
       ),
       pane === 'teach'

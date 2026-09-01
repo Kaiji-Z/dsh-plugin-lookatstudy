@@ -189,7 +189,7 @@ export const STUDY_CSS = `
 .lks-prose ul,.lks-prose ol{padding-left:22px;margin:6px 0}
 .lks-prose img{max-width:100%}
 /* width guards for CDN-rendered artifacts (both teach and diagram panes are
-   .lks-prose): mermaid/markmap/elk SVGs carry fixed width attributes; KaTeX
+   .lks-prose): mermaid/elk SVGs carry fixed width attributes; KaTeX
    display math can exceed the column; both must degrade to fit/scroll
    internally instead of stretching the blackboard. */
 .lks-prose svg{max-width:100%;height:auto}

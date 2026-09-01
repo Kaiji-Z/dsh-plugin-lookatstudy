@@ -261,3 +261,21 @@ test('the toolview projections parse answer args and meta lines', async () => {
   )
   assert.deepEqual(metaLines({}), [])
 })
+
+// --- upstream v0.26.0 port: markmap retired (ELK concept map covers it) ---
+
+test('markmap is fully retired: zero residue across src/ (view, CDN, vendor, locale)', async () => {
+  const { readdirSync, readFileSync, statSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const hits: string[] = []
+  const walk = (dir: string): void => {
+    for (const name of readdirSync(dir)) {
+      const p = join(dir, name)
+      if (statSync(p).isDirectory()) { walk(p); continue }
+      if (!/\.(ts|tsx)$/.test(name)) continue
+      if (/markmap|mindmap/i.test(readFileSync(p, 'utf8'))) hits.push(p)
+    }
+  }
+  walk(join(import.meta.dirname, '..', 'src'))
+  assert.deepEqual(hits, [], 'markmap/mindmap must not appear anywhere in src/ (retired upstream v0.26.0; the ELK concept map is the surviving diagram view)')
+})

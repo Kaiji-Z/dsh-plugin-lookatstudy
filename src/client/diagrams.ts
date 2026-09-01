@@ -1,46 +1,18 @@
 /**
- * Blackboard diagram views (SPEC Phase 2): the lesson mind map (markmap via
- * CDN, markdown preprocessed by the vendored mindmap-markdown) and the lesson
- * concept map (ELK layered layout via the vendored cmap-elk-layout + CDN elkjs,
- * draw.io-flavored SVG skin rendered plugin-side). Both degrade honestly: any
- * CDN/ELK failure leaves a one-line notice instead of a broken pane.
+ * Blackboard diagram views (SPEC Phase 2): the lesson concept map (ELK layered
+ * layout via the vendored cmap-elk-layout + CDN elkjs, draw.io-flavored SVG
+ * skin rendered plugin-side). Degrades honestly: any CDN/ELK failure leaves a
+ * one-line notice instead of a broken pane.
+ *
+ * The lesson mind map view was RETIRED with upstream v0.26.0 (2026-09-01
+ * port): body text that has headings already shows its structure, text without
+ * headings yields a first-line-truncated node graph nobody can read — both
+ * lose — and this concept map already covers the semantic-structure need at
+ * higher quality. Its three CDN imports went with it.
  */
 
-import { mindmapMarkdown } from '../vendor/mindmap-markdown.ts'
 import { layoutConceptMap, type CmNode, type CmEdge } from '../vendor/cmap-elk-layout.ts'
 
-type TransformerLike = { transform(md: string): { root: unknown } }
-type MarkmapLike = { create(svg: unknown, opts?: unknown): { setData(data: unknown): void; fit(): void } }
-
-const CDN = {
-  markmapLib: 'https://esm.sh/markmap-lib@0.18.12',
-  markmapView: 'https://esm.sh/markmap-view@0.18.10',
-}
-
-let markmapPromise: Promise<{ transformer: TransformerLike; Markmap: MarkmapLike; d3: unknown }> | null = null
-async function loadMarkmap() {
-  markmapPromise ??= (async () => {
-    const lib = await import(/* @vite-ignore */ CDN.markmapLib) as Record<string, unknown>
-    const view = await import(/* @vite-ignore */ CDN.markmapView) as Record<string, unknown>
-    const Transformer = (lib.Transformer ?? {}) as new (plugins?: unknown) => TransformerLike
-    const d3 = await import(/* @vite-ignore */ 'https://esm.sh/d3@7')
-    return { transformer: new Transformer(), Markmap: view.Markmap as MarkmapLike, d3 }
-  })()
-  return markmapPromise
-}
-
-/** Render the lesson markdown as a mind map into an empty container. */
-export async function renderMindmap(container: HTMLElement, markdown: string): Promise<void> {
-  const { transformer, Markmap, d3 } = await loadMarkmap()
-  const { root } = transformer.transform(mindmapMarkdown(markdown))
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-  svg.setAttribute('style', 'width:100%;min-height:420px')
-  container.append(svg)
-  ;(window as Record<string, unknown>)['markmap'] = { d3 }
-  const mm = Markmap.create(svg, { autoFit: true })
-  mm.setData(root)
-  mm.fit()
-}
 
 /** Lesson concept map: the lesson node + its concepts (weak ones accented),
  *  laid out by the vendored ELK pipeline, skinned draw.io-style (plugin-original,

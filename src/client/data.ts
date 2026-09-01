@@ -68,6 +68,8 @@ export interface StudyState {
   }
   /** Absolute state-file path (read-only display). */
   readonly statePath: string
+  /** Plugin version from the running build's package.json (settings About row). */
+  readonly version: string
 }
 
 /** Poll cadence for the shared store; one cycle serves every mounted seat. */

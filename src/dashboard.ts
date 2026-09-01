@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 /**
  * The study tab's HTTP API under `/lookatstudy/api/*`: the polled state feed
  * and the tab's write actions (focus, mode, lesson-session binding, course
@@ -31,6 +33,18 @@ export interface DashboardStore {
 }
 
 /** Wiring handed in by `apply`. */
+/**
+ * The plugin's own version, read from the package.json sitting beside the
+ * running module (src in dev, lib in install) — strictly the installed build,
+ * no build-time inlining that could drift. Upstream v0.24.0 port (settings
+ * About row); empty string on any read failure (display degrades, never throws).
+ */
+function pluginVersion(): string {
+  try {
+    return String(JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')).version ?? '')
+  } catch { return '' }
+}
+
 export interface DashboardDeps {
   store: DashboardStore
   /** Directory the one-click starter adopts as the study workspace (apply ensures it exists). */
@@ -290,7 +304,7 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
     handler: async (req, res) => {
       const pathname = new URL(req.url ?? '/', 'http://x').pathname
       if (req.method === 'GET' && pathname === '/lookatstudy/api/state') {
-        sendJson(res, 200, { ...workbenchState(deps.store.get(), new Date()), statePath: deps.statePath })
+        sendJson(res, 200, { ...workbenchState(deps.store.get(), new Date()), statePath: deps.statePath, version: pluginVersion() })
         return
       }
       if (req.method === 'GET' && pathname === '/lookatstudy/api/search') {

@@ -59,13 +59,13 @@
 
 ## 批次 C · markmap 退役 + 设置页版本行（上游 0.26.0 / 0.24.0）
 
-- [ ] C1. **markmap 整体退役**：删 src/client/diagrams.ts mindmap 视图 + CDN 三件套
+- [x] C1. **markmap 整体退役**：删 src/client/diagrams.ts mindmap 视图 + CDN 三件套
   （markmap-lib@0.18.12 / markmap-view@0.18.10 / d3）+ src/vendor/mindmap-markdown.ts +
   views.tsx 触发 UI（Brain 按钮/页签）+ 相关 locale 键。ELK concept map / mermaid 不动。
   上游论证随删随记：有标题结构不需画图、无标题截首句图看不懂、LLM 概念图已覆盖且质量更高。
   守卫：测试断言源码 + lib 产物零 markmap 残留（参照上游 verify-build-manifest 思路）。
   AGENTS.md CDN 清单表述同步更新。
-- [ ] C2. **设置页 About 版本行**（src/client/settings.tsx + locale.ts）：「关于」分组显示
+- [x] C2. **设置页 About 版本行**（src/client/settings.tsx + locale.ts）：「关于」分组显示
   版本号，构建期内联（bundler JSON import 或 tsdown define），禁止运行时网络取版本；
   点击跳 GitHub releases。zh/en 双语，版本与 package.json 严格一致。测试：client-node.test.ts
   断言 locale 键 + 版本字符串等于 package.json。

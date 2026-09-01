@@ -81,7 +81,6 @@ gate('bundle', () => {
     [host, '3000-8000', 'lesson pacing rule rides the brief and prompt'],
     [client, 'esm.sh/shiki', 'shiki CDN loader (Phase 2 rendering, zero-dep bundle)'],
     [client, 'esm.sh/mermaid', 'mermaid CDN loader'],
-    [client, 'esm.sh/markmap', 'markmap CDN loader'],
     [client, 'esm.sh/elkjs', 'elkjs CDN loader (concept map layout)'],
     [client, 'cdn.jsdelivr.net/npm/katex', 'KaTeX CDN loader'],
     [host, 'normalizeMathNotation', 'math notation normalization rides the lesson pipeline'],
@@ -95,6 +94,7 @@ gate('bundle', () => {
   const forbidden = [
     [client, 'agentReady', 'stale agentReady gate (removed in 0.4.1)'],
     [client, '📚', 'emoji icon on starter/import buttons (replaced by ic_ds glyphs in 0.7.1)'],
+    [client, 'markmap', 'retired mind-map view + its CDN trio (upstream v0.26.0 port)'],
   ]
   const checks = [
     ...required.map(([src, needle, label]) => ({ ok: src.includes(needle), label: `bundle contains ${label} (${JSON.stringify(needle)})` })),

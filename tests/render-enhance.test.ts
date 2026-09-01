@@ -3,7 +3,6 @@
  * bundle-gated in verify and live-verified in the web-profile livetest):
  *  - math-normalize (vendored verbatim): \(..\)→$..$, \[..\]→$$..$$, fences untouched, idempotent
  *  - mermaid-elk-rewrite (vendored verbatim): flowchart→flowchart-elk prefix, idempotent, other diagram types untouched
- *  - mindmap-markdown (vendored verbatim): fences → 代码块 placeholder, images → alt, comments stripped
  *  - cmap-elk-layout pure parts: CJK width estimation, label wrapping, node boxes, adjacency clustering fallback
  *  - the math-span detector the DOM enhancer walks with
  */
@@ -12,7 +11,6 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { normalizeMathNotation } from '../src/vendor/math-normalize.ts'
 import { rewriteFlowchartToElk } from '../src/vendor/mermaid-elk-rewrite.ts'
-import { mindmapMarkdown } from '../src/vendor/mindmap-markdown.ts'
 import { estTextWidth, wrapLabel, cmNodeBox, clusterByAdjacency, resolveGroups } from '../src/vendor/cmap-elk-layout.ts'
 
 test('math-normalize: LaTeX delimiters fold to $, fences untouched, idempotent', () => {
@@ -36,27 +34,6 @@ test('mermaid-elk-rewrite: flowchart family gets -elk, idempotent, others untouc
   assert.equal(rewriteFlowchartToElk(state), state, 'state untouched')
 })
 
-test('mindmap-markdown: fences collapse to placeholders, images to alt, comments drop', () => {
-  const md = [
-    '# L',
-    '## A',
-    'text with ![alt text](img.png) inline',
-    '```python',
-    'print(1)',
-    '```',
-    '<!-- hidden -->',
-    '## B',
-    '```',
-    'raw fence',
-  ].join('\n')
-  const out = mindmapMarkdown(md)
-  assert.ok(out.includes('# L'))
-  assert.ok(out.includes('alt text'), 'image alt survives')
-  assert.ok(!out.includes('img.png'))
-  assert.ok(!out.includes('print(1)'), 'fence body dropped')
-  assert.ok(out.includes('- 代码块'), 'fence placeholder keeps structure')
-  assert.ok(!out.includes('hidden'), 'HTML comment stripped')
-})
 
 test('cmap pure layout: CJK-aware widths, label wrapping, hub boxes, adjacency fallback clusters', () => {
   assert.ok(estTextWidth('中文') > estTextWidth('ab'), 'CJK chars are full-width')

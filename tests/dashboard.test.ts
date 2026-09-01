@@ -4,6 +4,7 @@
  * switching, mode, lesson-session binding, and course deletion.
  */
 
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
@@ -226,4 +227,17 @@ test('/study activates a dormant install and queues the kickoff through followup
   let def: { name: string } | undefined
   registerStudyCommand({ register: d => { def = d; return () => {} } }, deps)
   assert.equal(def!.name, 'study')
+})
+
+// --- upstream v0.24.0 port: the settings About row rides the state feed's version ---
+
+test('the state feed carries the plugin version read from the running package.json', async () => {
+  const state = emptyState()
+  state.active = true
+  const routes: Array<{ kind: string; path: string; handler: (req: RouteMethod, res: unknown) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route as never); return () => {} } },
+    { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} } as never)
+  const api = await handle(routes as never, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
+  assert.equal((api.json() as { version: string }).version, pkg.version, 'version equals the installed package.json — strictly the running build')
 })
