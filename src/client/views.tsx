@@ -172,14 +172,17 @@ function assistantText(blocks: readonly AssistantBlock[]): string {
  * Tool results are skipped: the host conversation renders the rich
  * `tool.call.toolview` cards, and the tutor column stays a pure persona
  * surface (a transcript mirror there grew a second, diverging record).
+ * Both inputs tolerate undefined: newer hosts (DSH v0.1.2-alpha.4) mount
+ * the conversation view before session data exists, and the fold must
+ * degrade to an empty transcript instead of blanking the whole tab.
  * @param nodes - finalized conversation nodes from the snapshot.
  * @param partial - the in-flight assistant partial, or null.
  * @param t - translator (defaults to the active one, per call).
  * @returns ordered rows; never mutates its inputs.
  */
-export function transcriptRows(nodes: readonly ConversationNode[], partial: PartialAssistant | null, t: StudyT = tr): readonly ChatRow[] {
+export function transcriptRows(nodes: readonly ConversationNode[] | undefined, partial: PartialAssistant | null | undefined, t: StudyT = tr): readonly ChatRow[] {
   const rows: ChatRow[] = []
-  for (const node of nodes) {
+  for (const node of nodes ?? []) {
     switch (node.kind) {
       case 'user':
       case 'steering': {
@@ -199,7 +202,7 @@ export function transcriptRows(nodes: readonly ConversationNode[], partial: Part
         break
     }
   }
-  if (partial !== null) {
+  if (partial != null) {
     const text = assistantText(partial.blocks)
     if (text !== '') rows.push({ key: 'streaming', role: 'streaming', text })
     // No text yet means the tutor is reasoning (or lining up tool calls) —
@@ -260,6 +263,8 @@ export function studyView(ctx: ClientContext): (props: ConvViewProps) => ReactNo
 /** Tab body: the factory-bound ctx carries workspaces/sessions for the per-lesson session jumps. */
 function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: ClientContext }): ReactNode {
   const { data, activate, setMode, setFocus, searchLessons, deleteCourse, bindLessonSession } = useStudy()
+  // Newer hosts (DSH v0.1.2-alpha.4) mount the tab before session data
+  // exists, so every read off this value guards for undefined.
   const snapshot = useSession((s: ConversationSnapshot) => s)
   const [pane, setPane] = useState<StudyPane>(storedPane)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -367,7 +372,7 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
       },
       }, tr(p.labelKey))),
     ),
-    createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, bindLessonSession, send, ctx, currentSessionId: snapshot.sessionId }),
+    createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, bindLessonSession, send, ctx, currentSessionId: snapshot?.sessionId ?? '' }),
     createElement(TutorColumn, { data, setMode, send, snapshot }),
     createElement(BlackboardColumn, { data }),
   ),
@@ -650,10 +655,10 @@ function TutorColumn({ data, setMode, send, snapshot }: {
   data: StudyData
   setMode: (mode: 'direct' | 'guide' | 'practice') => Promise<void>
   send: StudySend
-  snapshot: ConversationSnapshot
+  snapshot: ConversationSnapshot | undefined
 }): ReactNode {
   const [error, setError] = useState<string | null>(null)
-  const rows = transcriptRows(snapshot.nodes, snapshot.partial)
+  const rows = transcriptRows(snapshot?.nodes, snapshot?.partial ?? null)
   // Quiz buttons only on the last settled assistant reply: older questions are
   // already answered, and the streaming partial may cut an option mid-line.
   const lastAssistant = rows.reduce((acc, row, i) => row.role === 'assistant' ? i : acc, -1)

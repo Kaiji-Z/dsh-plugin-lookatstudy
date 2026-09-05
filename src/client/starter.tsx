@@ -24,7 +24,9 @@ import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
  */
 export function studyStartButton(ctx: ClientContext): (props: InputZone) => ReactNode {
   return function StudyStartButton({ session }: InputZone): ReactNode {
-    if (session.blank !== true) return null
+    // Newer hosts (DSH v0.1.2-alpha.4) call input slots before session data
+    // exists; no session means no blank-session starter, not a crash.
+    if (session?.blank !== true) return null
     return createElement(Inner, { key: 'inner', ctx })
   }
 }

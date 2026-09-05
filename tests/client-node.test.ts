@@ -117,6 +117,13 @@ test('a text-less partial shows the thinking row instead of dead air', () => {
   assert.deepEqual(streaming.map(r => r.role), ['streaming'], 'once text arrives the streaming row replaces thinking')
 })
 
+test('transcriptRows degrades to an empty transcript when the host hands over no session data', () => {
+  // DSH v0.1.2-alpha.4 mounts the conversation view before the session
+  // snapshot exists (issue #1: the tab blanked with "nodes is not iterable").
+  assert.deepEqual(transcriptRows(undefined, undefined), [])
+  assert.deepEqual(transcriptRows(undefined, null), [], 'an absent partial never fabricates a thinking row')
+})
+
 /** Minimal server payload the poll path accepts. */
 function statePayload(mode: StudyState['mode']): StudyState {
   return {
