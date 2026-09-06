@@ -29,6 +29,7 @@ import { speechSentencesOf } from '../vendor/speech-text.ts'
 import { speakMathInSentence } from '../vendor/math-speech.ts'
 import { feedRows } from './session-feed.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
+import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen } from './views.tsx'
 import { tr } from './locale.ts'
 
@@ -51,6 +52,15 @@ function statusIcon(kind: string, status: string): ReactNode {
   if (status === 'in_progress') return createElement(IconBookFill16, { size: 14 })
   if (status === 'available') return createElement(IconStarFill16, { size: 14 })
   return createElement(IconLockFill16, { size: 14 })
+}
+
+/** Toast severity glyph (P6): the state color rides the icon, text stays ink. */
+function toastIcon(severity: ToastSeverity): ReactNode {
+  if (severity === 'success') return createElement(IconStarFill16, { size: 14, className: 'lks-toast-glyph ok' })
+  if (severity === 'warning') return createElement(IconWarningOutline16, { size: 14, className: 'lks-toast-glyph warn' })
+  if (severity === 'error') return createElement(IconWarningOutline16, { size: 14, className: 'lks-toast-glyph err' })
+  if (severity === 'info') return createElement(IconGlobeOutline14, { size: 13, className: 'lks-toast-glyph info' })
+  return null
 }
 
 function examOpen(lessons: ReadonlyArray<{ kind: string; masteryPct: number | null }>): boolean {
@@ -260,7 +270,45 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, setMode }),
     createElement(NotebookPane, { data, deleteNote }),
   )
-  return createElement('div', { className: 'lks14', 'data-lks-panel': '' }, body)
+  return createElement('div', { className: 'lks14', 'data-lks-panel': '' }, body, createElement(StudyToastStack))
+}
+
+/** P6: the panel's toast stack (upstream Toast port) — severity capsules,
+ * top-center, auto-dismiss with an exit-animation handshake; the store clears
+ * on unmount so no toast outlives the panel. */
+function StudyToastStack(): ReactNode {
+  const [items, setItems] = useState<readonly ToastItem[]>([])
+  useEffect(() => {
+    const update = (): void => { setItems([...toastStore.getSnapshot()]) }
+    update()
+    const unsubscribe = toastStore.subscribe(update)
+    return () => {
+      unsubscribe()
+      toastStore.clear()
+    }
+  }, [])
+  return createElement('div', { className: 'lks-toasts', role: 'region', 'aria-live': 'polite', 'aria-label': tr('toast.region') },
+    ...items.map(t => createElement('div', {
+      key: t.id,
+      className: `lks-toast${t.exiting ? ' exiting' : ''}`,
+      'data-severity': t.severity,
+      onAnimationEnd: t.exiting ? () => { toastStore.finish(t.id) } : undefined,
+    },
+      toastIcon(t.severity),
+      createElement('span', { className: 'lks-toast-text' }, t.message),
+      t.action === undefined ? null : createElement('button', {
+        className: 'lks-toast-action',
+        onClick: () => {
+          t.action?.onClick?.()
+          toastStore.startExit(t.id)
+        },
+      }, t.action.label),
+      createElement('button', {
+        className: 'lks-toast-close',
+        'aria-label': tr('toast.close'),
+        onClick: () => { toastStore.startExit(t.id) },
+      }, '×'),
+    )))
 }
 
 /** Module-level shell handle so the panel can suppress hand-back on internal opens. */

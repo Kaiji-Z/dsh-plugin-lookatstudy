@@ -1,111 +1,96 @@
-# SPEC · 上游 v0.23.0–v0.27.0 七项迭代跟进（目标 0.12.0）
+# 全量对齐移植 SPEC · 上游 LookatStudy v0.28.0 → dsh-plugin-lookatstudy（目标 0.15.0）
 
-上游本地 checkout：`D:/Users/kaiji/vibecodingKJ/projects/LookatStudy`（main == remote @ v0.27.0）。
-本插件当前对齐 v0.22.1（0.11.1）。上一轮（dsh-native，见 SPEC.archive-2026-08-31-dsh-native.md）已完成。
-本地文件 CRLF，diff 上游时 strip-trailing-cr。
-
-**执行顺序：批次 A（persona/行为）→ 批次 B（解析器四修）→ 批次 C（markmap 退役 + 版本行）→ live livetest + judge → 发版 0.12.0。**
-每个批次内：先证新守卫红（mutation），再实现转绿，再跑 `pnpm test`。
+上游基准：`D:/Users/kaiji/vibecodingKJ/projects/LookatStudy` @ v0.28.0（commit 0266714，只读参照，禁改；本地 CRLF，diff 时 strip-trailing-cr）。
+插件基线：0.14.1（面板架构已立：侧栏入口、三栏、自有 composer、懒铸线程、事件窗口流；221 测试绿）。
+执行环境：web-lks profile @ 3081（隔离实测）；发版走 `node scripts/release.mjs`。
+**执行顺序：P6 → P1 → P2 → P3 → P4 → P5 → P7 → P8**（Toast 先行是基座；每轮只做一项，P1 可拆轮）。
 每完成一项勾选下方复选框；全部勾完才算本轮完成。
 
-## 基线（2026-09-01，开工前实测一次留档）
+## 基线（开工前实测一次留档）
 
-- [x] `pnpm run verify` PASS（2026-09-01，main @ cdb26dd，树干净）；测试数 N₀ = 174
+- [ ] `pnpm run verify` PASS；测试数 N₀ = 221（2026-09-07 记录）
 
-## 批次 A · persona 反伪造 + 三级分层（上游 0.27.0）
+## 排除清单（不移植——用户已定案：归宿主的能力一律不对齐）
 
-上游事故：模型不真正调用 `mark_mastered`，在正文手写「[工具调用已执行]」假标记 → 无确认卡片。
-我们同暴露面：`study_propose_mastery` / `study_resolve_proposal`（src/tools.ts:1365/1412）。
-现状：src/surface.ts persona 为英文本体（上游「英文本体」项天然满足），有工具指引（:43-53），
-**无反伪造条款**。
+1. **模型/供应商/effort 选择器**（ModelPicker / CustomProviderForm / EffortPicker）— 宿主拥有模型面。【用户指定】
+2. **ContextMeter + v0.27 对话历史预算裁剪**（resolveActiveContextWindow）— 宿主拥有 agent loop 与窗口管理。【用户指定】
+3. **exam-v2 后台题库**（后台出题、SQLite 结算、重考洗牌）— 需要后台模型客户端，插件没有；考试保持对话式。【归宿主/结构性，用户认可】
+4. **composer 附件/语音输入** — 附件投递归宿主 composer 的 intake。【归宿主，用户认可】
+5. **CommandPalette** — 宿主 chrome 层；课程搜索由 P4 覆盖。【归宿主，用户认可】
 
-- [x] A1. persona 重组为三级（全部现有条款原句保留，仅重组 + 优先级标记）：
-  - 【Safety redlines · highest priority】反幻觉 + 工具调用真实性（新增反伪造条款：markers are
-    injected by the system into history ONLY; hand-writing them in reply text produces NO UI
-    artifact; the only way to propose mastery is a REAL tool call）+ 显式声明冲突时以本段为准。
-  - 【Teaching behavior】模糊提问引导、工具使用流程（现有 numbered flow）。
-  - 【Answer formatting · preferences】自声明次级地位。
-- [x] A2. 工具指引补全：propose/resolve 使用时机在指引里点名（现有 :47，检查上下文完整）。
-- [x] A3. 回归测试（tests/activation.test.ts 扩或新 tests/persona.test.ts）：
-  三级结构锁（分块存在 + 顺序）；反伪造关键句存在（先证红：临时删句确认红，复原，记录）；
-  工具清单点名 propose/resolve。
-- [x] A4. judge 判据扩充：judge-criteria.md 增「正文零手写工具标记」「提议必须真调
-  study_propose_mastery」两判据；scripts/livetest-judge.mjs 模板若动则同步
-  tests/livetest-judge.test.ts（结构性铁律）。判据只增不减。
+## 移植清单
 
-## 批次 B · 解析器四修（上游 0.23.1 / 0.24.0）
+### P6 · 面板级 Toast 系统（先行基座）
+上游：`Toast.tsx`。插件落点：`panel.tsx` 轻量 toast 栈（面板右上角、自动消退、dsw token 样式、面板关闭即清）。
+验收：due 提醒与「有新笔记」等通知有统一出口；单测覆盖入队/消退。
 
-全部零依赖红线内移植（纯字符串/XML 处理），每项更新 vendor 文件 provenance header 记录偏差。
+- [ ] P6 完成
 
-- [x] B1. **html-article 尾部模板清理**（src/vendor/html-article.ts ← 上游
-  src/main/services/pure/html-article.ts `stripTailNavigation` :97）：指纹式清尾部机器模板
-  （搜狐「返回搜狐」/阿里云侧栏三行/行内导航后缀/CSDN 裸图路径行）。原则写进注释：只删跨文章
-  稳定的机器生成模板，作者亲笔推广段是正文（上游教训：「欢迎关注公众号」规则误删过作者亲笔段）。
-  挂 extractArticle 的 markdown 出口。测试：tests/html-article.test.ts 增搜狐/CSDN/阿里云各一例
-  + 作者推广段不删反例。
-- [x] B2. **epub 章节对齐全套**（src/vendor/epub-parser.ts，161 行 → 参照上游 378 行版
-  `sanitizeEpubBody`(:202) + `splitChaptersInBody`(:126) + 0.24.0 三修）：Gutenberg 头/尾截断；
-  多章一文件拆分（CH/Letter 标记 heading 或裸行两形态，裸行限行长防误切，罗马数字/裸序号连续
-  递增 ≥3 才切，license 单标记也切救末章、大内容保附录）；出版社形态（无标题兜底「未命名章节」
-  不编造编号；短扉页+紧随无标题正文配对合并、后章有标题绝不合并不连锁；版权页著录字段密度
-  ≥3 过滤、目录页链接密度 ≥60% 过滤）。zip-reader 交换不动。测试：tests/epub-parser.test.ts
-  增合成 fixture（上游 verify-epub-parser T5-T15 形状，CI 无网络）。
-- [x] B3. **pptx 表格提取**（src/vendor/pptx-parser.ts）：slide XML walker 处理 `a:tbl` →
-  GFM markdown 表（参照上游 `tableToMarkdown` :42）：竖线转义防破表、全空表整张跳过。
-  测试：tests/docx-pptx-parser.test.ts 增含表格 slide fixture。
-- [x] B4. **pdf 康熙部首归一**（src/vendor/pdf-text.ts）：`normalizeRadicals` 纯函数
-  （U+2F00-2FDF 逐字符 NFKC）挂 parsePdfText 出口。测试：tests/pdf-text.test.ts 增部首区
-  字形用例。
+### P1 · 产物卡体系（上游 artifacts/* + canvas 持久化）
+上游：`src/renderer/components/artifacts/`（Quiz/CompareTable/CodeWalkthrough/Mermaid/Guess + DiagramViewerModal）、`App.tsx` 的 extractArtifacts→canvas 自动持久化、`lib/quiz-progress`、`lib/post-quiz-actions`。
+插件落点：
+- 后端：新增 `study_generate_quiz` 工具（输出 `{questions[]}`，带 output.schema，schema-conformance 测试覆盖）；compare-table / code-walkthrough 产物走同一结构化通道（工具结果带 `artifactType`）；导师人格更新何时出卡。
+- 前端：事件窗口订阅扩展出产物流（tool/call+tool/result → 产物卡数据；与聊天流共用同一订阅，不另开窗口）；聊天流内渲染产物卡；QuizArtifact 可交互：作答→判分→进度持久化（localStorage，对齐上游 quizProgressKey）→ post-quiz 动作；Mermaid 查看器模态。
+- 持久化：产物自动存入课时笔记 understand 区（幂等 key：`artifactType`+内容 hash——上游用消息 id 被重复咬过）；笔记 tab 数字角标 + toast；讲解底部展示最新重产物（上游 CanvasStage 黑板语义）。
+- GuessArtifact：开场两选一猜（不计分、下回合揭晓）— 人格提示词 + 卡。
 
-## 批次 C · markmap 退役 + 设置页版本行（上游 0.26.0 / 0.24.0）
+验收：单测（产物提取 fold、quiz 进度、幂等去重）+ 3081 实测（练习卡渲染→作答→判分→重开面板进度留存；产物自动进笔记区带角标）。
 
-- [x] C1. **markmap 整体退役**：删 src/client/diagrams.ts mindmap 视图 + CDN 三件套
-  （markmap-lib@0.18.12 / markmap-view@0.18.10 / d3）+ src/vendor/mindmap-markdown.ts +
-  views.tsx 触发 UI（Brain 按钮/页签）+ 相关 locale 键。ELK concept map / mermaid 不动。
-  上游论证随删随记：有标题结构不需画图、无标题截首句图看不懂、LLM 概念图已覆盖且质量更高。
-  守卫：测试断言源码 + lib 产物零 markmap 残留（参照上游 verify-build-manifest 思路）。
-  AGENTS.md CDN 清单表述同步更新。
-- [x] C2. **设置页 About 版本行**（src/client/settings.tsx + locale.ts）：「关于」分组显示
-  版本号，构建期内联（bundler JSON import 或 tsdown define），禁止运行时网络取版本；
-  点击跳 GitHub releases。zh/en 双语，版本与 package.json 严格一致。测试：client-node.test.ts
-  断言 locale 键 + 版本字符串等于 package.json。
+- [ ] P1 完成
 
-## live 验证（批次 C 后）
+### P2 · 画线笔记（上游 NotebookPanel 选区交互）
+上游：讲解区选区浮动菜单「提问这段 / 加到笔记」、user_note 带 quote 溯源、持久高亮。
+插件落点：讲解 prose selectionchange → 浮动菜单；「提问这段」把引文拼进面板 send；「加到笔记」经 dashboard 新路由存 user_note（zone=record，带 quote）；文本位置锚点（稳定字符偏移，非 DOM 引用）跨重渲还原高亮；笔记区渲染 user 笔记与溯源。
 
-- [x] L1. 刷新 livetest transcript：harness root 跑 headless livetest（命令见 AGENTS.md
-  「Headless livetest」节；key 从 ../deepseek-harness/.env source，绝不写入回显）。
-- [x] L2. `pnpm run judge`（live）全判据 ≥8 PASS，报告落 livetest-judge-output.md（gitignored）。
+验收：单测（锚点计算、user_note 路由）+ 3081 实测（选区加笔记→笔记区出现带引用条目→重开面板高亮还原）。
 
-## 发版（owner 已确认）
+- [ ] P2 完成
 
-- [x] R1. `node scripts/release.mjs 0.12.0 "<一轮信息>"` —— verify 重跑、bump、commit、tag、
-  push、CI、npm 轮询至 live。
-- [x] R2.（可选）web profile 重装验证：按 AGENTS.md 的 profile package.json 编辑法 +
-  corepack install，勿用 dsh plugin remove/add。
+### P3 · 复习面（上游 ReviewPanel + 自评卡 + 复习提醒）
+上游：复习抽屉（due 列表）、讲解底部 SM-2 自评卡（again/hard/good/easy）、due 主动 toast（每会话一次）。
+插件落点：rail 复习盒升级为抽屉；自评卡四键 → `study_record_review`（工具已存在，补 UI）；due 提醒 toast（P6 之上，每开面板一次）。
 
-## 完成判据（逐条可验证）
+验收：单测（自评→工具参数映射）+ 3081 实测（自评打分→state 的 review 记录变化；due>0 开面板出提醒）。
 
-1. `grep -c '\[ \]' .goal/SPEC.md` = 0
-2. `pnpm run verify` exit 0，测试数 ≥ N₀ + 本轮新增（每项新守卫具名）
-3. `grep -ril markmap src/ lib/` 零命中
-4. 依赖数仍为 0（markmap 是删 CDN import，package.json 本就无此依赖）
-5. live judge 全判据 ≥8（新增两条在内）
-6. npm registry 出现 0.12.0（release 脚本自轮询确认）
+- [ ] P3 完成
 
-## 范围与禁区（全程）
+### P4 · 全文课程搜索（上游 CourseSearchPanel）
+插件落点：rail 搜索升级——标题未命中走全文（dashboard 路由代理 store 全文搜索，`study_courses` 已有该能力）；结果面板列 命中课时+片段，点击 setFocus 跳转。
 
-- 只许动：src/、tests/、judge-criteria.md、scripts/livetest-judge.mjs（判据配套）、
-  scripts/verify.mjs（如需加 markmap 残留守卫）、README.md/AGENTS.md（表述同步）、
-  package.json（仅版本号，由 release 脚本动）、.goal/SPEC.md（勾选进度）
-- 禁碰：零依赖红线（不新增任何 runtime npm 依赖）；../deepseek-harness（只读）；
-  dsh profiles（除 R2 可选验证）；state.json 持久化格式；Z_AI_API_KEY 绝不写入仓库/回显；
-  不为凑绿删既有测试断言或削减 judge 既有判据；工具 output schema 只增不删
-- 上游修复若依赖插件禁区（模型客户端 / yt-dlp spawn / linkedom 等 npm deps）→ 按零依赖
-  方式改写并在 provenance header 记录，不是停机理由
+验收：单测（搜索代理路由）+ 3081 实测（输入正文关键词→命中→跳转 focus）。
 
-## 停止条件（停下来问 owner）
+- [ ] P4 完成
 
-- harness .env 缺 Z_AI_API_KEY → live judge 跑不了，报告后停（勿伪造判据）
-- 同一移植思路连续 3 轮失败
-- release 脚本 CI 或 npm 轮询失败 → 停，附日志
-- 发现必须动零依赖红线或持久化 schema 才能继续
+### P5 · 提案横幅 + 面板尾巴（0.14.0 重构欠账）
+- 掌握度提案横幅（上游 ConfirmCard 语义）：pendingProposals 非空时聊天列顶部横幅，接受/再练练 → 面板内 send（对应 `study_resolve_proposal`）。
+- 栏分区真实折叠（点击切换，记忆分区状态）。
+- 首字前思考指示（attempt 进行中、无 text-delta 时显示思考行）。
+- 窄屏堆叠（容器断点：三栏→单栏+列切换）。
+
+验收：单测（折叠记忆、横幅动作文本）+ 3081 实测（构造 pendingProposal→横幅出现→点接受→state 清空；窄容器列切换可用）。
+
+- [ ] P5 完成
+
+### P7 · 伴学生物 DOM 移植（上游 companion/*）
+上游：五形态注册表（astro/ember/frost/ink/moss）、Mascot、朗读避让（整句行盒）、庆祝落点、v0.28 打磨。
+插件落点：面板右下角 SVG/CSS creature；订阅朗读控制器与毕业/答对事件做表情动作；朗读时避让当前句（面板内 DOM；粒子降级 CSS）；形态选择进 settings。
+**刹车：此单项超 4 轮仍无可用形态 → 停下问用户砍/降级。**
+
+验收：单测（事件→动作映射）+ 3081 实测（生物随朗读/答对有动作）。
+
+- [ ] P7 完成
+
+### P8 · 终审与发版
+- 对照本 SPEC 逐项 grep/读码核对，无一未解释缺项；上游 `git diff v0.27.0..v0.28.0` 复扫（伴学视觉打磨之外是否有漏）。
+- AGENTS.md / README / backlog 重写；judge-criteria 若导师行为有变则同步。
+- `pnpm run judge` 复跑 PASS；`node scripts/release.mjs 0.15.0`。
+
+- [ ] P8 完成
+
+## 已知坑（执行时带brain）
+- 事件窗口只对 current 会话开；产物提取与聊天流共用同一订阅。
+- 机制 user/message 白名单（source.kind==='user'）别被产物通道破坏；tool/result 只进产物卡，不进聊天气泡。
+- 上游 canvas 重复保存教训：内容 key 幂等，不用消息 id。
+- file: 依赖是拷贝：每轮实测前 remove→restore→install；3080 是 stardeck 活服务，禁碰。
+- 发版前 verify 必绿；`pnpm run build | grep` 会吞退出码。
+- 新工具走 schema-conformance 门：先证红再信绿。

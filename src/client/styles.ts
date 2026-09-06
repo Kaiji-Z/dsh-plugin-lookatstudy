@@ -31,7 +31,7 @@ export const STUDY_CSS = `
    every surface family that consumes the inks: .lks-root (dock pill,
    settings) and .lks-tv (toolview cards, which render in the host
    conversation with no .lks-root ancestor). */
-.lks-root,.lks-tv{--lks-warn-ink:color-mix(in srgb,var(--dsw-alias-state-warn-label) 45%,var(--dsw-alias-label-primary));--lks-ok-ink:color-mix(in srgb,var(--dsw-alias-state-success-primary) 40%,var(--dsw-alias-label-primary));--lks-err-ink:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,var(--dsw-alias-label-primary))}
+.lks-root,.lks-tv,.lks14{--lks-warn-ink:color-mix(in srgb,var(--dsw-alias-state-warn-label) 45%,var(--dsw-alias-label-primary));--lks-ok-ink:color-mix(in srgb,var(--dsw-alias-state-success-primary) 40%,var(--dsw-alias-label-primary));--lks-err-ink:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,var(--dsw-alias-label-primary))}
 .lks-root{font-family:var(--dsw-font-family)}
 .lks-root :where(button){font-family:var(--dsw-font-family);cursor:pointer;border:none;background:none;padding:0}
 
@@ -52,7 +52,7 @@ html[data-dsh-lookatstudy-active] .lks14-shell-view{display:flex;flex-direction:
 html[data-dsh-lookatstudy-active] [data-pane='conversation'] > :not([data-dsh-lookatstudy-view]),
 html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatstudy-view]){display:none !important}
 [data-dsh-lookatstudy-view]{container-type:inline-size}
-.lks14{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);overflow:hidden;font-family:var(--dsw-font-family)}
+.lks14{position:relative;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);overflow:hidden;font-family:var(--dsw-font-family)}
 .lks14 button{font-family:var(--dsw-font-family);cursor:pointer}
 .lks14-body{display:flex;flex:1;min-width:0;min-height:0}
 .lks14-col{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
@@ -144,6 +144,28 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14-zones{min-height:200px}
 .lks14-zone{margin-bottom:12px}
 .lks14-zoneh{font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-bottom:6px}
+
+
+/* toast capsules (P6, upstream Toast port): top-center under the panel head,
+   container inert to pointers, items auto; exit is an animation handshake —
+   reduced-motion keeps a .01ms duration so the end event still fires. */
+.lks-toasts{position:absolute;top:44px;left:50%;transform:translateX(-50%);z-index:40;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;max-width:min(440px,90%)}
+.lks-toast{pointer-events:auto;display:flex;align-items:center;gap:8px;max-width:100%;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:6px 8px 6px 14px;font-size:13px;line-height:1.4;box-shadow:0 6px 24px rgba(0,0,0,.14);animation:lks-toast-in .18s ease}
+.lks-toast.exiting{animation:lks-toast-out .18s ease forwards}
+.lks-toast .lks-toast-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-toast .lks-toast-glyph{flex:none}
+.lks-toast .lks-toast-glyph.ok{color:var(--lks-ok-ink)}
+.lks-toast .lks-toast-glyph.warn{color:var(--lks-warn-ink)}
+.lks-toast .lks-toast-glyph.err{color:var(--lks-err-ink)}
+.lks-toast .lks-toast-glyph.info{color:var(--dsw-alias-state-business-primary)}
+.lks-toast-action{border:none;background:none;color:var(--dsw-alias-state-business-primary);font-weight:600;font-size:13px;cursor:pointer;padding:4px 8px;border-radius:999px;flex:none}
+.lks-toast-action:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.lks-toast-action:focus-visible,.lks-toast-close:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks-toast-close{border:none;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;font-size:15px;line-height:1;padding:0;flex:none}
+.lks-toast-close:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2)}
+@keyframes lks-toast-in{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@keyframes lks-toast-out{to{opacity:0;transform:translateY(-6px)}}
+@media (prefers-reduced-motion:reduce){.lks-toast{animation-duration:.01ms}}
 
 /* note cards (shared: panel notebook + settings-era shapes) */
 .lks-note{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 14px;margin-bottom:8px}

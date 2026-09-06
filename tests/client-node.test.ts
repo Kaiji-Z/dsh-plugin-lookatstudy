@@ -144,8 +144,8 @@ test('the stylesheet carries the panel takeover contract (hide-siblings, entry r
     'host conversation children hide behind the takeover')
   assert.match(STUDY_CSS, /\[class\*='_collapsed'\] \.lks14-sidebar-label\{display:none\}/,
     'the collapsed icon rail keeps just the entry glyph')
-  assert.match(STUDY_CSS, /\.lks-root,\.lks-tv\{--lks-warn-ink/,
-    'state inks cover the toolview cards (they have no .lks-root ancestor in the host conversation)')
+  assert.match(STUDY_CSS, /\.lks-root,\.lks-tv,\.lks14\{--lks-warn-ink/,
+    'state inks cover the toolview cards (no .lks-root ancestor in the host conversation) and the panel family')
   assert.match(STUDY_CSS, /\.lks14-composer\{[^}]*border-top/,
     'the chat pane owns its composer — the host composer is never involved')
   assert.match(STUDY_CSS, /\.lks14-node\[aria-disabled='true'\]/,

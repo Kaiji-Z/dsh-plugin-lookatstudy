@@ -99,6 +99,10 @@ gate('bundle', () => {
     [client, 'tool.call.toolview', 'conversation-tab tool cards'],
     [client, 'lks-dockpill', 'dock pill styles'],
     [client, 'registerStudyLocale', 'locale namespace registration'],
+    // 0.15.0 P6: the panel toast stack (upstream Toast port)
+    [client, 'showStudyToast', 'toast entry point'],
+    [client, 'SEVERITY_DURATION', 'per-severity toast durations'],
+    [client, 'lks-toast', 'toast capsule styles'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [
