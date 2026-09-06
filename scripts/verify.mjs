@@ -121,6 +121,10 @@ gate('bundle', () => {
     [client, 'review.nudge', 'the due nudge toast'],
     [client, 'mergeRailSearch', 'the full-text search results panel (P4)'],
     [client, 'lks14-searchpanel', 'search panel styles'],
+    [client, 'lks-propbanner', 'mastery proposal banner (P5)'],
+    [client, 'lks14-thinking', 'the pre-text thinking row'],
+    [client, 'lks14-switch', 'the narrow-mode pane switcher'],
+    [client, 'effectiveOpen', 'user section-collapse overrides'],
     // 0.15.0 P6: the panel toast stack (upstream Toast port)
     [client, 'showStudyToast', 'toast entry point'],
     [client, 'SEVERITY_DURATION', 'per-severity toast durations'],

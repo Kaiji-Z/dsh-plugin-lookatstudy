@@ -114,6 +114,26 @@ export function mergeRailSearch(
 }
 
 /**
+ * A section's effective openness: the user's explicit toggle (persisted per
+ * course) overrides the frontier-based default. Pure.
+ */
+export function effectiveOpen(
+  sectionTitle: string,
+  defaultOpen: boolean,
+  overrides: Readonly<Record<string, boolean>>,
+): boolean {
+  return overrides[sectionTitle] ?? defaultOpen
+}
+
+/**
+ * The narrow-mode pane picker: only valid ids, remembering the last choice
+ * (upstream's narrow switcher semantics). Pure.
+ */
+export function pickNarrowPane(stored: string | null): 'rail' | 'chat' | 'note' {
+  return stored === 'rail' || stored === 'chat' || stored === 'note' ? stored : 'chat'
+}
+
+/**
  * Default expansion for one rail section: collapsed when every study lesson is
  * done (mastered) or not yet reachable (locked). The focus lesson's section
  * stays open; exam nodes never force a section open. Pure.

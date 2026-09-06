@@ -176,6 +176,16 @@ test('the lookatstudy locale dictionaries keep zh/en parity and translate with f
   assert.equal(tEn('rail.due'), '{count} due')
 })
 
+test('effectiveOpen: the user toggle overrides the frontier default; pickNarrowPane remembers', async () => {
+  const { effectiveOpen, pickNarrowPane } = await import('../src/client/views.tsx')
+  assert.equal(effectiveOpen('第一章', true, {}), true, 'no override = the default')
+  assert.equal(effectiveOpen('第一章', true, { '第一章': false }), false, 'an explicit collapse wins')
+  assert.equal(effectiveOpen('第二章', false, { '第一章': true }), false, 'another section override does not leak')
+  assert.equal(pickNarrowPane(null), 'chat', 'nothing stored defaults to the tutor chat')
+  assert.equal(pickNarrowPane('note'), 'note')
+  assert.equal(pickNarrowPane('sidebar'), 'chat', 'junk falls back')
+})
+
 test('mergeRailSearch: title hits first, full-text dedup, empty query yields nothing', async () => {
   const { mergeRailSearch } = await import('../src/client/views.tsx')
   const lessons = [

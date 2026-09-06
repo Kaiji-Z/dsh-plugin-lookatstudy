@@ -34,7 +34,7 @@ import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane } from './views.tsx'
 import { tr } from './locale.ts'
 
 /** The three souls in pill order (same shape as the study tab's pills). */
@@ -136,6 +136,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const [rows, setRows] = useState<ReturnType<typeof feedRows>>([])
   const [feedAttached, setFeedAttached] = useState(false)
   const [draft, setDraft] = useState('')
+  const [narrowPane, setNarrowPane] = useState<'rail' | 'chat' | 'note'>(pickNarrowPane(null))
   const lesson = data?.lesson ?? null
   const localBound = useRef<string | null>(null)
   const streamEl = useRef<HTMLDivElement | null>(null)
@@ -281,12 +282,21 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     })()
   }
 
-  const body: ReactNode = createElement('div', { className: 'lks14-body' },
+  const body: ReactNode = createElement('div', { className: 'lks14-body', 'data-pane': narrowPane },
     createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, send }),
-    createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, setMode }),
+    createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, setMode, narrowPane }),
     createElement(NotebookPane, { data, deleteNote, send }),
   )
-  return createElement('div', { className: 'lks14', 'data-lks-panel': '' }, body, createElement(StudyToastStack))
+  return createElement('div', { className: 'lks14', 'data-lks-panel': '' },
+    createElement('div', { className: 'lks14-switch' },
+      ...(['rail', 'chat', 'note'] as const).map(pane => createElement('button', {
+        key: pane,
+        className: `lks14-switch-btn${narrowPane === pane ? ' on' : ''}`,
+        'aria-pressed': String(narrowPane === pane),
+        onClick: () => { setNarrowPane(pane) },
+      }, tr(`pane.${pane}`))),
+    ),
+    body, createElement(StudyToastStack))
 }
 
 /** P6: the panel's toast stack (upstream Toast port) — severity capsules,
@@ -345,6 +355,10 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   const [selectedCourse, setSelectedCourse] = useState('')
   const [query, setQuery] = useState('')
   const [searchRows, setSearchRows] = useState<ReturnType<typeof mergeRailSearch>>([])
+  const [sectionOverrides, setSectionOverrides] = useState<Record<string, boolean>>({})
+  const toggleSection = (title: string, next: boolean): void => {
+    setSectionOverrides(cur => ({ ...cur, [title]: next }))
+  }
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -477,7 +491,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             const examAllowed = examOpen(section.lessons)
             const lessons = section.lessons.filter(l => query.trim() === '' || titleMatches(l.title, query) || l.focus)
             if (lessons.length === 0) return []
-            const open = query.trim() !== '' || sectionDefaultOpen(section)
+            const open = query.trim() !== '' || effectiveOpen(section.title, sectionDefaultOpen(section), sectionOverrides)
             return [
               createElement('button', {
                 key: section.title,
@@ -485,7 +499,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
                 className: 'lks14-sechead',
                 'aria-expanded': String(open),
                 title: open ? tr('rail.section.collapse') : tr('rail.section.expand', { count: section.lessons.length }),
-                onClick: () => { /* sections are always-open in the panel v1; the head is informational */ },
+                onClick: () => { toggleSection(section.title, !open) },
               },
               createElement('span', { className: 'lks14-secnum' }, String(section.index + 1)),
               createElement('span', { className: 'lks14-secheadt' }, section.title),
@@ -558,7 +572,7 @@ function ImportRow({ send }: { send: PanelSend }): ReactNode {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, setMode }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, setMode, narrowPane }: {
   data: StudyData
   lesson: StudyData['lesson']
   rows: ReturnType<typeof feedRows>
@@ -570,6 +584,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   setDraft: (text: string) => void
   send: PanelSend
   setMode: (mode: 'direct' | 'guide' | 'practice') => Promise<void>
+  narrowPane: 'rail' | 'chat' | 'note'
 }): ReactNode {
   const streamEl = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -589,7 +604,24 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
       if (draft.trim() !== '' && !busy) send(draft)
     }
   }
+  const proposal = data?.pendingProposals[0] ?? null
   return createElement('div', { className: 'lks14-col lks14-chat' },
+    proposal !== null
+      ? createElement('div', { className: 'lks-propbanner' },
+          createElement(IconCrownFill16, { size: 14 }),
+          createElement('span', { className: 'lks-propbanner-why' },
+            tr('proposal.banner', { lesson: proposal.lessonTitle }), ' — ', proposal.rationale),
+          createElement('button', {
+            className: 'lks-btn primary',
+            style: { padding: '4px 12px', fontSize: '12.5px' },
+            onClick: () => { send(tr('proposal.accept.msg', { lesson: proposal.lessonTitle })) },
+          }, tr('proposal.accept')),
+          createElement('button', {
+            className: 'lks-btn ghost',
+            style: { padding: '4px 12px', fontSize: '12.5px' },
+            onClick: () => { send(tr('proposal.decline.msg', { lesson: proposal.lessonTitle })) },
+          }, tr('proposal.decline')))
+      : null,
     createElement('div', { className: 'lks14-colhead' },
       tr('col.tutor'),
       lesson !== null ? createElement('span', { className: 'lks14-chatlesson' }, lesson.title) : null,
@@ -613,6 +645,9 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         ? createElement('div', { className: 'lks14-empty' },
           dormant ? tr('tutor.dormant') : tr('tutor.empty'), createElement('br'), tr('tutor.empty.hint'))
         : rows.map((row, i) => chatRow(row, !dormant && i === lastAssistant ? { send } : undefined)),
+      rows.length > 0 && rows[rows.length - 1]!.role === 'user'
+        ? createElement('div', { className: 'lks14-thinking' }, createElement(IconLoadingOutline16, { size: 13, className: 'lks-spin' }), tr('tutor.thinking'))
+        : null,
     ),
     ...(lesson?.artifacts ?? [])
       .filter(a => a.artifactType === 'quiz')

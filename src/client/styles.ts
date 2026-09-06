@@ -172,6 +172,28 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 
 
 
+
+/* P5: proposal banner (ConfirmCard semantics) + thinking row + narrow switch */
+.lks-propbanner{flex:none;display:flex;align-items:center;gap:8px;margin:8px 12px 0;padding:8px 12px;border-radius:10px;background:var(--dsw-alias-state-business-tertiary);border:1px solid var(--dsw-alias-border-l2);font-size:12.5px;color:var(--dsw-alias-label-primary-bluish)}
+.lks-propbanner .lks-propbanner-why{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks14-thinking{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--dsw-alias-label-secondary);padding:2px 2px}
+.lks14-switch{display:none;flex-direction:row;gap:2px;align-self:center;margin:8px 0 0;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:3px}
+.lks14-switch-btn{border-radius:999px;padding:4px 16px;font-size:13px;color:var(--dsw-alias-label-secondary);background:transparent}
+.lks14-switch-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.lks14-switch-btn.on{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 86%,#000);color:#fff;font-weight:600}
+@container (max-width: 900px){
+  .lks14-switch{display:flex}
+  .lks14-body{flex-direction:column}
+  .lks14-rail{flex:none;max-height:32vh;border-right:none;border-bottom:1px solid var(--dsw-alias-border-l1)}
+  .lks14-chat{min-width:0}
+  .lks14-note{flex:1 1 auto;min-height:0}
+  .lks14-body[data-pane='rail'] .lks14-chat,.lks14-body[data-pane='rail'] .lks14-note,
+  .lks14-body[data-pane='chat'] .lks14-rail,.lks14-body[data-pane='chat'] .lks14-note,
+  .lks14-body[data-pane='note'] .lks14-rail,.lks14-body[data-pane='note'] .lks14-chat{display:none}
+  .lks14-body[data-pane='rail'] .lks14-rail{display:flex;max-height:none;flex:1 1 auto}
+  .lks14-body[data-pane='note'] .lks14-note{display:flex}
+}
+
 /* rail search results panel (P4, upstream CourseSearchPanel) */
 .lks14-searchpanel{margin:4px 0 6px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}
 .lks14-searchrow{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;text-align:left;font:inherit;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--dsw-alias-border-l1)}
