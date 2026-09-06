@@ -20,11 +20,7 @@ import {
   IconPowerFill16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16,
   IconDownloadOutline16, IconLoadingOutline16, IconWarningOutline16,
 } from './icons.tsx'
-import type { ConvViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type {
-  AssistantBlock, ConversationNode, ConversationSnapshot, PartialAssistant,
-} from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, SessionMachineSnapshot, StudyViewProps, TranscriptNode, TranscriptPartial, TranscriptSlice } from './faces.ts'
 import { useStudy } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
 import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
@@ -159,12 +155,12 @@ export function quizOptions(text: string): ReadonlyArray<{ letter: string; text:
   return runs.at(-1) ?? []
 }
 
-function textOf(blocks: readonly { type: string; text?: string }[]): string {
-  return blocks.filter(b => b.type === 'text').map(b => b.text ?? '').join('\n\n').trim()
+function textOf(blocks: readonly { type: string; text?: string }[] | undefined): string {
+  return (blocks ?? []).filter(b => b.type === 'text').map(b => b.text ?? '').join('\n\n').trim()
 }
 
-function assistantText(blocks: readonly AssistantBlock[]): string {
-  return blocks.filter(b => b.kind === 'text').map(b => b.text).join('\n\n').trim()
+function assistantText(blocks: readonly { kind: string; text?: string }[] | undefined): string {
+  return (blocks ?? []).filter(b => b.kind === 'text').map(b => b.text ?? '').join('\n\n').trim()
 }
 
 /**
@@ -180,7 +176,7 @@ function assistantText(blocks: readonly AssistantBlock[]): string {
  * @param t - translator (defaults to the active one, per call).
  * @returns ordered rows; never mutates its inputs.
  */
-export function transcriptRows(nodes: readonly ConversationNode[] | undefined, partial: PartialAssistant | null | undefined, t: StudyT = tr): readonly ChatRow[] {
+export function transcriptRows(nodes: readonly TranscriptNode[] | undefined, partial: TranscriptPartial | null | undefined, t: StudyT = tr): readonly ChatRow[] {
   const rows: ChatRow[] = []
   for (const node of nodes ?? []) {
     switch (node.kind) {
@@ -196,7 +192,7 @@ export function transcriptRows(nodes: readonly ConversationNode[] | undefined, p
         break
       }
       case 'turn-error':
-        rows.push({ key: `e${node.seq}`, role: 'error', text: node.message })
+        rows.push({ key: `e${node.seq}`, role: 'error', text: node.message ?? '' })
         break
       default:
         break
@@ -254,18 +250,27 @@ type SessionId = string & { readonly __sessionBrand: 'SessionId' }
 const sessionId = (id: string): SessionId => id as SessionId
 
 /** The whole study tab. Wide = three columns (课程 | 导师 | 黑板); narrow (<1220px) = one composer-width pane with a three-way switcher. */
-export function studyView(ctx: ClientContext): (props: ConvViewProps) => ReactNode {
-  return function StudyView(props: ConvViewProps): ReactNode {
+export function studyView(ctx: ClientContext): (props: StudyViewProps) => ReactNode {
+  return function StudyView(props: StudyViewProps): ReactNode {
     return createElement(StudyTab, { ...props, ctx, key: 'tab' })
   }
 }
 
 /** Tab body: the factory-bound ctx carries workspaces/sessions for the per-lesson session jumps. */
-function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: ClientContext }): ReactNode {
+function StudyTab({ inputActions, ctx, ...standard }: StudyViewProps & { ctx: ClientContext }): ReactNode {
   const { data, activate, setMode, setFocus, searchLessons, deleteCourse, bindLessonSession } = useStudy()
+  // The transcript moved twice across host generations: pre-0.1.3 hosts hand
+  // the conversation snapshot through `useSession`; 0.1.3+ split the session
+  // machine (`useSession`) from the Chat target (`useChat`) and parked the
+  // node array in its `legacy` slice. Both hooks are version-stable, so the
+  // optional calls keep hook order constant on any given host.
+  const chatLegacy = standard.useChat?.((s) => s.legacy)
+  const sessionSnapshot = standard.useSession?.((s) => s)
+  const snapshot: TranscriptSlice | undefined = chatLegacy
+    ?? (sessionSnapshot !== undefined && Array.isArray(sessionSnapshot.nodes) ? sessionSnapshot : undefined)
   // Newer hosts (DSH v0.1.2-alpha.4) mount the tab before session data
   // exists, so every read off this value guards for undefined.
-  const snapshot = useSession((s: ConversationSnapshot) => s)
+  const currentSessionId = standard.sessionId ?? snapshot?.sessionId ?? ''
   const [pane, setPane] = useState<StudyPane>(storedPane)
   const rootRef = useRef<HTMLDivElement | null>(null)
   // The wide layout puts the tutor column left of the scroll body's center
@@ -330,7 +335,7 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
   // does this for slot entries — the deep component tree rides this bump).
   const [, bumpLocale] = useState(0)
   useEffect(() => {
-    const localeSvc = (ctx as { locale?: { subscribe(fn: () => void): () => void } }).locale
+    const localeSvc = ctx.locale
     if (localeSvc === undefined) return
     return localeSvc.subscribe(() => { bumpLocale(v => v + 1) })
   }, [ctx])
@@ -372,7 +377,7 @@ function StudyTab({ useSession, inputActions, ctx }: ConvViewProps & { ctx: Clie
       },
       }, tr(p.labelKey))),
     ),
-    createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, bindLessonSession, send, ctx, currentSessionId: snapshot?.sessionId ?? '' }),
+    createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, bindLessonSession, send, ctx, currentSessionId }),
     createElement(TutorColumn, { data, setMode, send, snapshot }),
     createElement(BlackboardColumn, { data }),
   ),
@@ -416,9 +421,12 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, bin
       if (!area.ok) throw new Error(`study area unavailable (HTTP ${area.status})`)
       const { path } = await area.json() as { path: string }
       const workspace = await ctx.workspaces.create({ path })
-      // connectWorkspace mints a fresh blank session once the workspace's
-      // previous blank is used — each lesson thereby gets its own thread.
-      const sessionId = await ctx.workspaces.connectWorkspace(workspace.workspaceId)
+      // 0.1.3 moved the session mint from workspaces.connectWorkspace to
+      // sessions.create (same dual-host detect as the starter). Each lesson
+      // gets its own thread: a fresh blank session per lesson node.
+      const sessionId = ctx.workspaces.connectWorkspace !== undefined
+        ? await ctx.workspaces.connectWorkspace(workspace.workspaceId)
+        : await ctx.sessions.create({ workspaceId: workspace.workspaceId })
       const actx = ctx.sessions.scope(sessionId)
       const face = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
       if (face === undefined) throw new Error('lesson session is not addressable yet')
@@ -655,7 +663,7 @@ function TutorColumn({ data, setMode, send, snapshot }: {
   data: StudyData
   setMode: (mode: 'direct' | 'guide' | 'practice') => Promise<void>
   send: StudySend
-  snapshot: ConversationSnapshot | undefined
+  snapshot: TranscriptSlice | undefined
 }): ReactNode {
   const [error, setError] = useState<string | null>(null)
   const rows = transcriptRows(snapshot?.nodes, snapshot?.partial ?? null)

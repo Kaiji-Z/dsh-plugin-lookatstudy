@@ -2,10 +2,10 @@
  * ic_ds_* glyphs vendored from @deepseek-ai/dsh-client-ui-primitives
  * (src/icons/index.tsx, same figma source as the host's icon set) so the
  * plugin's client bundle stays self-contained per the dsh client-bundle
- * contract — only react and dsh-client-runtime/client are runtime-external;
- * importing the host package root would drag its CSS modules into the
- * inlined bundle. Re-sync these three paths if the host icon set redesigns
- * them; scripts/verify.mjs pins the path data.
+ * contract — only react is runtime-external; importing the host package
+ * root would drag its CSS modules into the inlined bundle. Re-sync these
+ * three paths if the host icon set redesigns them; scripts/verify.mjs
+ * pins the path data.
  *
  * 2026-09-01 critique round: seven more ic_ds glyphs vendored (play/plus/
  * trash/refresh/globe/goal/warning) plus plugin-original learning-domain

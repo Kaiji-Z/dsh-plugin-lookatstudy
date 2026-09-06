@@ -14,19 +14,22 @@ import type { ReactNode } from 'react'
 import { IconLoadingOutline16, IconThinkOutline16 } from './icons.tsx'
 import { useStudy } from './data.ts'
 import { tr } from './locale.ts'
-import type { InputZone } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ClientContext, StudyInputProps } from './faces.ts'
 
 /**
  * Build the hero starter button bound to the framework services.
  * @param ctx - client root context (workspaces + sessions injected).
  * @returns the component for `conversation.input.left`.
  */
-export function studyStartButton(ctx: ClientContext): (props: InputZone) => ReactNode {
-  return function StudyStartButton({ session }: InputZone): ReactNode {
-    // Newer hosts (DSH v0.1.2-alpha.4) call input slots before session data
-    // exists; no session means no blank-session starter, not a crash.
-    if (session?.blank !== true) return null
+export function studyStartButton(ctx: ClientContext): (props: StudyInputProps) => ReactNode {
+  return function StudyStartButton(props: StudyInputProps): ReactNode {
+    // The blank flag moved across host generations: pre-0.1.3 hosts pass the
+    // InputZone owner prop; 0.1.3+ removed the owner and expose the flag on
+    // the session machine standard hook. Either source may be absent (and
+    // 0.1.2-alpha.4 calls input slots before session data exists at all) —
+    // no blank session means no starter, not a crash.
+    const machine = props.useSession?.((s) => s)
+    if ((props.session?.blank ?? machine?.blank) !== true) return null
     return createElement(Inner, { key: 'inner', ctx })
   }
 }
@@ -50,7 +53,11 @@ function Inner({ ctx }: { ctx: ClientContext }): ReactNode {
         if (!area.ok) throw new Error(`study area unavailable (HTTP ${area.status})`)
         const { path } = await area.json() as { path: string }
         const workspace = await ctx.workspaces.create({ path })
-        const sessionId = await ctx.workspaces.connectWorkspace(workspace.workspaceId)
+        // 0.1.3 moved the session mint from workspaces.connectWorkspace to
+        // sessions.create; feature-detect so either host generation works.
+        const sessionId = ctx.workspaces.connectWorkspace !== undefined
+          ? await ctx.workspaces.connectWorkspace(workspace.workspaceId)
+          : await ctx.sessions.create({ workspaceId: workspace.workspaceId })
         const actx = ctx.sessions.scope(sessionId)
         const face = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
         if (face === undefined) throw new Error('study session is not addressable yet')

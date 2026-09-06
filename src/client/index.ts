@@ -10,8 +10,8 @@
  * @module dsh-plugin-lookatstudy/client
  */
 
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ReactNode } from 'react'
+import type { ClientContext } from './faces.ts'
 import { ensureStudyStyles } from './styles.ts'
 import { studyView } from './views.tsx'
 import { studyStartButton } from './starter.tsx'

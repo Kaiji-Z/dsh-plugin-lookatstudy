@@ -97,7 +97,7 @@ test('transcriptRows skips tool results, skips noise, and appends the partial', 
     node({ kind: 'command', seq: 5, time: 0, commandId: 'x', name: 'goal', args: null, outcome: null }),
     node({ kind: 'turn-error', seq: 6, time: 0, turn: 1, step: 2, message: 'provider down' }),
     node({ kind: 'user', seq: 7, time: 0, content: [{ type: 'image', attachment: {} }], source: {} }),
-  ], { turn: 1, step: 3, blocks: [{ kind: 'text', text: '正在打字…' }] })
+  ], { turn: 1, step: 3, blocks: [{ kind: 'text', text: '正在打字…' }] } as never)
   assert.deepEqual(rows.map(r => [r.role, r.text]), [
     ['error', 'provider down'],
     ['streaming', '正在打字…'],
@@ -108,12 +108,12 @@ test('a text-less partial shows the thinking row instead of dead air', () => {
   const thinking = transcriptRows([], { turn: 1, step: 1, blocks: [
     { kind: 'reasoning', text: '先看这一课的概念…' },
     { kind: 'tool-call', callId: 'c1', name: 'study_lesson', argsRaw: '{}' },
-  ] })
+  ] } as never)
   assert.deepEqual(thinking.map(r => [r.role, r.text]), [['thinking', '导师思考中…']], 'reasoning/tool-only phases surface a thinking indicator')
   const streaming = transcriptRows([], { turn: 1, step: 2, blocks: [
     { kind: 'reasoning', text: '想好了' },
     { kind: 'text', text: '我们开始' },
-  ] })
+  ] } as never)
   assert.deepEqual(streaming.map(r => r.role), ['streaming'], 'once text arrives the streaming row replaces thinking')
 })
 
