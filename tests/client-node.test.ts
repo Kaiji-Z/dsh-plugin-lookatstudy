@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { pickPane, quizOptions, sectionDefaultOpen, statusTitle, transcriptRows } from '../src/client/views.tsx'
+import { pickPane, pickTranscript, quizOptions, sectionDefaultOpen, statusTitle, transcriptRows } from '../src/client/views.tsx'
 import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
 import { studyStore, type StudyState } from '../src/client/data.ts'
 import { STUDY_CSS } from '../src/client/styles.ts'
@@ -122,6 +122,17 @@ test('transcriptRows degrades to an empty transcript when the host hands over no
   // snapshot exists (issue #1: the tab blanked with "nodes is not iterable").
   assert.deepEqual(transcriptRows(undefined, undefined), [])
   assert.deepEqual(transcriptRows(undefined, null), [], 'an absent partial never fabricates a thinking row')
+})
+
+test('pickTranscript resolves the transcript across host generations', () => {
+  const chatLegacy = { nodes: [{ kind: 'assistant', seq: 2 }], partial: null }
+  const conversation = { nodes: [{ kind: 'user', seq: 1 }], partial: null, sessionId: 's1' }
+  const machine = { blank: true }
+  assert.equal(pickTranscript(chatLegacy, undefined), chatLegacy, '0.1.3+ Chat legacy wins when present')
+  assert.equal(pickTranscript(chatLegacy, conversation as never), chatLegacy, 'Chat legacy wins even with a conversation snapshot present')
+  assert.equal(pickTranscript(undefined, conversation as never), conversation, 'pre-0.1.3 conversation snapshot (array nodes) is the fallback')
+  assert.equal(pickTranscript(undefined, machine as never), undefined, '0.1.3+ session MACHINE snapshot (no node array) is never mistaken for a transcript')
+  assert.equal(pickTranscript(undefined, undefined), undefined, 'no data from the host means no transcript')
 })
 
 /** Minimal server payload the poll path accepts. */

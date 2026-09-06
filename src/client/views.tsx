@@ -221,6 +221,21 @@ export function ActionError({ error }: { error: string | null }): ReactNode {
  */
 export type StudySend = (text: string) => void
 
+/**
+ * Resolve the transcript across host generations. 0.1.3+ hosts expose the
+ * node array as the Chat target's `legacy` slice; pre-0.1.3 hosts hand the
+ * whole conversation snapshot (nodes + partial) through `useSession`, whose
+ * 0.1.3+ successor returns the session MACHINE (no node array). The array
+ * check tells those two `useSession` shapes apart. Pure.
+ */
+export function pickTranscript(
+  chatLegacy: TranscriptSlice | undefined,
+  sessionSnapshot: (TranscriptSlice & SessionMachineSnapshot) | undefined,
+): TranscriptSlice | undefined {
+  if (chatLegacy !== undefined) return chatLegacy
+  return sessionSnapshot !== undefined && Array.isArray(sessionSnapshot.nodes) ? sessionSnapshot : undefined
+}
+
 /** Narrow-mode pane selector: which of the three columns is the main display. */
 type StudyPane = 'rail' | 'tutor' | 'bb'
 
@@ -259,15 +274,12 @@ export function studyView(ctx: ClientContext): (props: StudyViewProps) => ReactN
 /** Tab body: the factory-bound ctx carries workspaces/sessions for the per-lesson session jumps. */
 function StudyTab({ inputActions, ctx, ...standard }: StudyViewProps & { ctx: ClientContext }): ReactNode {
   const { data, activate, setMode, setFocus, searchLessons, deleteCourse, bindLessonSession } = useStudy()
-  // The transcript moved twice across host generations: pre-0.1.3 hosts hand
-  // the conversation snapshot through `useSession`; 0.1.3+ split the session
-  // machine (`useSession`) from the Chat target (`useChat`) and parked the
-  // node array in its `legacy` slice. Both hooks are version-stable, so the
-  // optional calls keep hook order constant on any given host.
+  // The transcript moved twice across host generations (see pickTranscript).
+  // Both hooks are version-stable, so the optional calls keep hook order
+  // constant on any given host.
   const chatLegacy = standard.useChat?.((s) => s.legacy)
   const sessionSnapshot = standard.useSession?.((s) => s)
-  const snapshot: TranscriptSlice | undefined = chatLegacy
-    ?? (sessionSnapshot !== undefined && Array.isArray(sessionSnapshot.nodes) ? sessionSnapshot : undefined)
+  const snapshot: TranscriptSlice | undefined = pickTranscript(chatLegacy, sessionSnapshot)
   // Newer hosts (DSH v0.1.2-alpha.4) mount the tab before session data
   // exists, so every read off this value guards for undefined.
   const currentSessionId = standard.sessionId ?? snapshot?.sessionId ?? ''
