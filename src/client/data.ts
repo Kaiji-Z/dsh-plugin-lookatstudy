@@ -49,6 +49,7 @@ export interface StudyState {
     readonly notes: ReadonlyArray<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null }>
     readonly html: string
     readonly markdown: string
+    readonly speechText: string
   } | null
   readonly dueCount: number
   readonly due: ReadonlyArray<{ lessonId: string; lessonTitle: string; courseTitle: string; overdueDays: number }>
@@ -203,6 +204,22 @@ class StudyStore {
       body: JSON.stringify({ lessonId, noteId }),
     })
     this.refresh()
+  }
+
+  /** Synthesize one speakable chunk to MP3 (host-side Edge TTS, cache-first). */
+  async tts(text: string, voice?: string): Promise<ArrayBuffer> {
+    const body = await fetchJson('/lookatstudy/api/tts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text, voice }),
+    }) as { ok?: boolean; dataBase64?: string }
+    const raw = body.dataBase64
+    if (body.ok !== true || typeof raw !== 'string') throw new Error('tts response missing audio payload')
+    // atob → Uint8Array (binary string decode), Blob-ready for <audio>.
+    const bin = atob(raw)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    return bytes.buffer
   }
 }
 

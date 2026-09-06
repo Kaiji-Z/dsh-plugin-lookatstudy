@@ -243,6 +243,12 @@ export const STUDY_CSS = `
 /* inline error text (write-action failures) */
 .lks-propcard-err{color:var(--dsw-alias-state-error-primary);font-size:12px;margin-top:6px;flex:none}
 
+/* read-aloud bar (teach pane, under the view tabs) */
+.lks-readbar{display:flex;align-items:center;gap:6px;margin:0 0 8px;min-height:26px}
+.lks-readbar .lks-btn{display:inline-flex;align-items:center;gap:4px}
+.lks-readbar-cur{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--dsw-alias-label-secondary);border-left:2px solid var(--dsw-alias-state-info-primary,var(--dsw-alias-business-primary));padding-left:8px}
+.lks-readbar-notice{flex:none;font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
+
 /* settings section (settings.section entry inside the host settings shell) */
 .lks-settings{display:flex;flex-direction:column;gap:18px;font-family:var(--dsw-font-family);color:var(--dsw-alias-label-primary)}
 .lks-set-row h3{margin:0 0 4px;font-size:15px;font-weight:600}

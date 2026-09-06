@@ -4,7 +4,9 @@
  * switching, mode, lesson-session binding, and course deletion.
  */
 
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
@@ -151,6 +153,49 @@ test('note delete route: removes one entry, persists, 400 on bad body, 404 on un
   assert.equal(saved, 1, 'a successful delete persists')
   assert.equal(findLesson(state, lessonId).lesson.notes.length, 0, 'the note is gone from the live state')
   assert.throws(() => deleteNote(state, lessonId, note.id), /not found/, 'deleting twice fails loud')
+})
+
+test('tts route: streams the synthesis (cache-first), 400 on empty text, 502 when the synth fails', async () => {
+  const { state } = fixture()
+  const studyArea = mkdtempSync(join(tmpdir(), 'lks-tts-route-'))
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  const synths: string[] = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, {
+    store: { get: () => state, save: () => {} },
+    studyAreaPath: studyArea,
+    statePath: 'C:/state.json',
+    onActiveChange: () => {},
+    tts: {
+      synthesize: async (text, voice) => {
+        synths.push(`${voice}:${text}`)
+        return Buffer.from(`mp3:${voice}:${text}`)
+      },
+    },
+  })
+
+  const empty = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '  ' }), new FakeResponse())
+  assert.equal(empty.status, 400, 'blank text is a 400')
+
+  const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '第一句。' }), new FakeResponse())
+  assert.equal(ok.status, 200)
+  const payload = ok.json() as { ok?: boolean; mime?: string; dataBase64?: string }
+  assert.equal(payload.mime, 'audio/mpeg')
+  assert.equal(Buffer.from(payload.dataBase64 ?? '', 'base64').toString(), 'mp3:zh-CN-XiaoxiaoNeural:第一句。', 'base64 payload decodes to the synthesis (default voice 晓晓)')
+
+  const again = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '第一句。' }), new FakeResponse())
+  assert.equal(again.status, 200)
+  assert.equal(synths.length, 1, 'the second identical request replays from the cache without synthesizing')
+
+  const failingRoutes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { failingRoutes.push(route); return () => {} } }, {
+    store: { get: () => state, save: () => {} },
+    studyAreaPath: studyArea,
+    statePath: 'C:/state.json',
+    onActiveChange: () => {},
+    tts: { synthesize: async () => { throw new Error('endpoint gone') } },
+  })
+  const dead = await handle(failingRoutes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '第二句。' }), new FakeResponse())
+  assert.equal(dead.status, 502, 'a synthesis failure surfaces as a 502 (the client falls back to speechSynthesis)')
 })
 
 test('mode route: switches and persists the soul mode; 400 on bad values', async () => {

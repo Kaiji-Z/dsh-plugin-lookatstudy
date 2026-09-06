@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 /**
  * The study tab's HTTP API under `/lookatstudy/api/*`: the polled state feed
@@ -13,6 +14,8 @@ import { renderMarkdown } from './markdown.ts'
 import { normalizeMathNotation } from './vendor/math-normalize.ts'
 import { renderBilingual } from './markdown.ts'
 import { DEFAULT_DAILY_GOAL, levelFromTotalXp } from './vendor/xp.ts'
+import { normalizeSpeechText } from './vendor/speech-text.ts'
+import { cachedTtsMp3, normalizeVoice } from './tts.ts'
 import {
   searchLessons,
   conceptViews,
@@ -54,6 +57,11 @@ export interface DashboardDeps {
   onActiveChange: (active: boolean) => void
   /** Absolute state-file path (read-only display in the settings page). */
   statePath: string
+  /** Read-aloud synthesis seam: real Edge TTS by default, faked in tests. */
+  tts?: {
+    /** Overrides synthesis entirely (the cache still short-circuits first). */
+    synthesize?: (text: string, voice: string) => Promise<Buffer>
+  }
 }
 
 /** Structural slice of the dsh `webServer` service, for testability. */
@@ -71,7 +79,7 @@ export interface RequestLike {
 export interface ResponseLike {
   headersSent: boolean
   writeHead(status: number, headers?: Record<string, string>): ResponseLike
-  end(chunk?: string): ResponseLike
+  end(chunk?: string | Uint8Array): ResponseLike
   on(event: 'data', listener: (chunk: Buffer) => void): void
   on(event: 'end', listener: () => void): void
 }
@@ -113,6 +121,10 @@ export interface WorkbenchLesson {
   starters: Array<{ label: string; message: string }>
   notes: Array<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null }>
   html: string
+  /** Raw lesson body (the read-aloud control and the settings page speak from this). */
+  markdown: string
+  /** Markdown stripped to speakable plain text (code removed, layout markers off) — the read-aloud feed. */
+  speechText: string
 }
 
 /** Whole workbench state for the page. */
@@ -206,6 +218,7 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
           ref.lesson.translation === undefined ? ref.lesson.body : renderBilingual(ref.lesson.body, ref.lesson.translation),
         )),
         markdown: ref.lesson.body,
+        speechText: normalizeSpeechText(normalizeMathNotation(ref.lesson.body)),
       }
     } catch {
       lesson = null
@@ -398,6 +411,31 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         deps.store.get().lessonSessions[body.lessonId] = body.sessionId
         deps.store.save()
         sendJson(res, 200, { ok: true })
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/tts') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        const text = typeof body.text === 'string' ? body.text.trim() : ''
+        if (text === '') {
+          sendJson(res, 400, { ok: false, error: 'text (non-empty string) required' })
+          return
+        }
+        if (text.length > 4000) {
+          sendJson(res, 400, { ok: false, error: 'text exceeds 4000 chars (speak sentence groups, not whole lessons)' })
+          return
+        }
+        const voice = normalizeVoice(typeof body.voice === 'string' ? body.voice : undefined)
+        const cacheDir = join(deps.studyAreaPath, 'tts-cache')
+        try {
+          const mp3 = await cachedTtsMp3(cacheDir, text, voice, deps.tts?.synthesize)
+          // Base64-in-JSON, not raw bytes: the host webserver's res can sit
+          // behind middleware (gzip) that drops Buffer chunks; JSON survives
+          // every wrapper and sentence-sized chunks make the overhead moot.
+          sendJson(res, 200, { ok: true, mime: 'audio/mpeg', dataBase64: mp3.toString('base64') })
+        } catch (error) {
+          sendJson(res, 502, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
         return
       }
       if (req.method === 'POST' && pathname === '/lookatstudy/api/mode') {

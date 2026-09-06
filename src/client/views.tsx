@@ -25,6 +25,9 @@ import { useStudy } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
 import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
 import { renderLessonConceptMap } from './diagrams.ts'
+import { speechSentencesOf } from '../vendor/speech-text.ts'
+import { speakMathInSentence } from '../vendor/math-speech.ts'
+import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { tr, type StudyT } from './locale.ts'
 
 /** The three souls, in pill order (labels from LookatStudy's mode switcher). */
@@ -749,11 +752,83 @@ function TutorColumn({ data, setMode, send, snapshot }: {
   )
 }
 
+/** Browser speechSynthesis engine — the offline/endpoint-gone fallback voice. */
+function systemSpeechEngine(): SpeechEngine {
+  return {
+    speak(text: string): Promise<void> {
+      return new Promise((resolve, reject) => {
+        const synth = typeof window === 'undefined' ? undefined : window.speechSynthesis
+        if (synth === undefined) {
+          reject(new Error('no speechSynthesis'))
+          return
+        }
+        const utterance = new SpeechSynthesisUtterance(text)
+        utterance.lang = 'zh-CN'
+        utterance.onend = () => resolve()
+        utterance.onerror = () => reject(new Error('speechSynthesis failed'))
+        synth.speak(utterance)
+      })
+    },
+    pause(): void { window.speechSynthesis?.pause() },
+    resume(): void { window.speechSynthesis?.resume() },
+    cancel(): void { window.speechSynthesis?.cancel() },
+  }
+}
+
+/** Edge-over-dashboard engine: MP3 from /api/tts played through an <audio>. */
+function audioSpeechEngine(fetchTts: (text: string) => Promise<ArrayBuffer>): SpeechEngine {
+  let audio: HTMLAudioElement | null = null
+  return {
+    speak(text: string): Promise<void> {
+      return fetchTts(text).then(buf => new Promise<void>((resolve, reject) => {
+        audio = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' })))
+        audio.onended = () => resolve()
+        audio.onerror = () => reject(new Error('audio playback failed'))
+        void audio.play().catch(reject)
+      }))
+    },
+    pause(): void { audio?.pause() },
+    resume(): void { void audio?.play() },
+    cancel(): void {
+      audio?.pause()
+      audio = null
+    },
+  }
+}
+
 /** Right column: the blackboard — focus-lesson 讲解/脑图/概念图 plus the Cornell 笔记. */
 function BlackboardColumn({ data, deleteNote }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void> }): ReactNode {
   const lesson = data?.lesson ?? null
+  const { tts } = useStudy()
   const [pane, setPane] = useState<'teach' | 'cmap'>('teach')
   const [error, setError] = useState<string | null>(null)
+  // Read-aloud: one controller per lesson play; the bar shows the current
+  // sentence and the degradation notice when the system voice takes over.
+  const [read, setRead] = useState<ReadAloudStatus | null>(null)
+  const readCtl = useRef<ReadAloudController | null>(null)
+  const [readError, setReadError] = useState<string | null>(null)
+  const startReading = (): void => {
+    if (lesson === null || lesson.speechText.trim() === '') return
+    readCtl.current?.stop()
+    const sentences = speechSentencesOf(lesson.speechText)
+    const controller = new ReadAloudController(
+      sentences.map(s => speakMathInSentence(s)),
+      audioSpeechEngine(text => tts(text)),
+      systemSpeechEngine(),
+      s => {
+        setRead(s)
+        if (s.degraded && s.engine === 'system' && !readError) setReadError(tr('read.engine.system'))
+      },
+    )
+    readCtl.current = controller
+    setReadError(null)
+    void controller.start().catch((err: unknown) => { setReadError(err instanceof Error ? err.message : String(err)) })
+  }
+  const stopReading = (): void => {
+    readCtl.current?.stop()
+    setRead(null)
+    setReadError(null)
+  }
   // Armed note deletion: one click arms ("确认删除?"), the next confirms —
   // mirroring the rail's course delete; a stray click anywhere else disarms.
   const [armedNote, setArmedNote] = useState<string | null>(null)
@@ -816,6 +891,33 @@ function BlackboardColumn({ data, deleteNote }: { data: StudyData; deleteNote: (
         createElement('button', { className: `lks-viewtab${pane === 'teach' ? ' on' : ''}`, 'aria-pressed': String(pane === 'teach'), onClick: () => { setPane('teach') } }, tr('viewtab.teach')),
         createElement('button', { className: `lks-viewtab${pane === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(pane === 'cmap'), title: tr('viewtab.cmap.title'), onClick: () => { setPane('cmap') } }, createElement(IconGlobeOutline14, { size: 13 }), tr('viewtab.cmap')),
       ),
+      pane === 'teach'
+        ? createElement('div', { className: 'lks-readbar' },
+          createElement('button', {
+            className: 'lks-btn ghost',
+            style: { padding: '3px 8px', fontSize: '12.5px', flex: 'none' },
+            title: read !== null && read.state === 'speaking' ? tr('read.pause') : tr('read.play'),
+            onClick: () => {
+              if (read !== null && read.state === 'speaking') { readCtl.current?.pause(); return }
+              if (read !== null && read.state === 'paused') { readCtl.current?.resume(); return }
+              startReading()
+            },
+          }, createElement(IconPlayOutline16, { size: 12 }), read !== null && read.state === 'speaking' ? tr('read.pause') : read !== null && read.state === 'paused' ? tr('read.resume') : tr('read.play')),
+          read !== null
+            ? createElement('button', {
+              className: 'lks-btn ghost',
+              style: { padding: '3px 8px', fontSize: '12.5px', flex: 'none' },
+              title: tr('read.stop'),
+              onClick: stopReading,
+            }, tr('read.stop'))
+            : null,
+          read !== null && read.state !== 'idle' && lesson !== null
+            ? createElement('span', { className: 'lks-readbar-cur' },
+              (speechSentencesOf(lesson.speechText)[read.index] ?? '').slice(0, 80))
+            : null,
+          readError !== null ? createElement('span', { className: 'lks-readbar-notice' }, readError) : null,
+        )
+        : null,
       pane === 'teach'
         ? createElement('div', { className: 'lks-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: lesson.html } })
         : createElement('div', { className: 'lks-prose', ref: diagRef }),
