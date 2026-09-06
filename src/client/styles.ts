@@ -20,6 +20,8 @@ const STYLE_ID = 'data-dsh-plugin-lookatstudy'
  * attribute flips, and the host conversation column's own children are hidden
  * behind `!important` so React never fights the takeover.
  */
+import { UPSTREAM_CSS } from './upstream-theme.ts'
+
 export const STUDY_CSS = `
 /* State inks: small colored text must clear WCAG AA (4.5:1), but the host's
    raw state tokens (success/warn primaries) sit at 2.3–2.6:1 on light
@@ -55,6 +57,8 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14{position:relative;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);overflow:hidden;font-family:var(--dsw-font-family)}
 .lks14 button{font-family:var(--dsw-font-family);cursor:pointer}
 .lks14-body{display:flex;flex:1;min-width:0;min-height:0}
+.lks14-righthalf{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+.lks14-row{flex:1;min-height:0;display:flex}
 .lks14-col{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
 .lks14-colhead{flex:none;display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:13px;font-weight:600;color:var(--dsw-alias-label-secondary);border-bottom:1px solid var(--dsw-alias-border-l1)}
 
@@ -71,22 +75,6 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14-duebox{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:12.5px}
 .lks14-dueitem{display:flex;justify-content:space-between;gap:6px;padding:2px 0;color:var(--dsw-alias-label-secondary)}
 .lks14-over{color:var(--dsw-alias-state-error-primary)}
-.lks14-sechead{display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;font-weight:600;padding:6px 2px;cursor:pointer;text-align:left}
-.lks14-sechead:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
-.lks14-secnum{flex:none;width:18px;height:18px;border-radius:5px;background:var(--dsw-alias-bg-layer-2);display:inline-flex;align-items:center;justify-content:center;font-size:11px}
-.lks14-secheadt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lks14-node{display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:5px 6px;border-radius:8px;cursor:pointer;text-align:left}
-.lks14-node:hover{background:var(--dsw-alias-bg-layer-1)}
-.lks14-node:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
-.lks14-node.focus{background:var(--dsw-alias-bg-layer-2)}
-.lks14-node[aria-disabled='true']{color:var(--dsw-alias-label-tertiary);cursor:default}
-.lks14-g{flex:none;display:inline-flex}
-.lks14-t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lks14-tag{flex:none;display:inline-flex;align-items:center;gap:2px;font-size:10.5px;border-radius:6px;padding:1px 4px}
-.lks14-tag.weak{color:var(--dsw-alias-state-warn-primary)}
-.lks14-bar{flex:none;width:26px;height:4px;border-radius:2px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
-.lks14-bar i{display:block;height:100%;background:var(--dsw-alias-business-primary);transform-origin:left}
-.lks14-pct{flex:none;font-size:10.5px;color:var(--dsw-alias-label-tertiary)}
 .lks14-empty{color:var(--dsw-alias-label-tertiary);font-size:13px;padding:18px 6px;line-height:1.7}
 .lks14-import{margin:8px 0}
 .lks14-inputrow{display:flex;gap:6px}
@@ -201,7 +189,7 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
   .lks14-rail{flex:none;max-height:32vh;border-right:none;border-bottom:1px solid var(--dsw-alias-border-l1)}
   .lks14-chat{min-width:0}
   .lks14-note{flex:1 1 auto;min-height:0}
-  .lks14-body[data-pane='rail'] .lks14-chat,.lks14-body[data-pane='rail'] .lks14-note,
+  .lks14-body[data-pane='rail'] .lks14-righthalf{display:none}
   .lks14-body[data-pane='chat'] .lks14-rail,.lks14-body[data-pane='chat'] .lks14-note,
   .lks14-body[data-pane='note'] .lks14-rail,.lks14-body[data-pane='note'] .lks14-chat{display:none}
   .lks14-body[data-pane='rail'] .lks14-rail{display:flex;max-height:none;flex:1 1 auto}
@@ -376,7 +364,7 @@ export function ensureStudyStyles(): HTMLStyleElement {
   if (existing !== null) return existing as HTMLStyleElement
   const style = document.createElement('style')
   style.setAttribute(STYLE_ID, '')
-  style.textContent = STUDY_CSS
+  style.textContent = STUDY_CSS + UPSTREAM_CSS
   document.head.appendChild(style)
   return style
 }

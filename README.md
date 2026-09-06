@@ -6,10 +6,10 @@ Turn any markdown document, local folder, or GitHub learning repository into a g
 
 | | |
 |---|---|
-| ![Three-column study tab: course rail, tutor, blackboard](docs/media/overview.png) | **The 学习 panel** — course rail (progress, mastery bars, due box), the tutor chat with its own composer, and the focus lesson's blackboard; opened from the sidebar's 学习 row (0.14.0 screenshot pending — the shot shows the 0.13 tab arrangement of the same three columns). |
+| ![Three-column study panel: balloon course map, tutor chat, blackboard](docs/media/overview.png) | **The 学习 panel** — LookatStudy's Duolingo-dark UI 1:1: the floating XP/streak app header, the three-column surface ladder (rail / chat / notebook, depth by color step), 3D push-down buttons, and the chat's typing dots; opened from the sidebar's 学习 row. |
 | ![Lesson page with rendered math, code and diagrams](docs/media/blackboard-lesson.png) | **讲解** — server-sanitized markdown rendered rich on demand: KaTeX formulas, syntax-highlighted code, mermaid diagrams (CDN loaders, silent degrade offline). |
 | ![Concept map view](docs/media/concept-map.png) | **🕸 概念图** — the lesson's knowledge components laid out as a draw.io-style concept graph (bundled ELK layout, no external service). |
-| ![Course rail with lesson tree](docs/media/course-rail.png) | **课程栏** — sections, gating, mastery bars, ⚡ weak spots, exam stars, XP & streak. |
+| ![Course rail with the balloon map](docs/media/course-rail.png) | **课程栏** — the balloon course map: frosted gold-rim signposts, state spheres (stone-locked / glowing green / blue in-progress / gold mastered / purple exam boss), sagging brand ropes that draw themselves in as you walk them, sky backdrop, due badges; signposts still collapse. |
 
 ## Install
 

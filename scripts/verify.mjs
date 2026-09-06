@@ -132,6 +132,18 @@ gate('bundle', () => {
     [client, 'showStudyToast', 'toast entry point'],
     [client, 'SEVERITY_DURATION', 'per-severity toast durations'],
     [client, 'lks-toast', 'toast capsule styles'],
+    // 0.16.0 P9a: the upstream v0.28 skin (1:1 UI port)
+    [client, 'UPSTREAM_CSS', 'the upstream token+component skin layer'],
+    [client, 'lks-ui', 'the skin scope class on the panel root'],
+    [client, 'lks14-appheader', 'the floating XP/streak app header'],
+    [client, 'lks14-righthalf', 'the header-over-row structural wrapper'],
+    // 0.16.0 P9b: the balloon course map (upstream MapRail static path)
+    [client, 'MapSectionView', 'the map section renderer (signpost + balloon field)'],
+    [client, 'computeBalloonLayout', 'vendored balloon layout engine rides the bundle'],
+    [client, 'lks-bubble-available', 'state-sphere styles'],
+    [client, 'lks-signpost', 'frosted section signposts'],
+    [client, 'lks-balloon-bob', 'balloon bob animation'],
+    [client, 'lks-path-draw', 'walked-rope draw-in animation'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [

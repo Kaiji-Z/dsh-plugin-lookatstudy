@@ -148,8 +148,29 @@ test('the stylesheet carries the panel takeover contract (hide-siblings, entry r
     'state inks cover the toolview cards (no .lks-root ancestor in the host conversation) and the panel family')
   assert.match(STUDY_CSS, /\.lks14-composer\{[^}]*border-top/,
     'the chat pane owns its composer — the host composer is never involved')
-  assert.match(STUDY_CSS, /\.lks14-node\[aria-disabled='true'\]/,
-    'locked lesson rows keep the aria-disabled contract (focusable, tooltip explains why)')
+})
+
+test('the upstream v0.28 skin is layered over the panel foundation (P9a)', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  // token ladder — verbatim upstream values, scoped to the panel root only
+  assert.match(UPSTREAM_CSS, /\.lks-ui\{[^}]*--brand:#58CC01/, 'Duolingo brand green heads the token block')
+  assert.match(UPSTREAM_CSS, /--surface-rail:#08090B/, 'the surface ladder starts at the rail black')
+  assert.match(UPSTREAM_CSS, /--surface-1:#111114/, 'the chat column sits on surface-1')
+  assert.match(UPSTREAM_CSS, /font-family:'DIN Round'/, 'the round display font is declared first')
+  // component signatures
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-btn\.primary\{[^}]*box-shadow:0 4px 0 0 var\(--brand-dark\)/, 'primary buttons are 3D push-downs')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-appheader::before\{[^}]*backdrop-filter/, 'the app header floats on blur')
+  assert.match(UPSTREAM_CSS, /@keyframes lks-typing-dot/, 'the thinking row uses upstream typing dots')
+  // P9b: the balloon map skin (upstream lesson-bubble verbatim)
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-bubble-available\{[^}]*radial-gradient\(circle at 32% 28%,var\(--brand-light\) 0%,var\(--brand\) 45%,var\(--brand-dark\) 100%\)/, 'available bubbles are the glowing brand sphere')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-bubble-mastered\{[^}]*var\(--gold\) 45%/, 'mastered bubbles go gold')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-signpost\{[^}]*backdrop-filter:blur\(7px\)/, 'signposts are the frosted gold-rim boards')
+  assert.match(UPSTREAM_CSS, /@keyframes lks-balloon-bob/, 'balloons bob on the static path')
+  assert.match(UPSTREAM_CSS, /@keyframes lks-path-draw/, 'walked ropes draw themselves in')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-bubble\[aria-disabled='true'\]\{cursor:not-allowed\}/, 'locked bubbles keep the aria-disabled contract (focusable, tooltip explains why)')
+  // the structural wrappers the skin rides on live in the base stylesheet
+  assert.match(STUDY_CSS, /\.lks14-righthalf\{flex:1;min-width:0;display:flex;flex-direction:column/, 'the right half is a column under the app header')
+  assert.match(STUDY_CSS, /\.lks14-body\[data-pane='rail'\] \.lks14-righthalf\{display:none\}/, 'narrow rail mode hides the whole right half')
 })
 
 test('the lookatstudy locale dictionaries keep zh/en parity and translate with fallback', async () => {

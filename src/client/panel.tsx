@@ -36,6 +36,7 @@ import { showStudyToast } from './toast.ts'
 import { Companion, useCompanionMood } from './companion.tsx'
 import { applyHighlights, getTextModel, locateInModel } from './highlights.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane } from './views.tsx'
+import { MapSectionView, pickSky } from './maprail.tsx'
 import { tr } from './locale.ts'
 
 /** The three souls in pill order (same shape as the study tab's pills). */
@@ -50,14 +51,6 @@ const ZONES: ReadonlyArray<readonly [string, string]> = [
   ['record', 'zone.record'],
   ['practice', 'zone.practice'],
 ]
-
-function statusIcon(kind: string, status: string): ReactNode {
-  if (kind === 'exam') return createElement(IconGoalOutline16, { size: 14 })
-  if (status === 'mastered') return createElement(IconCrownFill16, { size: 14 })
-  if (status === 'in_progress') return createElement(IconBookFill16, { size: 14 })
-  if (status === 'available') return createElement(IconStarFill16, { size: 14 })
-  return createElement(IconLockFill16, { size: 14 })
-}
 
 /** Toast severity glyph (P6): the state color rides the icon, text stays ink. */
 function toastIcon(severity: ToastSeverity): ReactNode {
@@ -285,12 +278,28 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
 
   const companion = useCompanionMood()
   const setCompanionEvent = companion.emit
+  const progress = data?.progress ?? null
+  // The upstream v0.6 ladder: rail full-height on surface-rail; the right half
+  // = floating app-header + the chat/notebook row (chat surface-1, notebook
+  // surface-2) — depth by color step, no borders.
   const body: ReactNode = createElement('div', { className: 'lks14-body', 'data-pane': narrowPane },
     createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, send }),
-    createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, setMode, narrowPane, companionEvent: setCompanionEvent }),
-    createElement(NotebookPane, { data, deleteNote, send, companionEvent: setCompanionEvent }),
+    createElement('div', { className: 'lks14-righthalf' },
+      createElement('div', { className: 'lks14-appheader' },
+        createElement('span', { className: 'lks-hdr-title' }, lesson?.courseTitle ?? tr('tab.label')),
+        createElement('span', { className: 'lks-hdr-xp', title: tr('header.xp', { xp: progress?.totalXp ?? 0 }) },
+          createElement('span', { className: 'lks-hdr-stat' }, '\u26a1'),
+          createElement('span', { className: 'lks-hdr-xpbar' }, createElement('i', { style: { width: `${Math.min(100, progress?.levelPct ?? 0)}%` } }))),
+        createElement('span', { className: 'lks-hdr-stat lks-hdr-streak', title: tr('header.streak') }, '\ud83d\udd25', String(progress?.streak ?? 0)),
+        createElement('span', { className: 'lks-hdr-stat', title: tr('header.level') }, `Lv${String(progress?.level ?? 1)}`),
+      ),
+      createElement('div', { className: 'lks14-row' },
+        createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, setMode, narrowPane, companionEvent: setCompanionEvent }),
+        createElement(NotebookPane, { data, deleteNote, send, companionEvent: setCompanionEvent }),
+      ),
+    ),
   )
-  return createElement('div', { className: 'lks14', 'data-lks-panel': '' },
+  return createElement('div', { className: 'lks14 lks-ui', 'data-lks-panel': '' },
     createElement(Companion, { mood: companion.mood, onPoke: () => {
       setCompanionEvent('poke')
       showStudyToast(tr('companion.poked'), { severity: 'success' })
@@ -418,7 +427,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
           ? selectedCourse
           : data.courses[0]!.courseId
         const course = data.courses.find(c => c.courseId === courseId)!
-        return createElement('div', null,
+        return createElement('div', { className: `lks-map lks-sky-${pickSky(courseId)}` },
           createElement('div', { className: 'lks14-railhead' },
             data.courses.length > 1
               ? createElement('select', {
@@ -499,43 +508,16 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             const lessons = section.lessons.filter(l => query.trim() === '' || titleMatches(l.title, query) || l.focus)
             if (lessons.length === 0) return []
             const open = query.trim() !== '' || effectiveOpen(section.title, sectionDefaultOpen(section), sectionOverrides)
-            return [
-              createElement('button', {
-                key: section.title,
-                type: 'button',
-                className: 'lks14-sechead',
-                'aria-expanded': String(open),
-                title: open ? tr('rail.section.collapse') : tr('rail.section.expand', { count: section.lessons.length }),
-                onClick: () => { toggleSection(section.title, !open) },
-              },
-              createElement('span', { className: 'lks14-secnum' }, String(section.index + 1)),
-              createElement('span', { className: 'lks14-secheadt' }, section.title),
-              createElement('span', { className: 'lks14-secheadc' }, open ? '▾' : '▸')),
-              ...(open ? lessons.map(lesson => {
-                const locked = lesson.status === 'locked' || (lesson.kind === 'exam' && !examAllowed)
-                return createElement('button', {
-                  key: lesson.id,
-                  type: 'button',
-                  className: `lks14-node${lesson.focus ? ' focus' : ''}`,
-                  'aria-disabled': locked || undefined,
-                  title: `${lesson.title} — ${statusTitle(lesson.kind, locked ? 'locked' : lesson.status)}`,
-                  onClick: () => {
-                    // Upstream alignment: selecting a lesson only FOCUSES it —
-                    // the state-side attempt runs host-side, zero LLM traffic.
-                    if (locked) return
-                    void setFocus(lesson.id).catch(reportError)
-                  },
-                },
-                createElement('span', { className: 'lks14-g' }, statusIcon(lesson.kind, locked ? 'locked' : lesson.status)),
-                createElement('span', { className: 'lks14-t' }, lesson.title),
-                lesson.weakConcepts > 0 ? createElement('span', { className: 'lks14-tag weak', title: tr('tag.weak', { count: lesson.weakConcepts }) }, createElement(IconBoltFill16, { size: 10 }), String(lesson.weakConcepts)) : null,
-                lesson.masteryPct !== null
-                  ? createElement('span', { className: 'lks14-bar', title: tr('tag.mastery', { pct: lesson.masteryPct }) }, createElement('i', { style: { transform: `scaleX(${lesson.masteryPct / 100})` } }))
-                  : null,
-                lesson.masteryPct !== null ? createElement('span', { className: 'lks14-pct' }, `${lesson.masteryPct}%`) : null,
-                )
-              }) : []),
-            ]
+            return [createElement(MapSectionView, {
+              key: section.title,
+              section: { title: section.title, index: section.index, lessons },
+              examAllowed,
+              open,
+              onToggle: () => { toggleSection(section.title, !open) },
+              // Upstream alignment: tapping a bubble only FOCUSES the lesson —
+              // the state-side attempt runs host-side, zero LLM traffic.
+              onJump: (id: string) => { void setFocus(id).catch(reportError) },
+            })]
           }),
           createElement('button', {
             className: 'lks-btn ghost',
@@ -654,7 +636,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           dormant ? tr('tutor.dormant') : tr('tutor.empty'), createElement('br'), tr('tutor.empty.hint'))
         : rows.map((row, i) => chatRow(row, !dormant && i === lastAssistant ? { send } : undefined)),
       rows.length > 0 && rows[rows.length - 1]!.role === 'user'
-        ? createElement('div', { className: 'lks14-thinking' }, createElement(IconLoadingOutline16, { size: 13, className: 'lks-spin' }), tr('tutor.thinking'))
+        ? createElement('div', { className: 'lks14-thinking' }, createElement('i', null), createElement('i', null), createElement('i', null))
         : null,
     ),
     ...(lesson?.artifacts ?? [])
@@ -681,24 +663,27 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
       }, s.label)),
     ),
     createElement('div', { className: 'lks14-composer' },
-      createElement('textarea', {
-        className: 'lks14-composertext',
-        placeholder: busy ? tr('composer.busy') : tr('tutor.empty.hint'),
-        value: draft,
-        rows: 2,
-        disabled: dormant,
-        onChange: (e: { target: { value: string } }) => { setDraft(e.target.value) },
-        onKeyDown: onComposerKey,
-      }),
-      createElement('button', {
-        className: 'lks-btn primary',
-        disabled: busy || dormant || draft.trim() === '',
-        onClick: () => { send(draft) },
-      }, busy ? createElement(IconLoadingOutline16, { size: 13, className: 'lks-spin' }) : null, tr('composer.send')),
+      createElement('div', { className: 'lks14-composer-card' },
+        createElement('textarea', {
+          className: 'lks14-composertext',
+          placeholder: busy ? tr('composer.busy') : tr('tutor.empty.hint'),
+          value: draft,
+          rows: 2,
+          disabled: dormant,
+          onChange: (e: { target: { value: string } }) => { setDraft(e.target.value) },
+          onKeyDown: onComposerKey,
+        }),
+        createElement('button', {
+          className: 'lks-btn-send',
+          'aria-label': tr('composer.send'),
+          disabled: busy || dormant || draft.trim() === '',
+          onClick: () => { send(draft) },
+        }, busy ? createElement(IconLoadingOutline16, { size: 16, className: 'lks-spin' }) : '↑'),
       ),
     sendError !== null || error !== null
       ? createElement('div', { className: 'lks-propcard-err' }, sendError ?? error)
       : null,
+    ),
   )
 }
 
