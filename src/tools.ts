@@ -71,7 +71,10 @@ import {
   type LearningState,
   type LessonRef,
 } from './state.ts'
-import { artifactId, sanitizeQuiz, type StudyArtifact } from './artifacts.ts'
+import {
+  artifactId, sanitizeCodeWalkthrough, sanitizeCompareTable, sanitizeDiagram, sanitizeGuess, sanitizeQuiz,
+  type SanitizeResult, type StudyArtifact,
+} from './artifacts.ts'
 
 /** State access handed in by `apply`; every mutation persists via {@link StudyStore.save}. */
 export interface StudyStore {
@@ -1853,6 +1856,183 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     presentCall: args => ({ card: 'generic', title: `Generate practice card: ${typeof args.title === 'string' ? args.title : '练习'} (${args.questions?.length ?? 0} questions)` }),
   })
 
+  /** Record one sanitized artifact on its lesson (shared by the artifact tools). */
+  const recordSanitized = (lessonId: string, result: SanitizeResult, type: StudyArtifact['artifactType']): Promise<Record<string, unknown>> =>
+    mutate((state) => {
+      const id = artifactId(type, result.data)
+      const artifact: StudyArtifact = {
+        id,
+        artifactType: type,
+        title: typeof result.data.title === 'string' ? result.data.title : type,
+        createdAt: new Date().toISOString(),
+        hash: id.slice(type.length + 1),
+        data: result.data,
+      }
+      const stored = recordArtifact(state, lessonId, artifact)
+      return { artifactType: type, artifactId: stored.artifact.id, created: stored.created, ...stored.artifact.data }
+    })
+
+  const poseGuessTool = defineTool({
+    name: 'study_pose_guess',
+    description:
+      'Pose the opening two-option guess (the curiosity hook): one or two sentences of prose first '
+      + '(counter-intuitive, everyday-related), then this tool with exactly 2 short options. The learner '
+      + 'picks one; you reveal the answer NEXT turn and teach the lesson\'s core point. Iron rules: '
+      + 'unscored, never touches mastery, never say 答对/答错 — this is a hook, not a quiz.',
+    parameters: {
+      lessonId: { type: 'string', required: true, description: 'Lesson the guess belongs to.' },
+      prompt: { type: 'string', required: true, description: 'e.g. 你觉得：递归算阶乘会比循环——更慢，还是差不多？' },
+      options: {
+        type: 'array', required: true, description: 'Exactly 2 options.',
+        items: {
+          type: 'object', additionalProperties: false,
+          properties: { id: { type: 'string', required: true }, label: { type: 'string', required: true } },
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          artifactType: { type: 'string', required: true, enum: ['guess'] },
+          artifactId: { type: 'string', required: true },
+          created: { type: 'boolean', required: true },
+          prompt: { type: 'string', required: true },
+          options: {
+            type: 'array', required: true,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: { id: { type: 'string', required: true }, label: { type: 'string', required: true } },
+            },
+          },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: `Guess posed: ${value.prompt}` }],
+    },
+    async execute(args) {
+      return recordSanitized(args.lessonId, sanitizeGuess(args), 'guess')
+    },
+    presentCall: args => ({ card: 'generic', title: `Pose guess: ${typeof args.prompt === 'string' ? args.prompt.slice(0, 40) : ''}` }),
+  })
+
+  const compareTableTool = defineTool({
+    name: 'study_compare_table',
+    description:
+      'Generate a compare table for two or more concepts/solutions/technologies — when the learner asks '
+      + 'A 和 B 有什么区别 or a horizontal comparison helps. Rendered as a table artifact card.',
+    parameters: {
+      lessonId: { type: 'string', required: true, description: 'Lesson the table belongs to.' },
+      title: { type: 'string', required: true, description: 'e.g. SQL vs NoSQL' },
+      headers: { type: 'array', required: true, items: { type: 'string' }, description: 'Column names (first is usually the dimension).' },
+      rows: { type: 'array', required: true, items: { type: 'array', items: { type: 'string' } }, description: 'Rows; each row has headers.length cells.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          artifactType: { type: 'string', required: true, enum: ['compare_table'] },
+          artifactId: { type: 'string', required: true },
+          created: { type: 'boolean', required: true },
+          title: { type: 'string', required: true },
+          headers: { type: 'array', required: true, items: { type: 'string' } },
+          rows: { type: 'array', required: true, items: { type: 'array', items: { type: 'string' } } },
+          warnings: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: `Compare table: ${value.title} (${(value.rows as unknown[]).length} rows)` }],
+    },
+    async execute(args) {
+      return recordSanitized(args.lessonId, sanitizeCompareTable(args), 'compare_table')
+    },
+    presentCall: args => ({ card: 'generic', title: `Compare table: ${typeof args.title === 'string' ? args.title : ''}` }),
+  })
+
+  const drawDiagramTool = defineTool({
+    name: 'study_draw_diagram',
+    description:
+      'Draw a structured mermaid diagram: steps/decisions/causality → flowchart TD (or LR for short '
+      + 'chains); multi-party interactions → sequenceDiagram; states/transitions → stateDiagram-v2. '
+      + 'Return valid mermaid syntax only (no outer fences). Rendered as a diagram artifact card.',
+    parameters: {
+      lessonId: { type: 'string', required: true, description: 'Lesson the diagram belongs to.' },
+      title: { type: 'string', required: true },
+      diagramType: { type: 'string', required: true, enum: ['flowchart', 'sequence', 'state'] },
+      mermaid: { type: 'string', required: true, description: 'Mermaid code without fences.' },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          artifactType: { type: 'string', required: true, enum: ['diagram'] },
+          artifactId: { type: 'string', required: true },
+          created: { type: 'boolean', required: true },
+          title: { type: 'string', required: true },
+          diagramType: { type: 'string', required: true },
+          mermaid: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: `Diagram: ${value.title} (${value.diagramType})` }],
+    },
+    async execute(args) {
+      return recordSanitized(args.lessonId, sanitizeDiagram(args), 'diagram')
+    },
+    presentCall: args => ({ card: 'generic', title: `Draw diagram: ${typeof args.title === 'string' ? args.title : ''}` }),
+  })
+
+  const codeWalkthroughTool = defineTool({
+    name: 'study_code_walkthrough',
+    description:
+      'Walk through a piece of code line-by-line / segment-by-segment — when the learner asks what the '
+      + 'code means or the lesson contains code needing teardown. Rendered with line numbers + per-segment notes.',
+    parameters: {
+      lessonId: { type: 'string', required: true, description: 'Lesson the walkthrough belongs to.' },
+      title: { type: 'string', required: true },
+      language: { type: 'string', required: true, description: 'e.g. typescript / python' },
+      code: { type: 'string', required: true },
+      annotations: {
+        type: 'array', required: true, description: 'Per-segment notes.',
+        items: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            lineStart: { type: 'integer', required: true },
+            lineEnd: { type: 'integer', required: true },
+            note: { type: 'string', required: true },
+          },
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          artifactType: { type: 'string', required: true, enum: ['code_walkthrough'] },
+          artifactId: { type: 'string', required: true },
+          created: { type: 'boolean', required: true },
+          title: { type: 'string', required: true },
+          language: { type: 'string', required: true },
+          code: { type: 'string', required: true },
+          annotations: {
+            type: 'array', required: true,
+            items: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                lineStart: { type: 'integer', required: true },
+                lineEnd: { type: 'integer', required: true },
+                note: { type: 'string', required: true },
+              },
+            },
+          },
+          warnings: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: `Code walkthrough: ${value.title} (${(value.annotations as unknown[]).length} segments)` }],
+    },
+    async execute(args) {
+      return recordSanitized(args.lessonId, sanitizeCodeWalkthrough(args), 'code_walkthrough')
+    },
+    presentCall: args => ({ card: 'generic', title: `Code walkthrough: ${typeof args.title === 'string' ? args.title : ''}` }),
+  })
+
   return [
     importMarkdown,
     importFolder,
@@ -1879,6 +2059,10 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     noteSaveTool,
     notesTool,
     generateQuizTool,
+    poseGuessTool,
+    compareTableTool,
+    drawDiagramTool,
+    codeWalkthroughTool,
     setModeTool,
   ]
 }

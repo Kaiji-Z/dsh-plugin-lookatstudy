@@ -58,18 +58,18 @@ test('the study surface registers tools on activation and retires them on exit',
 
   state.active = true
   surface.sync()
-  assert.equal(registered.length, 26, 'activation registers the full study_* toolset')
+  assert.equal(registered.length, 30, 'activation registers the full study_* toolset')
   assert.equal(disposed.length, 0)
   surface.sync()
-  assert.equal(registered.length, 26, 'sync is idempotent while the flag is unchanged')
+  assert.equal(registered.length, 30, 'sync is idempotent while the flag is unchanged')
 
   state.active = false
   surface.sync()
-  assert.equal(disposed.length, 26, 'deactivation disposes every live registration')
+  assert.equal(disposed.length, 30, 'deactivation disposes every live registration')
 
   state.active = true
   surface.sync()
-  assert.equal(registered.length, 52, 're-activation registers a fresh batch')
+  assert.equal(registered.length, 60, 're-activation registers a fresh batch')
   surface.dispose()
-  assert.equal(disposed.length, 52, 'teardown retires whatever is live regardless of the flag')
+  assert.equal(disposed.length, 60, 'teardown retires whatever is live regardless of the flag')
 })

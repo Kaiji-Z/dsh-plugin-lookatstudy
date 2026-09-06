@@ -114,3 +114,47 @@ test('quiz progress persists and scores over recorded answers', async () => {
   assert.deepEqual(quizScore(data, [0, 1]), { correct: 2, total: 2 })
   assert.deepEqual(quizScore(data, [1, -1]), { correct: 0, total: 1 }, 'unanswered questions do not count')
 })
+
+test('the four artifact sanitizers validate their shapes and fail loud', async () => {
+  const { sanitizeGuess, sanitizeCompareTable, sanitizeDiagram, sanitizeCodeWalkthrough } = await import('../src/artifacts.ts')
+  // guess: exactly 2 labeled options; junk labels dropped
+  assert.deepEqual(sanitizeGuess({ prompt: '哪个快？', options: [{ id: 'a', label: '递归' }, { id: 'b', label: '循环' }] }).data.options, [
+    { id: 'a', label: '递归' }, { id: 'b', label: '循环' },
+  ])
+  assert.throws(() => sanitizeGuess({ prompt: 'x', options: [{ id: 'a', label: 'only' }] }), /exactly 2 options/)
+  assert.throws(() => sanitizeGuess({ options: [] }), /needs a prompt/)
+  // compare_table: rows must match header width
+  const table = sanitizeCompareTable({ title: '读 vs 写', headers: ['维度', '读', '写'], rows: [['方向', '输入', '输出'], ['两列', '只有']] })
+  assert.equal((table.data.rows as unknown[]).length, 1)
+  assert.equal(table.warnings.length, 1, 'the 2-cell row was dropped with a warning')
+  assert.throws(() => sanitizeCompareTable({ headers: ['只有一列'], rows: [['x']] }), /at least 2 headers/)
+  // diagram: type coerced to the safe default, code required
+  assert.equal(sanitizeDiagram({ title: 't', diagramType: 'weird', mermaid: 'flowchart TD' }).data.diagramType, 'flowchart')
+  assert.throws(() => sanitizeDiagram({ title: 't' }), /needs mermaid code/)
+  // code_walkthrough: annotations must reference real lines
+  const walk = sanitizeCodeWalkthrough({ title: 'w', language: 'python', code: 'a = 1' + String.fromCharCode(10) + 'b = 2', annotations: [
+    { lineStart: 1, lineEnd: 2, note: '赋值' },
+    { lineStart: 5, lineEnd: 9, note: '越界' },
+  ] })
+  assert.equal((walk.data.annotations as unknown[]).length, 1)
+  assert.equal(walk.warnings.length, 1)
+  assert.throws(() => sanitizeCodeWalkthrough({ code: 'x', annotations: [{ lineStart: 0, lineEnd: 0, note: 'n' }] }), /no usable annotations/)
+})
+
+test('seen-artifact tracking: unseen computed purely, marking is idempotent', async () => {
+  const { unseenArtifacts, markArtifactsSeen, seenArtifactsKey } = await import('../src/client/artifact-cards.tsx')
+  const store = new Map<string, string>()
+  const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v) } }
+  const arts = [
+    { id: 'compare_table-1', artifactType: 'compare_table', title: 't', data: {} },
+    { id: 'diagram-2', artifactType: 'diagram', title: 't', data: {} },
+  ]
+  assert.deepEqual(unseenArtifacts('c:0:0', arts, storage), ['compare_table-1', 'diagram-2'])
+  markArtifactsSeen('c:0:0', ['compare_table-1'], storage)
+  assert.deepEqual(unseenArtifacts('c:0:0', arts, storage), ['diagram-2'])
+  markArtifactsSeen('c:0:0', ['compare_table-1'], storage)
+  const stored = JSON.parse(store.get(seenArtifactsKey('c:0:0')) ?? '[]') as string[]
+  assert.equal(stored.length, 1, 're-marking never duplicates')
+  store.set(seenArtifactsKey('c:0:0'), '{junk')
+  assert.deepEqual(unseenArtifacts('c:0:0', arts, storage), arts.map(a => a.id), 'junk storage degrades to all-unseen')
+})

@@ -168,6 +168,38 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 @media (prefers-reduced-motion:reduce){.lks-toast{animation-duration:.01ms}}
 
 
+
+/* artifact cards (P1b, upstream artifacts port): chat column + notebook zones */
+.lks-acard{flex:none;margin:2px 12px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);padding:10px 12px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.lks-acard-head{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-secondary)}
+.lks-acard-expand{margin-left:auto;border:none;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:6px}
+.lks-acard-expand:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2)}
+.lks-acard-table{border-collapse:collapse;display:block;max-width:100%;overflow-x:auto}
+.lks-acard-table th,.lks-acard-table td{border:1px solid var(--dsw-alias-border-l2);padding:4px 9px;font-size:12.5px;text-align:left}
+.lks-acard-table th{background:var(--dsw-alias-bg-layer-2)}
+.lks-acard-code{background:var(--dsw-alias-markdown-code-block);border-radius:8px;padding:8px 0;overflow-x:auto;font-family:var(--dsw-font-markdown-code-block-small);font-size:12px;line-height:1.6;margin:0}
+.lks-acard-line{display:block;white-space:pre}
+.lks-acard-line i{display:inline-block;width:2.2em;color:var(--dsw-alias-label-tertiary);font-style:normal;text-align:right;padding-right:8px;user-select:none}
+.lks-acard-notes{display:flex;flex-direction:column;gap:5px}
+.lks-acard-note{font-size:12.5px;line-height:1.6;color:var(--dsw-alias-label-secondary);border-left:2px solid var(--dsw-alias-state-business-primary);padding-left:8px}
+.lks-acard-note b{color:var(--dsw-alias-label-primary);font-weight:600;margin-right:4px}
+.lks-acard-diagram{overflow-x:auto;text-align:center}
+.lks-acard-diagram svg{max-width:100%;height:auto}
+.lks-acard-modal{position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:32px}
+.lks-acard-modal-body{background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l2);border-radius:14px;max-width:900px;max-height:100%;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:10px}
+.lks-acard-modal-title{display:flex;align-items:center;font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary)}
+.lks-acard-guess-prompt{font-size:13.5px;line-height:1.6;color:var(--dsw-alias-label-primary)}
+.lks-acard-guess-opts{display:flex;gap:8px}
+.lks-acard-guess-opt{flex:1;font:inherit;font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;cursor:pointer}
+.lks-acard-guess-opt:not(:disabled):hover{border-color:var(--dsw-alias-state-business-primary)}
+.lks-acard-guess-opt.picked{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary)}
+.lks-acard-guess-wait{font-size:12px;color:var(--dsw-alias-label-tertiary)}
+.lks-acard-stage{margin-top:14px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l1)}
+.lks-acard-stage .lks-acard{margin:0}
+.lks14-zone .lks-acard{margin:0 0 8px}
+/* notebook tab badge (unseen artifacts) */
+.lks-viewtab-badge{display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:16px;border-radius:8px;background:var(--dsw-alias-state-business-primary);color:#fff;font-size:10px;font-weight:700;margin-left:5px;padding:0 4px}
+
 /* practice card (P1, upstream QuizArtifact port): chat column, below the stream */
 .lks-qcard{flex:none;margin:2px 12px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
 .lks-qcard-head{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-secondary)}

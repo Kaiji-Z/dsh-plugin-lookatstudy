@@ -106,6 +106,12 @@ gate('bundle', () => {
     [client, 'QuizCard', 'interactive practice card'],
     [client, 'getPostQuizActions', 'post-quiz exits (never fewer than two)'],
     [client, 'quizProgressKey', 'quiz progress persistence'],
+    [host, 'study_compare_table', 'compare-table artifact tool'],
+    [host, 'study_code_walkthrough', 'code-walkthrough artifact tool'],
+    [host, 'study_draw_diagram', 'diagram artifact tool'],
+    [host, 'study_pose_guess', 'opening guess tool'],
+    [client, 'ArtifactCard', 'artifact card dispatch (table/walkthrough/diagram/guess)'],
+    [client, 'unseenArtifacts', 'notebook badge + sediment tracking'],
     // 0.15.0 P6: the panel toast stack (upstream Toast port)
     [client, 'showStudyToast', 'toast entry point'],
     [client, 'SEVERITY_DURATION', 'per-severity toast durations'],

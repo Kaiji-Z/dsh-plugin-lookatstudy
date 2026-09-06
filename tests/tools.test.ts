@@ -234,6 +234,10 @@ test('every tool output conforms to its declared output schema (the real tool-ca
       ],
     }],
     ['study_set_mode', { mode: 'practice' }],
+    ['study_pose_guess', { lessonId, prompt: '哪个快？', options: [{ id: 'a', label: '递归' }, { id: 'b', label: '循环' }] }],
+    ['study_compare_table', { lessonId, title: '读 vs 写', headers: ['维度', '读', '写'], rows: [['方向', '输入', '输出']] }],
+    ['study_draw_diagram', { lessonId, title: '流程', diagramType: 'flowchart', mermaid: 'flowchart TD\n  A-->B' }],
+    ['study_code_walkthrough', { lessonId, title: '讲解', language: 'python', code: 'a = 1\nb = 2', annotations: [{ lineStart: 1, lineEnd: 2, note: '赋值' }] }],
     ['study_lesson', { lessonId }],
   ]
   // exam nodes: study_exam_result must satisfy its schema too (needs an exam id)

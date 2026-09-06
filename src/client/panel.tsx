@@ -31,6 +31,8 @@ import { feedRows } from './session-feed.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { QuizCard, type QuizData } from './quizcard.tsx'
+import { ArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
+import { showStudyToast } from './toast.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen } from './views.tsx'
 import { tr } from './locale.ts'
 
@@ -572,6 +574,9 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         masteryPct: lesson.masteryPct,
         send,
       })),
+    ...(lesson?.artifacts ?? [])
+      .filter(a => a.artifactType !== 'quiz')
+      .map(a => createElement(ArtifactCard, { key: a.id, artifact: a as ArtifactRow, send })),
     createElement('div', { className: 'lks14-starters' },
       ...starters.map(s => createElement('button', {
         key: s.label,
@@ -631,6 +636,23 @@ function NotebookPane({ data, deleteNote }: { data: StudyData; deleteNote: (less
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
   }
+
+  // Canvas semantics (upstream): artifacts sediment into the notebook — the
+  // 笔记 tab wears a badge for unseen ones, a toast announces each arrival
+  // once, and opening the tab marks them seen.
+  const artifacts: ArtifactRow[] = (lesson?.artifacts ?? []) as ArtifactRow[]
+  const [, setUnseenTick] = useState(0)
+  const unseen = unseenArtifacts(lesson?.lessonId ?? '', artifacts)
+  const lastAnnounced = useRef<ReadonlySet<string>>(new Set())
+  useEffect(() => {
+    const fresh = unseen.filter(id => !lastAnnounced.current.has(id))
+    if (fresh.length === 0) return
+    lastAnnounced.current = new Set([...lastAnnounced.current, ...fresh])
+    showStudyToast(tr('artifact.sedimented'), { severity: 'info' })
+    setUnseenTick(Date.now())
+  }, [unseen.join(','), lesson?.lessonId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const heavy = artifacts.filter(a => a.artifactType === 'compare_table' || a.artifactType === 'diagram' || a.artifactType === 'code_walkthrough')
+  const latestHeavy = heavy.length > 0 ? heavy[heavy.length - 1]! : null
 
   const startReading = (): void => {
     if (lesson === null || lesson.speechText.trim() === '') return
@@ -726,7 +748,17 @@ function NotebookPane({ data, deleteNote }: { data: StudyData; deleteNote: (less
       createElement('div', { className: 'lks14-viewtabs' },
         createElement('button', { className: `lks14-viewtab${tab === 'teach' ? ' on' : ''}`, 'aria-pressed': String(tab === 'teach'), onClick: () => { setTab('teach') } }, tr('viewtab.teach')),
         createElement('button', { className: `lks14-viewtab${tab === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(tab === 'cmap'), title: tr('viewtab.cmap.title'), onClick: () => { setTab('cmap') } }, createElement(IconGlobeOutline14, { size: 13 }), tr('viewtab.cmap')),
-        createElement('button', { className: `lks14-viewtab${tab === 'notes' ? ' on' : ''}`, 'aria-pressed': String(tab === 'notes'), onClick: () => { setTab('notes') } }, tr('bb.notes')),
+        createElement('button', {
+          className: `lks14-viewtab${tab === 'notes' ? ' on' : ''}`,
+          'aria-pressed': String(tab === 'notes'),
+          onClick: () => {
+            setTab('notes')
+            if (lesson !== null && unseen.length > 0) {
+              markArtifactsSeen(lesson.lessonId, unseen)
+              setUnseenTick(Date.now())
+            }
+          },
+        }, tr('bb.notes'), unseen.length > 0 ? createElement('span', { className: 'lks-viewtab-badge' }, String(unseen.length)) : null),
       ),
       tab === 'teach'
         ? createElement('div', null,
@@ -757,10 +789,20 @@ function NotebookPane({ data, deleteNote }: { data: StudyData; deleteNote: (less
             read !== null && read.degraded ? createElement('span', { className: 'lks-readbar-notice' }, tr('read.engine.system')) : null,
           ),
           createElement('div', { className: 'lks14-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: lesson.html } }),
+          latestHeavy !== null ? createElement('div', { className: 'lks-acard-stage' },
+            createElement(ArtifactCard, { artifact: latestHeavy, send: () => {} }))
+            : null,
         )
         : tab === 'cmap'
           ? createElement('div', { className: 'lks14-prose', ref: diagRef })
           : createElement('div', { className: 'lks14-zones' },
+            (() => {
+              const understand = artifacts.filter(a => a.artifactType === 'compare_table' || a.artifactType === 'diagram' || a.artifactType === 'code_walkthrough')
+              if (understand.length === 0) return null
+              return createElement('div', { key: 'artifacts', className: 'lks14-zone' },
+                createElement('div', { className: 'lks14-zoneh' }, tr('zone.artifacts')),
+                ...understand.map(a => createElement(ArtifactCard, { key: a.id, artifact: a, send: () => {} })))
+            })(),
             lesson.notes.length === 0
               ? createElement('div', { className: 'lks14-empty', style: { padding: '16px 0' } as CSSProperties }, tr('bb.notes.empty'))
               : ZONES.filter(([zone]) => lesson.notes.some(n => n.zone === zone)).map(([zone, labelKey]) =>
