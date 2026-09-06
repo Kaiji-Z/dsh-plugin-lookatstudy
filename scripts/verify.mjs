@@ -119,6 +119,8 @@ gate('bundle', () => {
     [host, 'api/review', 'SM-2 self-rating route (P3)'],
     [client, 'lks-ratecard', 'the review self-rating card'],
     [client, 'review.nudge', 'the due nudge toast'],
+    [client, 'mergeRailSearch', 'the full-text search results panel (P4)'],
+    [client, 'lks14-searchpanel', 'search panel styles'],
     // 0.15.0 P6: the panel toast stack (upstream Toast port)
     [client, 'showStudyToast', 'toast entry point'],
     [client, 'SEVERITY_DURATION', 'per-severity toast durations'],

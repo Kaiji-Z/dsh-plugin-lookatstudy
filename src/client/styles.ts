@@ -171,6 +171,16 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 
 
 
+
+/* rail search results panel (P4, upstream CourseSearchPanel) */
+.lks14-searchpanel{margin:4px 0 6px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}
+.lks14-searchrow{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;text-align:left;font:inherit;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--dsw-alias-border-l1)}
+.lks14-searchrow:last-child{border-bottom:none}
+.lks14-searchrow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.lks14-searchrow-title{font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-primary)}
+.lks14-searchrow-course{font-size:10.5px;color:var(--dsw-alias-label-tertiary)}
+.lks14-searchrow-snip{font-size:11px;color:var(--dsw-alias-label-secondary);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
 /* review self-rating card (P3, upstream SelfRatingCard: three Memrise levels) */
 .lks-ratecard{flex:none;display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-state-business-tertiary);padding:10px 12px;margin-bottom:8px}
 .lks-ratecard-title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary-bluish)}

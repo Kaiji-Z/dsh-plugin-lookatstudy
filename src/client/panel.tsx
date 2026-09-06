@@ -34,7 +34,7 @@ import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch } from './views.tsx'
 import { tr } from './locale.ts'
 
 /** The three souls in pill order (same shape as the study tab's pills). */
@@ -344,6 +344,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
 }): ReactNode {
   const [selectedCourse, setSelectedCourse] = useState('')
   const [query, setQuery] = useState('')
+  const [searchRows, setSearchRows] = useState<ReturnType<typeof mergeRailSearch>>([])
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [showImport, setShowImport] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -359,6 +360,25 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       window.removeEventListener('keydown', onKey)
     }
   }, [confirmDelete])
+
+  // Live search: title hits from the loaded tree + debounced full-text hits
+  // merge into the results panel (upstream CourseSearchPanel semantics).
+  useEffect(() => {
+    if (query.trim().length < 2 || data === null) {
+      setSearchRows([])
+      return
+    }
+    let cancelled = false
+    const timer = setTimeout(() => {
+      void searchLessons(query).then(textHits => {
+        if (cancelled) return
+        const tree = data.courses.find(c => c.courseId === (data.courses.some(x => x.courseId === selectedCourse) ? selectedCourse : data.courses[0]?.courseId))
+        const lessons = (tree?.sections ?? []).flatMap(s => s.lessons)
+        setSearchRows(mergeRailSearch(query, lessons.map(l => ({ id: l.id, title: l.title, status: l.status, kind: l.kind })), textHits))
+      }).catch(() => { if (!cancelled) setSearchRows([]) })
+    }, 250)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [query, selectedCourse, data, searchLessons])
 
   const body: ReactNode = data === null
     ? createElement('div', { className: 'lks14-empty' }, tr('loading'))
@@ -409,20 +429,32 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             value: query,
             onChange: (e: { target: { value: string } }) => { setQuery(e.target.value) },
             onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
+              if (e.key === 'Escape') { setQuery(''); setSearchRows([]) }
               if (e.key !== 'Enter' || query.trim() === '') return
-              for (const section of course.sections) {
-                const hit = section.lessons.find(l => l.kind !== 'exam' && l.status !== 'locked' && titleMatches(l.title, query))
-                if (hit !== undefined) {
-                  void setFocus(hit.id).catch(reportError)
-                  return
-                }
+              const first = searchRows[0]
+              if (first !== undefined) {
+                setQuery('')
+                setSearchRows([])
+                void setFocus(first.lessonId).catch(reportError)
               }
-              void searchLessons(query).then(hits => {
-                const hit = hits.find(h => h.lessonId.startsWith(`${courseId}:`)) ?? hits[0]
-                if (hit !== undefined) { setQuery(''); void setFocus(hit.lessonId).catch(reportError) }
-              }).catch(reportError)
             },
           }),
+          searchRows.length > 0
+            ? createElement('div', { className: 'lks14-searchpanel' },
+              ...searchRows.map(row => createElement('button', {
+                key: row.lessonId,
+                className: 'lks14-searchrow',
+                title: tr('rail.search.jump'),
+                onClick: () => {
+                  setQuery('')
+                  setSearchRows([])
+                  void setFocus(row.lessonId).catch(reportError)
+                },
+              },
+                createElement('span', { className: 'lks14-searchrow-title' }, row.title),
+                row.courseTitle !== '' ? createElement('span', { className: 'lks14-searchrow-course' }, row.courseTitle) : null,
+                row.snippet !== '' ? createElement('span', { className: 'lks14-searchrow-snip' }, row.snippet) : null)))
+            : null,
           data.dueCount > 0
             ? createElement('div', { className: 'lks14-duebox' },
               createElement(IconRefreshOutline16, { size: 13 }), tr('rail.due', { count: data.dueCount }),

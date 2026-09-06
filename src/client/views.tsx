@@ -75,6 +75,44 @@ export function quizOptions(text: string): ReadonlyArray<{ letter: string; text:
   return runs.at(-1) ?? []
 }
 
+/** One row of the rail search results panel. */
+export interface RailSearchRow {
+  readonly lessonId: string
+  readonly title: string
+  readonly snippet: string
+  readonly courseTitle: string
+  readonly fromTitle: boolean
+}
+
+/**
+ * Merge the rail's two search tracks into the results panel: title hits
+ * (lessons whose name matches — they are also filtered into the tree) first,
+ * then full-text hits not already covered, snippets carried for the body
+ * matches. Pure; empty queries yield no panel.
+ */
+export function mergeRailSearch(
+  query: string,
+  lessons: ReadonlyArray<{ id: string; title: string; status: string; kind: string }>,
+  textHits: ReadonlyArray<{ lessonId: string; lessonTitle: string; snippet: string; courseTitle: string }>,
+): RailSearchRow[] {
+  const keys = query.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  if (keys.length === 0) return []
+  const rows: RailSearchRow[] = []
+  const seen = new Set<string>()
+  const matches = (title: string): boolean => keys.every(k => title.toLowerCase().includes(k))
+  for (const lesson of lessons) {
+    if (lesson.kind === 'exam' || lesson.status === 'locked' || !matches(lesson.title)) continue
+    rows.push({ lessonId: lesson.id, title: lesson.title, snippet: '', courseTitle: '', fromTitle: true })
+    seen.add(lesson.id)
+  }
+  for (const hit of textHits) {
+    if (seen.has(hit.lessonId)) continue
+    rows.push({ lessonId: hit.lessonId, title: hit.lessonTitle, snippet: hit.snippet, courseTitle: hit.courseTitle, fromTitle: false })
+    seen.add(hit.lessonId)
+  }
+  return rows.slice(0, 12)
+}
+
 /**
  * Default expansion for one rail section: collapsed when every study lesson is
  * done (mastered) or not yet reachable (locked). The focus lesson's section

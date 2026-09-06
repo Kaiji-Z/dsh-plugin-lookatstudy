@@ -176,6 +176,26 @@ test('the lookatstudy locale dictionaries keep zh/en parity and translate with f
   assert.equal(tEn('rail.due'), '{count} due')
 })
 
+test('mergeRailSearch: title hits first, full-text dedup, empty query yields nothing', async () => {
+  const { mergeRailSearch } = await import('../src/client/views.tsx')
+  const lessons = [
+    { id: 'c:0:0', title: '梯度下降', status: 'available', kind: 'study' },
+    { id: 'c:0:1', title: '反向传播', status: 'locked', kind: 'study' },
+    { id: 'c:0:2', title: '本章测验', status: 'available', kind: 'exam' },
+  ]
+  const textHits = [
+    { lessonId: 'c:0:0', lessonTitle: '梯度下降', snippet: '…沿着负梯度方向…', courseTitle: '深度学习' },
+    { lessonId: 'other:1:0', lessonTitle: '别课', snippet: '…梯度下降是一种优化…', courseTitle: '另一门课' },
+  ]
+  const rows = mergeRailSearch('梯度', lessons, textHits)
+  assert.deepEqual(rows.map(r => [r.lessonId, r.fromTitle]), [['c:0:0', true], ['other:1:0', false]], 'title hit first, the text hit deduped, locked/exam never surface')
+  assert.equal(rows[0]!.snippet, '', 'title rows carry no snippet')
+  assert.match(rows[1]!.snippet, /梯度下降是一种优化/)
+  assert.deepEqual(mergeRailSearch('', lessons, textHits), [])
+  assert.deepEqual(mergeRailSearch('  ', lessons, textHits), [])
+  assert.deepEqual(mergeRailSearch('不存在的词', lessons, []), [], 'no hits = no panel')
+})
+
 test('the pure projections translate through an injected translator', async () => {
   const { makeT } = await import('../src/client/locale.ts')
   const tEn = makeT('en')
