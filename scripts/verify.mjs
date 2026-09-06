@@ -127,6 +127,11 @@ gate('secrets', () => {
   // patterns, (c) the actual Z_AI_API_KEY value when it is present in this
   // shell's env (CI has no key → (c) self-skips). Hits report file + kind only,
   // never the matched text — the gate must not become the leak.
+  // PUBLIC_PROTOCOL_CONSTANTS are allowlisted by exact literal before scanning:
+  // Microsoft's Edge read-aloud client token ships inside the public Edge
+  // extension bundle and every public edge-tts implementation — it is a wire
+  // protocol constant, not a credential. Nothing else is exempt.
+  const PUBLIC_PROTOCOL_CONSTANTS = ['6A5AA1D4EAFF4E9FB37E23D68491D6F4']
   const ls = spawnSync('git', ['ls-files'], { encoding: 'utf8' })
   if (ls.status !== 0) return { exit: 1, checks: [{ ok: false, label: `git ls-files failed: ${ls.stderr?.trim()}` }] }
   const files = ls.stdout.split('\n').map(s => s.trim()).filter(Boolean)
@@ -137,6 +142,7 @@ gate('secrets', () => {
   for (const f of files) {
     let body
     try { body = readFileSync(f, 'utf8') } catch { continue }
+    for (const c of PUBLIC_PROTOCOL_CONSTANTS) body = body.replaceAll(c, '<public-protocol-constant>')
     const kinds = []
     if (ASSIGNMENT.test(body)) kinds.push('key-assignment')
     if (TOKEN.test(body)) kinds.push('sk-token-pattern')
