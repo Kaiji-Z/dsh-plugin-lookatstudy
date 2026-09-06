@@ -170,6 +170,19 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 
 
 
+
+/* review self-rating card (P3, upstream SelfRatingCard: three Memrise levels) */
+.lks-ratecard{flex:none;display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-state-business-tertiary);padding:10px 12px;margin-bottom:8px}
+.lks-ratecard-title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary-bluish)}
+.lks-ratecard-opts{display:flex;gap:6px}
+.lks-ratecard-opt{flex:1;font:inherit;font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:9px;padding:7px 10px;cursor:pointer}
+.lks-ratecard-opt:hover{border-color:var(--dsw-alias-state-business-primary)}
+.lks-ratecard-opt.again:hover{border-color:var(--dsw-alias-state-error-primary)}
+.lks-ratecard-opt.best{background:color-mix(in srgb,var(--dsw-alias-state-success-primary) 86%,#000);color:#fff;border-color:transparent}
+.lks-ratecard-opt.best:hover{filter:brightness(1.1)}
+.lks-ratecard-opt:disabled{opacity:.6;cursor:default}
+.lks14-dueitem{font:inherit;text-align:left}
+
 /* selection-to-note (P2, upstream selection flow): the popover floats over
    the prose; persisted highlights are soft amber marks. */
 .lks14-prosewrap{position:relative}

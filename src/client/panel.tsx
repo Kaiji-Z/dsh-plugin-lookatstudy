@@ -18,7 +18,7 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } fr
 import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
-  IconRefreshOutline16, IconStarFill16, IconTrashOutline16,
+  IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16,
 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
@@ -141,6 +141,18 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const streamEl = useRef<HTMLDivElement | null>(null)
 
   const boundId = localBound.current ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null)
+
+  // The review nudge (upstream review.nudge): due reviews pull the learner
+  // back — one toast per panel open, never repeated while it stays open.
+  const nudged = useRef(false)
+  useEffect(() => {
+    if (nudged.current || (data?.dueCount ?? 0) === 0) return
+    nudged.current = true
+    showStudyToast(tr('review.nudge', { n: data!.dueCount }), { severity: 'warning', action: { label: tr('review.nudge.go'), onClick: () => {
+      const first = data?.due[0]
+      if (first !== undefined) void setFocus(first.lessonId).catch(() => { /* the poll will resync */ })
+    } } })
+  }, [data?.dueCount, data?.due, setFocus])
 
   // The tutor chat stream: subscribe to the bound lesson thread's event window.
   // The host only opens a window for the STAGED (current) session, so when the
@@ -414,7 +426,12 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
           data.dueCount > 0
             ? createElement('div', { className: 'lks14-duebox' },
               createElement(IconRefreshOutline16, { size: 13 }), tr('rail.due', { count: data.dueCount }),
-              ...data.due.map(d => createElement('div', { key: d.lessonId, className: 'lks14-dueitem' },
+              ...data.due.map(d => createElement('button', {
+                key: d.lessonId,
+                className: 'lks14-dueitem',
+                title: tr('review.jump'),
+                onClick: () => { void setFocus(d.lessonId).catch(reportError) },
+              },
                 createElement('span', null, d.lessonTitle),
                 d.overdueDays > 0 ? createElement('span', { className: 'lks14-over' }, tr('rail.due.over', { days: d.overdueDays })) : null)),
               createElement('button', {
@@ -618,7 +635,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
   const [read, setRead] = useState<ReadAloudStatus | null>(null)
   const readCtl = useRef<ReadAloudController | null>(null)
   const [readError, setReadError] = useState<string | null>(null)
-  const { tts, addUserNote } = useStudy()
+  const { tts, addUserNote, recordReview } = useStudy()
   const proseRef = useRef<HTMLDivElement | null>(null)
   const diagRef = useRef<HTMLDivElement | null>(null)
 
@@ -730,6 +747,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
   // Persisted highlights: record-zone quotes anchor marks; applied after the
   // enhance pass settles (its DOM mutations change the text model).
   const [enhanceTick, setEnhanceTick] = useState(0)
+  const [rateBusy, setRateBusy] = useState(false)
 
   const startReading = (): void => {
     if (lesson === null || lesson.speechText.trim() === '') return
@@ -846,6 +864,28 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
       ),
       tab === 'teach'
         ? createElement('div', null,
+          lesson.due ? createElement('div', { className: 'lks-ratecard', 'data-lks-rate': lesson.lessonId },
+            createElement('div', { className: 'lks-ratecard-title' }, tr('review.rate.title')),
+            createElement('div', { className: 'lks-ratecard-opts' },
+              ...([['1', 'review.again'], ['4', 'review.remembered'], ['5', 'review.mastered']] as const).map(([q, key]) =>
+                createElement('button', {
+                  key: q,
+                  className: `lks-ratecard-opt${q === '1' ? ' again' : q === '5' ? ' best' : ''}`,
+                  disabled: rateBusy,
+                  onClick: () => {
+                    setRateBusy(true)
+                    recordReview(lesson.lessonId, Number(q) as 1 | 4 | 5)
+                      .then(() => {
+                        showStudyToast(Number(q) >= 4 ? tr('review.done.good', { days: 1 }) : tr('review.done.again'), { severity: Number(q) >= 4 ? 'success' : 'warning' })
+                        setRateBusy(false)
+                      })
+                      .catch((err: unknown) => {
+                        setError(err instanceof Error ? err.message : String(err))
+                        setRateBusy(false)
+                      })
+                  },
+                }, tr(key)))) ,
+          ) : null,
           createElement('div', { className: 'lks-readbar' },
             createElement('button', {
               className: 'lks-btn ghost',

@@ -22,6 +22,7 @@ import {
   deleteCourse,
   addNote,
   deleteNote,
+  recordReview,
   dueReviews,
   findCourse,
   findLesson,
@@ -123,6 +124,8 @@ export interface WorkbenchLesson {
   notes: Array<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null }>
   /** Recorded artifacts (0.15.0 P1): the panel's interactive cards. */
   artifacts: Array<{ id: string; artifactType: string; title: string; data: Record<string, unknown> }>
+  /** Whether this lesson has a review due now (the self-rating card shows). */
+  due: boolean
   html: string
   /** Raw lesson body (the read-aloud control and the settings page speak from this). */
   markdown: string
@@ -208,6 +211,7 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
         masteryPct: ref.lesson.mastery === null ? null : Math.round(ref.lesson.mastery * 100),
         strategy: strategyBand(ref.lesson.mastery),
         concepts: conceptViews(ref.lesson) ?? [],
+        due: dueIds.has(ref.lesson.id),
         artifacts: (state.artifacts[ref.lesson.id] ?? []).map(a => ({ id: a.id, artifactType: a.artifactType, title: a.title, data: a.data })),
         starters: starterPrompts(ref.lesson.title).map(s => ({ label: s.label, message: s.message })),
         notes: ref.lesson.notes.map(n => ({
@@ -418,6 +422,23 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
           const note = addNote(deps.store.get(), body.lessonId, 'record', quote.slice(0, 24), text, 'content', quote, new Date())
           deps.store.save()
           sendJson(res, 200, { ok: true, noteId: note.id })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/review') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        const quality = body.quality
+        if (typeof body.lessonId !== 'string' || typeof quality !== 'number' || ![1, 4, 5].includes(quality)) {
+          sendJson(res, 400, { ok: false, error: 'lessonId and quality (1 | 4 | 5) required' })
+          return
+        }
+        try {
+          recordReview(deps.store.get(), body.lessonId, quality as 1 | 4 | 5, new Date())
+          deps.store.save()
+          sendJson(res, 200, { ok: true })
         } catch (error) {
           sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
         }

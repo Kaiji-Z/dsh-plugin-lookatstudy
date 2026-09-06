@@ -116,6 +116,9 @@ gate('bundle', () => {
     [client, 'locateInModel', 'text-search highlight anchors (upstream v0.3.3 scheme)'],
     [client, 'applyHighlights', 'persisted highlight rendering'],
     [client, 'lks-quote-btn', 'the selection popover'],
+    [host, 'api/review', 'SM-2 self-rating route (P3)'],
+    [client, 'lks-ratecard', 'the review self-rating card'],
+    [client, 'review.nudge', 'the due nudge toast'],
     // 0.15.0 P6: the panel toast stack (upstream Toast port)
     [client, 'showStudyToast', 'toast entry point'],
     [client, 'SEVERITY_DURATION', 'per-severity toast durations'],

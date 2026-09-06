@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
-import { emptyState, importCourse, proposeMastery, recordAnswer, addNote, deleteNote, findLesson } from '../src/state.ts'
+import { emptyState, importCourse, proposeMastery, recordAnswer, addNote, deleteNote, findLesson, completeLesson } from '../src/state.ts'
 import type { LearningState } from '../src/state.ts'
 import {
   registerDashboard,
@@ -153,6 +153,25 @@ test('note delete route: removes one entry, persists, 400 on bad body, 404 on un
   assert.equal(saved, 1, 'a successful delete persists')
   assert.equal(findLesson(state, lessonId).lesson.notes.length, 0, 'the note is gone from the live state')
   assert.throws(() => deleteNote(state, lessonId, note.id), /not found/, 'deleting twice fails loud')
+})
+
+test('review route: records the SM-2 self-rating, 400 on bad quality, 404 without a schedule', async () => {
+  const { state, lessonId } = fixture()
+  let saved = 0
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+
+  const noSchedule = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/review', { lessonId, quality: 4 }), new FakeResponse())
+  assert.equal(noSchedule.status, 404, 'a lesson without an SM-2 schedule cannot be reviewed')
+
+  completeLesson(state, lessonId, new Date('2026-08-15T10:00:00Z'))
+  const bad = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/review', { lessonId, quality: 3 }), new FakeResponse())
+  assert.equal(bad.status, 400, 'the card only sends 1 | 4 | 5 (the Memrise three)')
+
+  const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/review', { lessonId, quality: 4 }), new FakeResponse())
+  assert.equal(ok.status, 200)
+  assert.equal(saved, 1, 'the rating persists')
+  assert.ok(findLesson(state, lessonId).lesson.dueAt > '2026-08-15', 'the next review is scheduled')
 })
 
 test('user-note route: a selection becomes a record-zone note whose quote is the highlight anchor', async () => {

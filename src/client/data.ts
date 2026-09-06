@@ -47,6 +47,7 @@ export interface StudyState {
     readonly concepts: ReadonlyArray<{ title: string; masteryPct: number; weak: boolean }>
     readonly starters: ReadonlyArray<{ label: string; message: string }>
     readonly artifacts: ReadonlyArray<{ id: string; artifactType: string; title: string; data: Record<string, unknown> }>
+    readonly due: boolean
     readonly notes: ReadonlyArray<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null }>
     readonly html: string
     readonly markdown: string
@@ -207,6 +208,16 @@ class StudyStore {
     this.refresh()
   }
 
+  /** Record one SM-2 self-rating (1 again / 4 remembered / 5 mastered). */
+  async recordReview(lessonId: string, quality: 1 | 4 | 5): Promise<void> {
+    await fetchJson('/lookatstudy/api/review', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId, quality }),
+    })
+    this.refresh()
+  }
+
   /** Delete one notebook entry from a lesson's Cornell zones. */
   async deleteNote(lessonId: string, noteId: string): Promise<void> {
     await fetchJson('/lookatstudy/api/note/delete', {
@@ -281,6 +292,7 @@ export function useStudy(): {
   deleteCourse: (courseId: string) => Promise<void>
   deleteNote: (lessonId: string, noteId: string) => Promise<void>
   addUserNote: (lessonId: string, quote: string) => Promise<void>
+  recordReview: (lessonId: string, quality: 1 | 4 | 5) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string) => Promise<void>
 } {
   const data = useSyncExternalStore(studyStore.subscribe, studyStore.getSnapshot, studyStore.getSnapshot)
@@ -293,6 +305,7 @@ export function useStudy(): {
     deleteCourse: studyStore.deleteCourse.bind(studyStore),
     deleteNote: studyStore.deleteNote.bind(studyStore),
     addUserNote: studyStore.addUserNote.bind(studyStore),
+    recordReview: studyStore.recordReview.bind(studyStore),
     bindLessonSession: studyStore.bindLessonSession.bind(studyStore),
   }
 }
