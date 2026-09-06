@@ -20,6 +20,7 @@ import {
   searchLessons,
   conceptViews,
   deleteCourse,
+  addNote,
   deleteNote,
   dueReviews,
   findCourse,
@@ -399,6 +400,24 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
           deleteNote(deps.store.get(), body.lessonId, body.noteId)
           deps.store.save()
           sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/note/user') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string' || typeof body.quote !== 'string' || body.quote.trim().length < 2) {
+          sendJson(res, 400, { ok: false, error: 'lessonId and quote (a real selection) required' })
+          return
+        }
+        try {
+          const quote = body.quote.trim()
+          const text = typeof body.text === 'string' && body.text.trim() !== '' ? body.text.trim() : quote
+          const note = addNote(deps.store.get(), body.lessonId, 'record', quote.slice(0, 24), text, 'content', quote, new Date())
+          deps.store.save()
+          sendJson(res, 200, { ok: true, noteId: note.id })
         } catch (error) {
           sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
         }

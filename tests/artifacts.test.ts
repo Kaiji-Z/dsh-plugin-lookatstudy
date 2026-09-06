@@ -158,3 +158,26 @@ test('seen-artifact tracking: unseen computed purely, marking is idempotent', as
   store.set(seenArtifactsKey('c:0:0'), '{junk')
   assert.deepEqual(unseenArtifacts('c:0:0', arts, storage), arts.map(a => a.id), 'junk storage degrades to all-unseen')
 })
+
+test('locateInModel resolves repeats by fingerprint and rejects degenerate input', async () => {
+  const { locateInModel, planSegments } = await import('../src/client/highlights.ts')
+  const model = { text: 'alpha beta gamma alpha beta gamma end', nodes: [] }
+  // single occurrence resolves directly
+  assert.deepEqual(locateInModel(model, 'end', undefined), { start: 34, end: 37 })
+  // repeat resolves via the surrounding fingerprint
+  const first = locateInModel(model, 'alpha', 'xx alpha beta gamma alpha')
+  const second = locateInModel(model, 'alpha', 'gamma alpha beta gamma end')
+  assert.equal(first!.start, 0, 'fingerprint pointing at the first context wins')
+  assert.equal(second!.start, 17)
+  // missing text / too-short selections never anchor
+  assert.equal(locateInModel(model, 'nope', undefined), null)
+  assert.equal(locateInModel(model, 'a', undefined), null)
+  // segment planning splits a range across node boundaries
+  const nodes = [{ node: 0, start: 0, end: 5 }, { node: 1, start: 5, end: 9 }, { node: 2, start: 9, end: 14 }]
+  assert.deepEqual(planSegments(nodes, 3, 11), [
+    { index: 0, localStart: 3, localEnd: 5 },
+    { index: 1, localStart: 0, localEnd: 4 },
+    { index: 2, localStart: 0, localEnd: 2 },
+  ], 'a range spanning three nodes plans three segments')
+  assert.deepEqual(planSegments(nodes, 5, 5), [], 'empty ranges plan nothing')
+})

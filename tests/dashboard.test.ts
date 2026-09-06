@@ -155,6 +155,25 @@ test('note delete route: removes one entry, persists, 400 on bad body, 404 on un
   assert.throws(() => deleteNote(state, lessonId, note.id), /not found/, 'deleting twice fails loud')
 })
 
+test('user-note route: a selection becomes a record-zone note whose quote is the highlight anchor', async () => {
+  const { state, lessonId } = fixture()
+  let saved = 0
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+
+  const bad = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/note/user', { lessonId, quote: 'x' }), new FakeResponse())
+  assert.equal(bad.status, 400, 'a too-short selection is rejected')
+
+  const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/note/user', { lessonId, quote: '  选中的原文  ' }), new FakeResponse())
+  assert.equal(ok.status, 200)
+  assert.equal(saved, 1, 'the note persists')
+  const note = findLesson(state, lessonId).lesson.notes[0]!
+  assert.equal(note.zone, 'record', 'learner selections land in the record zone')
+  assert.equal(note.source, 'content', 'quoted from the lesson body')
+  assert.equal(note.quote, '选中的原文', 'the quote is trimmed verbatim — it IS the highlight anchor')
+  assert.equal(note.text, '选中的原文', 'no explicit text defaults to the quote')
+})
+
 test('tts route: streams the synthesis (cache-first), 400 on empty text, 502 when the synth fails', async () => {
   const { state } = fixture()
   const studyArea = mkdtempSync(join(tmpdir(), 'lks-tts-route-'))

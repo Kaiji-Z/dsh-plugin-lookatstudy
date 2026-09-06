@@ -169,6 +169,16 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 
 
 
+
+/* selection-to-note (P2, upstream selection flow): the popover floats over
+   the prose; persisted highlights are soft amber marks. */
+.lks14-prosewrap{position:relative}
+.lks-quote-btn{position:absolute;z-index:12;display:flex;gap:2px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.16);transform:translateX(-50%)}
+.lks-quote-btn button{border:none;background:none;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;font-weight:600;padding:6px 10px;cursor:pointer;border-radius:10px}
+.lks-quote-btn button:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.lks-quote-btn button + button{border-left:1px solid var(--dsw-alias-border-l1)}
+mark.lks-hl{background:var(--dsw-alias-state-warn-tertiary);color:inherit;border-bottom:2px solid var(--dsw-alias-state-warn-primary);padding:0 1px}
+
 /* artifact cards (P1b, upstream artifacts port): chat column + notebook zones */
 .lks-acard{flex:none;margin:2px 12px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);padding:10px 12px;display:flex;flex-direction:column;gap:8px;overflow:hidden}
 .lks-acard-head{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-secondary)}

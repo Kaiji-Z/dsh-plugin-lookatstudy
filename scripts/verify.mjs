@@ -112,6 +112,10 @@ gate('bundle', () => {
     [host, 'study_pose_guess', 'opening guess tool'],
     [client, 'ArtifactCard', 'artifact card dispatch (table/walkthrough/diagram/guess)'],
     [client, 'unseenArtifacts', 'notebook badge + sediment tracking'],
+    [host, 'api/note/user', 'selection-to-note route (P2)'],
+    [client, 'locateInModel', 'text-search highlight anchors (upstream v0.3.3 scheme)'],
+    [client, 'applyHighlights', 'persisted highlight rendering'],
+    [client, 'lks-quote-btn', 'the selection popover'],
     // 0.15.0 P6: the panel toast stack (upstream Toast port)
     [client, 'showStudyToast', 'toast entry point'],
     [client, 'SEVERITY_DURATION', 'per-severity toast durations'],

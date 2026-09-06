@@ -197,6 +197,16 @@ class StudyStore {
     this.refresh()
   }
 
+  /** Save a learner selection as a record-zone note (the highlight anchor is the quote). */
+  async addUserNote(lessonId: string, quote: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/note/user', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId, quote }),
+    })
+    this.refresh()
+  }
+
   /** Delete one notebook entry from a lesson's Cornell zones. */
   async deleteNote(lessonId: string, noteId: string): Promise<void> {
     await fetchJson('/lookatstudy/api/note/delete', {
@@ -270,6 +280,7 @@ export function useStudy(): {
   searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>
   deleteCourse: (courseId: string) => Promise<void>
   deleteNote: (lessonId: string, noteId: string) => Promise<void>
+  addUserNote: (lessonId: string, quote: string) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string) => Promise<void>
 } {
   const data = useSyncExternalStore(studyStore.subscribe, studyStore.getSnapshot, studyStore.getSnapshot)
@@ -281,6 +292,7 @@ export function useStudy(): {
     searchLessons: studyStore.searchLessons.bind(studyStore),
     deleteCourse: studyStore.deleteCourse.bind(studyStore),
     deleteNote: studyStore.deleteNote.bind(studyStore),
+    addUserNote: studyStore.addUserNote.bind(studyStore),
     bindLessonSession: studyStore.bindLessonSession.bind(studyStore),
   }
 }

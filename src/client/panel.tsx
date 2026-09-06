@@ -33,6 +33,7 @@ import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
+import { applyHighlights, getTextModel, locateInModel } from './highlights.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen } from './views.tsx'
 import { tr } from './locale.ts'
 
@@ -271,7 +272,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const body: ReactNode = createElement('div', { className: 'lks14-body' },
     createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, send }),
     createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, setMode }),
-    createElement(NotebookPane, { data, deleteNote }),
+    createElement(NotebookPane, { data, deleteNote, send }),
   )
   return createElement('div', { className: 'lks14', 'data-lks-panel': '' }, body, createElement(StudyToastStack))
 }
@@ -609,7 +610,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
 }
 
 /** 右栏:the notebook — 讲解/概念图/笔记 tabs (upstream NotebookPanel arrangement). */
-function NotebookPane({ data, deleteNote }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void> }): ReactNode {
+function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void>; send: PanelSend }): ReactNode {
   const lesson = data?.lesson ?? null
   const [tab, setTab] = useState<'teach' | 'cmap' | 'notes'>('teach')
   const [error, setError] = useState<string | null>(null)
@@ -617,7 +618,7 @@ function NotebookPane({ data, deleteNote }: { data: StudyData; deleteNote: (less
   const [read, setRead] = useState<ReadAloudStatus | null>(null)
   const readCtl = useRef<ReadAloudController | null>(null)
   const [readError, setReadError] = useState<string | null>(null)
-  const { tts } = useStudy()
+  const { tts, addUserNote } = useStudy()
   const proseRef = useRef<HTMLDivElement | null>(null)
   const diagRef = useRef<HTMLDivElement | null>(null)
 
@@ -653,6 +654,82 @@ function NotebookPane({ data, deleteNote }: { data: StudyData; deleteNote: (less
   }, [unseen.join(','), lesson?.lessonId]) // eslint-disable-line react-hooks/exhaustive-deps
   const heavy = artifacts.filter(a => a.artifactType === 'compare_table' || a.artifactType === 'diagram' || a.artifactType === 'code_walkthrough')
   const latestHeavy = heavy.length > 0 ? heavy[heavy.length - 1]! : null
+
+  // ── 画线笔记 (P2, upstream selection flow) ─────────────────────────────
+  // The popover appears on pointerup / settle (never mid-drag), hides 250ms
+  // after the selection clears (a tap on the button clears first — an
+  // immediate hide would swallow the click).
+  const [quoteBtn, setQuoteBtn] = useState<{ x: number; y: number; text: string; surrounding: string } | null>(null)
+  const recordQuotes = (lesson?.notes ?? []).filter(n => n.zone === 'record' && n.quote !== null && n.quote.trim().length >= 2).map(n => n.quote!)
+
+  const evaluateSelection = (): void => {
+    const prose = proseRef.current
+    const selection = window.getSelection()
+    if (prose === null || selection === null || selection.rangeCount === 0) return
+    const text = selection.toString().trim()
+    if (text.length < 2 || text.length > 600) return
+    const range = selection.getRangeAt(0)
+    if (prose.contains(range.commonAncestorContainer) !== true) return
+    const model = getTextModel(prose)
+    const rect = range.getBoundingClientRect()
+    const box = prose.getBoundingClientRect()
+    const modelText = model.text
+    const idx = locateInModel(model, text, undefined)?.start ?? modelText.indexOf(text)
+    const surrounding = idx >= 0 ? modelText.slice(Math.max(0, idx - 30), idx + text.length + 30) : text
+    setQuoteBtn({
+      x: Math.min(Math.max(rect.left - box.left + rect.width / 2, 90), Math.max(box.width - 90, 90)),
+      y: rect.top - box.top - 38,
+      text,
+      surrounding,
+    })
+  }
+
+  useEffect(() => {
+    const SETTLE = 250
+    let settleTimer: ReturnType<typeof setTimeout> | null = null
+    let hideTimer: ReturnType<typeof setTimeout> | null = null
+    let gesture = false
+    const selectionHasText = (): boolean => (window.getSelection()?.toString().trim().length ?? 0) >= 2
+    const onChange = (): void => {
+      if (selectionHasText()) {
+        if (hideTimer !== null) { clearTimeout(hideTimer); hideTimer = null }
+        setQuoteBtn(cur => (cur === null ? cur : null))
+        if (settleTimer !== null) clearTimeout(settleTimer)
+        settleTimer = setTimeout(() => {
+          settleTimer = null
+          if (!gesture && selectionHasText()) evaluateSelection()
+        }, SETTLE)
+      } else if (hideTimer === null) {
+        hideTimer = setTimeout(() => { setQuoteBtn(cur => (cur === null ? cur : null)) }, 250)
+      }
+    }
+    const onDown = (e: PointerEvent): void => {
+      const el = e.target as Element | null
+      if (el?.closest?.('[data-lks-quote-btn]') !== null) return
+      gesture = true
+    }
+    const onUp = (): void => {
+      gesture = false
+      if (settleTimer !== null) { clearTimeout(settleTimer); settleTimer = null }
+      if (hideTimer === null && selectionHasText()) evaluateSelection()
+    }
+    document.addEventListener('selectionchange', onChange)
+    window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('pointerup', onUp, true)
+    window.addEventListener('pointercancel', onUp, true)
+    return () => {
+      document.removeEventListener('selectionchange', onChange)
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('pointerup', onUp, true)
+      window.removeEventListener('pointercancel', onUp, true)
+      if (settleTimer !== null) clearTimeout(settleTimer)
+      if (hideTimer !== null) clearTimeout(hideTimer)
+    }
+  }, [])
+
+  // Persisted highlights: record-zone quotes anchor marks; applied after the
+  // enhance pass settles (its DOM mutations change the text model).
+  const [enhanceTick, setEnhanceTick] = useState(0)
 
   const startReading = (): void => {
     if (lesson === null || lesson.speechText.trim() === '') return
@@ -733,8 +810,15 @@ function NotebookPane({ data, deleteNote }: { data: StudyData; deleteNote: (less
 
   useEffect(() => {
     if (tab !== 'teach' || proseRef.current === null || lesson === null) return
-    void enhanceRendered(proseRef.current).catch(() => { /* degrade */ })
-  }, [tab, lesson?.html])
+    void enhanceRendered(proseRef.current)
+      .catch(() => { /* degrade */ })
+      .finally(() => {
+        // the highlight model must be computed post-enhance (shiki/katex/mermaid
+        // mutate the DOM, changing the text model)
+        applyHighlights(proseRef.current, recordQuotes)
+        setEnhanceTick(Date.now())
+      })
+  }, [tab, lesson?.html]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const body: ReactNode = lesson === null
     ? createElement('div', { className: 'lks14-empty' }, tr('bb.empty'), createElement('br'), tr('bb.empty.hint'))
@@ -788,7 +872,34 @@ function NotebookPane({ data, deleteNote }: { data: StudyData; deleteNote: (less
             readError !== null ? createElement('span', { className: 'lks-readbar-notice' }, readError) : null,
             read !== null && read.degraded ? createElement('span', { className: 'lks-readbar-notice' }, tr('read.engine.system')) : null,
           ),
-          createElement('div', { className: 'lks14-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: lesson.html } }),
+          createElement('div', { className: 'lks14-prosewrap' },
+            createElement('div', { className: 'lks14-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: lesson.html } }),
+            quoteBtn !== null
+              ? createElement('div', {
+                  className: 'lks-quote-btn',
+                  'data-lks-quote-btn': '',
+                  style: { left: `${quoteBtn.x}px`, top: `${quoteBtn.y}px` },
+                },
+                createElement('button', {
+                  onClick: () => {
+                    const truncated = quoteBtn.text.length > 200 ? `${quoteBtn.text.slice(0, 200)}…` : quoteBtn.text
+                    send(tr('note.quote.template', { text: truncated }))
+                    setQuoteBtn(null)
+                    window.getSelection()?.removeAllRanges()
+                  },
+                }, tr('note.quote.ask')),
+                createElement('button', {
+                  onClick: () => {
+                    if (lesson !== null) {
+                      void addUserNote(lesson.lessonId, quoteBtn.text).catch((err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
+                      void applyHighlights(proseRef.current!, [quoteBtn.text])
+                      showStudyToast(tr('note.saved'), { severity: 'success' })
+                    }
+                    setQuoteBtn(null)
+                    window.getSelection()?.removeAllRanges()
+                  },
+                }, tr('note.quote.save')))
+              : null),
           latestHeavy !== null ? createElement('div', { className: 'lks-acard-stage' },
             createElement(ArtifactCard, { artifact: latestHeavy, send: () => {} }))
             : null,
