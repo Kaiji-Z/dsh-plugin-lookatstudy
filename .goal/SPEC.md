@@ -54,7 +54,7 @@
 
 验收：单测（自评→工具参数映射）+ 3081 实测（自评打分→state 的 review 记录变化；due>0 开面板出提醒）。
 
-- [ ] P3 完成
+- [x] P3 完成（2026-09-07：verify PASS @ 238；3081 实测 nudge+动作/三档自评→SM-2 前进/due 清零/duebox 可点跳转）
 
 ### P4 · 全文课程搜索（上游 CourseSearchPanel）
 插件落点：rail 搜索升级——标题未命中走全文（dashboard 路由代理 store 全文搜索，`study_courses` 已有该能力）；结果面板列 命中课时+片段，点击 setFocus 跳转。
