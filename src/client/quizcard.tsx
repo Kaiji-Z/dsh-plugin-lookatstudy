@@ -112,12 +112,14 @@ const ACTION_ICONS: Record<PostQuizActionId, (props: { size?: number }) => React
  * progress persisted per artifact; the score screen is an explicit step, and
  * on first arrival its completion hook goes to the tutor exactly once.
  */
-export function QuizCard({ lessonId, artifactId, data, masteryPct, send }: {
+export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinished }: {
   lessonId: string
   artifactId: string
   data: QuizData
   masteryPct: number | null
   send: (text: string) => void
+  /** Fired once when the score screen lands; carries allCorrect. */
+  onFinished?: (allCorrect: boolean) => void
 }): ReactNode {
   const questions = data.questions
   const [progress, setProgress] = useState<QuizProgress>(() => loadQuizProgress(lessonId, artifactId, questions.length))
@@ -143,6 +145,7 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send }: {
   useEffect(() => {
     if (!showScore || !allAnswered || hookSent) return
     setHookSent(true)
+    onFinished?.(score.correct === score.total)
     const next = { answers: [...progress.answers], done: true }
     setProgress(next)
     saveQuizProgress(lessonId, artifactId, next)

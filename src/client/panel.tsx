@@ -33,6 +33,7 @@ import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
+import { Companion, useCompanionMood } from './companion.tsx'
 import { applyHighlights, getTextModel, locateInModel } from './highlights.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane } from './views.tsx'
 import { tr } from './locale.ts'
@@ -282,12 +283,18 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     })()
   }
 
+  const companion = useCompanionMood()
+  const setCompanionEvent = companion.emit
   const body: ReactNode = createElement('div', { className: 'lks14-body', 'data-pane': narrowPane },
     createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, send }),
-    createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, setMode, narrowPane }),
-    createElement(NotebookPane, { data, deleteNote, send }),
+    createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, setMode, narrowPane, companionEvent: setCompanionEvent }),
+    createElement(NotebookPane, { data, deleteNote, send, companionEvent: setCompanionEvent }),
   )
   return createElement('div', { className: 'lks14', 'data-lks-panel': '' },
+    createElement(Companion, { mood: companion.mood, onPoke: () => {
+      setCompanionEvent('poke')
+      showStudyToast(tr('companion.poked'), { severity: 'success' })
+    } }),
     createElement('div', { className: 'lks14-switch' },
       ...(['rail', 'chat', 'note'] as const).map(pane => createElement('button', {
         key: pane,
@@ -572,7 +579,7 @@ function ImportRow({ send }: { send: PanelSend }): ReactNode {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, setMode, narrowPane }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, setMode, narrowPane, companionEvent }: {
   data: StudyData
   lesson: StudyData['lesson']
   rows: ReturnType<typeof feedRows>
@@ -585,6 +592,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   send: PanelSend
   setMode: (mode: 'direct' | 'guide' | 'practice') => Promise<void>
   narrowPane: 'rail' | 'chat' | 'note'
+  companionEvent: (event: 'talk-start' | 'talk-end' | 'celebrate' | 'encourage' | 'decay' | 'poke') => void
 }): ReactNode {
   const streamEl = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -658,6 +666,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         data: a.data as unknown as QuizData,
         masteryPct: lesson.masteryPct,
         send,
+        onFinished: (allCorrect: boolean) => { companionEvent(allCorrect ? 'celebrate' : 'encourage') },
       })),
     ...(lesson?.artifacts ?? [])
       .filter(a => a.artifactType !== 'quiz')
@@ -694,7 +703,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
 }
 
 /** 右栏:the notebook — 讲解/概念图/笔记 tabs (upstream NotebookPanel arrangement). */
-function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void>; send: PanelSend }): ReactNode {
+function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void>; send: PanelSend; companionEvent: (event: 'talk-start' | 'talk-end' | 'celebrate' | 'encourage' | 'decay' | 'poke') => void }): ReactNode {
   const lesson = data?.lesson ?? null
   const [tab, setTab] = useState<'teach' | 'cmap' | 'notes'>('teach')
   const [error, setError] = useState<string | null>(null)
@@ -818,6 +827,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
 
   const startReading = (): void => {
     if (lesson === null || lesson.speechText.trim() === '') return
+    companionEvent('talk-start')
     readCtl.current?.stop()
     const sentences = speechSentencesOf(lesson.speechText)
     const voice = storedTtsVoice()
@@ -876,6 +886,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
     void controller.start().catch((err: unknown) => { setReadError(err instanceof Error ? err.message : String(err)) })
   }
   const stopReading = (): void => {
+    companionEvent('talk-end')
     readCtl.current?.stop()
     setRead(null)
   }
@@ -943,6 +954,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                     setRateBusy(true)
                     recordReview(lesson.lessonId, Number(q) as 1 | 4 | 5)
                       .then(() => {
+                        companionEvent(Number(q) >= 4 ? 'celebrate' : 'encourage')
                         showStudyToast(Number(q) >= 4 ? tr('review.done.good', { days: 1 }) : tr('review.done.again'), { severity: Number(q) >= 4 ? 'success' : 'warning' })
                         setRateBusy(false)
                       })

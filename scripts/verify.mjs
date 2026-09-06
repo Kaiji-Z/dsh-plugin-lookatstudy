@@ -125,6 +125,9 @@ gate('bundle', () => {
     [client, 'lks14-thinking', 'the pre-text thinking row'],
     [client, 'lks14-switch', 'the narrow-mode pane switcher'],
     [client, 'effectiveOpen', 'user section-collapse overrides'],
+    [client, 'useCompanionMood', 'the companion mood machine (P7)'],
+    [client, 'lks-companion', 'the companion creature'],
+    [client, 'companion.form.ember', 'the five companion forms'],
     // 0.15.0 P6: the panel toast stack (upstream Toast port)
     [client, 'showStudyToast', 'toast entry point'],
     [client, 'SEVERITY_DURATION', 'per-severity toast durations'],
