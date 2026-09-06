@@ -59,6 +59,21 @@ test('quizOptions extracts the last consecutive A–D block and rejects noise', 
   assert.deepEqual(quizOptions('A. 只有一个'), [])
   assert.deepEqual(quizOptions('B. 从B开始\nC. 不连续'), [])
   assert.deepEqual(quizOptions('普通列表:\n- A. 不是选项'), [])
+  // the space after the letter punctuation is optional (live 0.14.0 tutor shape)
+  assert.deepEqual(quizOptions('Q：哪种搭配？\nA.py 脚本 → jupyter notebook 01.py\nB.ipynb → python 03.ipynb'), [
+    { letter: 'A', text: 'py 脚本 → jupyter notebook 01.py' },
+    { letter: 'B', text: 'ipynb → python 03.ipynb' },
+  ], '"A." without a space still parses (the quiz stays clickable)')
+  // markdown-table options parse too (bold/code stripped from the text)
+  assert.deepEqual(quizOptions([
+    '| 选项 | 搭配 |',
+    '| --- | --- |',
+    '| **A** | `.py` 脚本 → `jupyter notebook 01.py` |',
+    '| **B** | `.ipynb` 笔记本 → `python 03.ipynb` |',
+  ].join('\n')), [
+    { letter: 'A', text: '.py 脚本 → jupyter notebook 01.py' },
+    { letter: 'B', text: '.ipynb 笔记本 → python 03.ipynb' },
+  ], 'the tutor drifting into a table still yields clickable options')
 })
 
 /** Minimal server payload the poll path accepts. */
@@ -180,6 +195,15 @@ test('normalizeStoredVoice allowlists the stored preference; junk falls back to 
   assert.equal(normalizeStoredVoice(null), TTS_VOICES[0]!.id)
   assert.equal(normalizeStoredVoice('zh-CN-YunxiNeural'), 'zh-CN-YunxiNeural')
   assert.equal(normalizeStoredVoice('injected-voice'), TTS_VOICES[0]!.id, 'arbitrary stored strings never reach the synth route')
+})
+
+test('sessionKnown treats an unhydrated list as known and a hydrated list as the truth', async () => {
+  const { sessionKnown } = await import('../src/client/panel.tsx')
+  const ctxOf = (byId?: Record<string, unknown>) => ({ sessions: { list: byId === undefined ? undefined : { getSnapshot: () => ({ byId }) } } }) as never
+  assert.equal(sessionKnown(ctxOf(undefined), 's1'), true, 'no list service at all: assume known (the open surfaces real errors)')
+  assert.equal(sessionKnown(ctxOf({}), 's1'), true, 'empty byId = not hydrated yet: assume known')
+  assert.equal(sessionKnown(ctxOf({ s2: {} }), 's1'), false, 'a hydrated list without the id = a restart dropped the thread (re-mint on send)')
+  assert.equal(sessionKnown(ctxOf({ s1: {} }), 's1'), true)
 })
 
 test('examStars reads the attempt from the card meta; the exam view carries a failure line', async () => {

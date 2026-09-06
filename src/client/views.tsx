@@ -50,7 +50,16 @@ export function quizOptions(text: string): ReadonlyArray<{ letter: string; text:
     run = []
   }
   for (const line of text.split('\n')) {
-    const match = /^([A-D])[.、:)]\s+(.+)$/.exec(line.trim())
+    // Two accepted shapes. The space after the letter punctuation is OPTIONAL
+    // ("A.py 脚本"), and a markdown table row ("| **A** | `.py` 脚本 … |")
+    // parses too — the tutor drifts into tables despite the persona's format
+    // directive (live 0.14.0 catch: the quiz rendered as plain text and the
+    // options stayed unclickable).
+    const plain = /^([A-D])[.、:)]\s*(.+)$/.exec(line.trim())
+    const table = /^\|\s*\*{0,2}([A-D])\*{0,2}\s*\|\s*(.+?)\s*\|$/.exec(line.trim())
+    const match = plain ?? (table !== null
+      ? [table[0]!, table[1]!, table[2]!.replaceAll('**', '').replaceAll('`', '')] as RegExpExecArray
+      : null)
     if (match === null) {
       flush()
       continue

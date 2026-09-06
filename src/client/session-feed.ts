@@ -20,6 +20,7 @@ export interface FeedEvent {
     readonly message?: { readonly content?: readonly { readonly kind?: string; readonly type?: string; readonly text?: string }[]; readonly blocks?: readonly { readonly kind?: string; readonly text?: string }[] }
     readonly chunk?: { readonly type?: string; readonly text?: string }
     readonly attemptId?: string
+    readonly source?: { readonly kind?: string }
   }
 }
 
@@ -70,6 +71,12 @@ export function feedRows(window: FeedWindow | undefined): ChatRow[] {
     if (event === undefined) continue
     if (entry.type === 'event') {
       if (event.type === 'user/message') {
+        // Machinery rides the log as user messages under their own source
+        // kinds — plugin (runtime-context snapshots), agent-instructions
+        // (<system-reminder> injections), tool (results). Only the learner's
+        // own submits carry source.kind 'user' (live 0.14.0 catch: the panel
+        // showed "Current runtime context…" and skill reminders as bubbles).
+        if (event.data?.source?.kind !== 'user') continue
         const text = userText(event)
         if (text !== '') rows.push({ key: `u${event.seq}`, role: 'user', text })
       } else if (event.type === 'assistant/message') {

@@ -64,6 +64,18 @@ function titleMatches(title: string, query: string): boolean {
 
 export type PanelSend = (text: string) => void
 
+/**
+ * Whether the host session list actually knows a bound thread id. A restart
+ * can drop young sessions from persistence; an empty byId means the list has
+ * not hydrated yet (assume known — the send's own open surfaces a real error).
+ * Pure over the injected list snapshot.
+ */
+export function sessionKnown(ctx: ClientContext, id: string): boolean {
+  const byId = (ctx.sessions.list?.getSnapshot() as { byId?: Readonly<Record<string, unknown>> } | undefined)?.byId
+  if (byId === undefined) return true
+  return Object.keys(byId).length === 0 ? true : id in byId
+}
+
 function textOf(blocks: readonly { type?: string; text?: string }[] | undefined): string {
   return (blocks ?? []).filter(b => (b.type ?? 'text') === 'text').map(b => b.text ?? '').join('\n\n').trim()
 }
@@ -108,6 +120,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const [sendError, setSendError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [rows, setRows] = useState<ReturnType<typeof feedRows>>([])
+  const [feedAttached, setFeedAttached] = useState(false)
   const [draft, setDraft] = useState('')
   const lesson = data?.lesson ?? null
   const localBound = useRef<string | null>(null)
@@ -115,21 +128,84 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
 
   const boundId = localBound.current ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null)
 
-  // The tutor chat stream: subscribe to the staged lesson thread's event window.
+  // The tutor chat stream: subscribe to the bound lesson thread's event window.
+  // The host only opens a window for the STAGED (current) session, so when the
+  // binding is absent (fresh page load / panel reopen), stage the thread first
+  // — an internal navigation, suppressed so it never hands the column back —
+  // and attach when the session list's current flips onto it. A binding the
+  // host no longer knows (dropped by a restart) renders an empty stream; the
+  // next send re-mints and re-binds. Nothing in here may throw into React.
   useEffect(() => {
     if (boundId === null) {
       setRows([])
+      setFeedAttached(false)
       return
     }
-    const binding = (ctx.sessions as { binding(id: string): { eventSource?: { getSnapshot(): unknown; subscribe(l: () => void): () => void } } | undefined }).binding(boundId)
-    const source = binding?.eventSource
-    if (source === undefined) {
-      setRows([])
-      return
+    setFeedAttached(false)
+    let disposed = false
+    let offSource: (() => void) | undefined
+    let offList: (() => void) | undefined
+    const attach = (): boolean => {
+      const binding = (ctx.sessions as { binding(id: string): { eventSource?: { getSnapshot(): unknown; subscribe(l: () => void): () => void } } | undefined }).binding(boundId)
+      const source = binding?.eventSource
+      if (source === undefined) return false
+      const update = (): void => { setRows(feedRows(source.getSnapshot() as never)) }
+      update()
+      setFeedAttached(true)
+      offSource = source.subscribe(update)
+      return true
     }
-    const update = (): void => { setRows(feedRows(source.getSnapshot() as never)) }
-    update()
-    return source.subscribe(update)
+    const stage = (): void => {
+      if (!sessionKnown(ctx, boundId)) return
+      try {
+        const shell = PANEL_SHELL.current
+        if (shell !== null) shell.suppressHandBack(() => { ctx.sessions.open(boundId) })
+        else ctx.sessions.open(boundId)
+      } catch { /* staging raced a shutdown; the next send re-mints */ }
+    }
+    // binding() is PURE resolution — it can succeed while the session is
+    // still off-stage, leaving the window unopened and the stream empty
+    // (live 0.14.0 catch: 'attached-empty' forever). The window opens ⟺ the
+    // session is the list's CURRENT, so reconcile stage-first, then attach.
+    const reconcile = (): boolean => {
+      if (disposed || offSource !== undefined) return true
+      const current = ctx.sessions.list?.getSnapshot().current
+      if (current !== boundId) {
+        stage()
+        return false
+      }
+      return attach()
+    }
+    if (!reconcile()) {
+      // Staging and the history pull are async, and a thread that already IS
+      // current fires no list notification at all — retry briefly instead of
+      // waiting for an event that may never come; the list subscription
+      // covers later flips (staging completes, current moves elsewhere…).
+      let tries = 0
+      const timer = setInterval(() => {
+        if (disposed || offSource !== undefined || reconcile() || ++tries >= 40) clearInterval(timer)
+      }, 150)
+      const list = ctx.sessions.list
+      if (list !== undefined) {
+        offList = list.subscribe(() => {
+          if (disposed || reconcile()) {
+            offList?.()
+            offList = undefined
+          }
+        })
+      }
+      return () => {
+        disposed = true
+        clearInterval(timer)
+        offSource?.()
+        offList?.()
+      }
+    }
+    return () => {
+      disposed = true
+      offSource?.()
+      offList?.()
+    }
   }, [boundId, ctx])
 
   // Keep the stream pinned to the latest row.
@@ -146,8 +222,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       setSendError(null)
       try {
         if (data?.active !== true) await activate(true)
-        let sessionId = localBound.current ?? data?.lessonSessions[lesson.lessonId]
-        if (sessionId === undefined || sessionId === null) {
+        let sessionId = localBound.current ?? data?.lessonSessions[lesson.lessonId] ?? null
+        if (sessionId !== null && !sessionKnown(ctx, sessionId)) sessionId = null
+        if (sessionId === null) {
           const area = await fetch('/lookatstudy/api/study-workspace')
           if (!area.ok) throw new Error(`study area unavailable (HTTP ${String(area.status)})`)
           const { path } = await area.json() as { path: string }
@@ -180,7 +257,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
 
   const body: ReactNode = createElement('div', { className: 'lks14-body' },
     createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, send }),
-    createElement(ChatPane, { data, lesson, rows, busy, sendError, draft, setDraft, send, setMode }),
+    createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, setMode }),
     createElement(NotebookPane, { data, deleteNote }),
   )
   return createElement('div', { className: 'lks14', 'data-lks-panel': '' }, body)
@@ -380,10 +457,12 @@ function ImportRow({ send }: { send: PanelSend }): ReactNode {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, busy, sendError, draft, setDraft, send, setMode }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, setMode }: {
   data: StudyData
   lesson: StudyData['lesson']
   rows: ReturnType<typeof feedRows>
+  feedAttached: boolean
+  bound: boolean
   busy: boolean
   sendError: string | null
   draft: string
@@ -424,7 +503,11 @@ function ChatPane({ data, lesson, rows, busy, sendError, draft, setDraft, send, 
         }, tr(mode.labelKey))),
       ),
     ),
-    createElement('div', { className: 'lks14-stream', ref: streamEl },
+    createElement('div', {
+      className: 'lks14-stream',
+      ref: streamEl,
+      'data-lks-feed': rows.length > 0 ? `rows:${String(rows.length)}` : bound ? (feedAttached ? 'attached-empty' : 'waiting') : 'no-thread',
+    },
       rows.length === 0
         ? createElement('div', { className: 'lks14-empty' },
           dormant ? tr('tutor.dormant') : tr('tutor.empty'), createElement('br'), tr('tutor.empty.hint'))
