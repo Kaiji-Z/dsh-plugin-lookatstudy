@@ -33,3 +33,5 @@ Restrained study-desk. Calm, encouraging, precise. The tutor persona carries the
 ## Accessibility & Inclusion
 
 Inherits the host's token system and focus conventions. Interactive lesson rows, quiz options, and pane buttons are real buttons with hover/focus states; quiz options carry `:focus-visible`. Color-coded states are doubled with text/icons where feasible. WCAG AA contrast via the host palette is the baseline; the plugin adds no custom color constants.
+
+Read-aloud (0.13.0) serves low-vision and ears-full learners: the lesson speaks sentence-by-sentence through Edge neural voices with the spoken sentence surfaced in the read-aloud strip, and degrades to the browser's system voice when the network path is gone — listening never dead-ends.

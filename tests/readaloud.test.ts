@@ -86,3 +86,20 @@ test('pause holds the queue between sentences; resume releases it', async () => 
   await run
   assert.deepEqual(primary.spoken, ['一。', '二。'])
 })
+
+test('the controller prewarms the NEXT sentence on the active engine when it supports it', async () => {
+  const warmed: string[] = []
+  const spoken: string[] = []
+  const primary: SpeechEngine = {
+    speak: (text: string) => { spoken.push(text); return Promise.resolve() },
+    pause: () => {},
+    resume: () => {},
+    cancel: () => {},
+    prewarm: (text: string) => { warmed.push(text) },
+  }
+  const fallback = fakeEngine()
+  const ctl = new ReadAloudController(['一。', '二。', '三。'], primary, fallback.engine)
+  await ctl.start()
+  assert.deepEqual(spoken, ['一。', '二。', '三。'])
+  assert.deepEqual(warmed, ['二。', '三。'], 'each play warms its successor; the last sentence has none')
+})

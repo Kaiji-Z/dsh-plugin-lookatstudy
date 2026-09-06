@@ -15,6 +15,12 @@ export interface SpeechEngine {
   resume(): void
   /** Hard-stop; the controller also drops its queue on stop(). */
   cancel(): void
+  /**
+   * Optional warm-up for an upcoming sentence (prefetch its synthesis) — the
+   * controller fires it when playback starts so the next sentence never waits
+   * on the network. Engines without it are skipped.
+   */
+  prewarm?(text: string): void
 }
 
 export type ReadAloudEngineName = 'edge' | 'system'
@@ -90,6 +96,10 @@ export class ReadAloudController {
 
   private async speakOn(text: string): Promise<void> {
     const impl = this.engine === 'system' ? this.fallback : this.primary
+    // Warm the NEXT sentence while this one plays — the next speak() then
+    // hits the engine's own prefetch instead of the network.
+    const next = this.sentences[this.index + 1]
+    if (next !== undefined) impl.prewarm?.(next)
     await impl.speak(text)
     // A pause pressed mid-utterance holds the QUEUE too, not just the audio —
     // otherwise a long pause races on to the next sentence.

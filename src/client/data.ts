@@ -223,6 +223,40 @@ class StudyStore {
   }
 }
 
+/** The voices the dashboard route accepts (same allowlist server-side). */
+export const TTS_VOICES: ReadonlyArray<{ id: string; labelKey: string }> = [
+  { id: 'zh-CN-XiaoxiaoNeural', labelKey: 'voice.xiaoxiao' },
+  { id: 'zh-CN-YunxiNeural', labelKey: 'voice.yunxi' },
+  { id: 'zh-CN-YunyangNeural', labelKey: 'voice.yunyang' },
+  { id: 'zh-CN-XiaoyiNeural', labelKey: 'voice.xiaoyi' },
+  { id: 'en-US-AriaNeural', labelKey: 'voice.aria' },
+  { id: 'en-US-GuyNeural', labelKey: 'voice.guy' },
+]
+
+const TTS_VOICE_KEY = 'dsh-plugin-lookatstudy:tts-voice'
+
+/** Narrow a stored voice id to the allowlist; anything else falls back to 晓晓. Pure. */
+export function normalizeStoredVoice(raw: string | null | undefined): string {
+  return TTS_VOICES.some(v => v.id === raw) ? raw! : TTS_VOICES[0]!.id
+}
+
+/** The selected read-aloud voice (browser-local preference; host state untouched). */
+export function storedTtsVoice(): string {
+  try {
+    return normalizeStoredVoice(typeof localStorage === 'undefined' ? null : localStorage.getItem(TTS_VOICE_KEY))
+  } catch {
+    return TTS_VOICES[0]!.id
+  }
+}
+
+export function storeTtsVoice(id: string): void {
+  try {
+    localStorage.setItem(TTS_VOICE_KEY, normalizeStoredVoice(id))
+  } catch {
+    // Privacy modes forbid storage writes; the picker still reflects this page's choice.
+  }
+}
+
 /** The one shared store instance backing every study seat component. */
 export const studyStore = new StudyStore()
 

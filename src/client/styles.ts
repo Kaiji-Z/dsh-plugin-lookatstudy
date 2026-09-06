@@ -254,6 +254,7 @@ export const STUDY_CSS = `
 .lks-set-row h3{margin:0 0 4px;font-size:15px;font-weight:600}
 .lks-set-hint{margin:0 0 10px;font-size:13px;color:var(--dsw-alias-label-secondary)}
 .lks-set-state{margin-left:10px;font-size:13px;color:var(--dsw-alias-label-secondary)}
+.lks-set-select{font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:5px 8px;max-width:100%}
 .lks-set-stats{margin:0;padding-left:18px;font-size:14px;line-height:1.9}
 .lks-set-path{font-family:var(--dsw-font-markdown-code);font-size:12.5px;background:var(--dsw-alias-bg-layer-3);border-radius:6px;padding:3px 8px;word-break:break-all}
 

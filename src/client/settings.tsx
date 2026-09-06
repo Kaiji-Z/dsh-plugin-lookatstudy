@@ -10,7 +10,7 @@
 
 import { createElement, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useStudy } from './data.ts'
+import { useStudy, TTS_VOICES, storedTtsVoice, storeTtsVoice } from './data.ts'
 import { tr } from './locale.ts'
 import { ActionError } from './views.tsx'
 
@@ -28,6 +28,7 @@ const MODES: ReadonlyArray<{ id: 'direct' | 'guide' | 'practice'; labelKey: stri
 export function StudySettingsSection(): ReactNode {
   const { data, setMode, activate } = useStudy()
   const [error, setError] = useState<string | null>(null)
+  const [voice, setVoice] = useState(storedTtsVoice)
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
   }
@@ -54,6 +55,17 @@ export function StudySettingsSection(): ReactNode {
           onClick: () => { if (data !== null) fire(activate(!data.active)) },
         }, data?.active === true ? tr('settings.turnOff') : tr('settings.turnOn')),
         createElement('span', { className: 'lks-set-state' }, data?.active === true ? tr('settings.on') : tr('settings.off')),
+      ),
+    ),
+    createElement('section', { className: 'lks-set-row' },
+      createElement('h3', null, tr('settings.voice')),
+      createElement('p', { className: 'lks-set-hint' }, tr('settings.voice.hint')),
+      createElement('div', null,
+        createElement('select', {
+          className: 'lks-set-select',
+          value: voice,
+          onChange: (e: { target: { value: string } }) => { storeTtsVoice(e.target.value); setVoice(e.target.value) },
+        }, ...TTS_VOICES.map(v => createElement('option', { key: v.id, value: v.id }, tr(v.labelKey)))),
       ),
     ),
     progress === undefined ? null : createElement('section', { className: 'lks-set-row' },

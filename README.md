@@ -1,6 +1,6 @@
 # dsh-plugin-lookatstudy
 
-Turn any markdown document, local folder, or GitHub learning repository into a guided course inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — your dsh agent becomes a full AI tutor with the interaction design of [LookatStudy](https://github.com/Kaiji-Z/LookatStudy): per-concept knowledge tracking, mastery-driven progression, spaced repetition, mastery proposals, friction awareness, learner memory, a Cornell notebook, an in-chat proposal card, exam mode with star grades, XP & streak, bilingual lessons, and a rich blackboard (KaTeX math, syntax-highlighted code, mermaid diagrams, mindmap & concept-map views). Learning engine modules are vendored from LookatStudy (MIT).
+Turn any markdown document, local folder, or GitHub learning repository into a guided course inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — your dsh agent becomes a full AI tutor with the interaction design of [LookatStudy](https://github.com/Kaiji-Z/LookatStudy): per-concept knowledge tracking, mastery-driven progression, spaced repetition, mastery proposals, friction awareness, learner memory, a Cornell notebook, an in-chat proposal card, exam mode with star grades, XP & streak, bilingual lessons, read-aloud (Edge TTS with a system-voice fallback), and a rich blackboard (KaTeX math, syntax-highlighted code, mermaid diagrams, mindmap & concept-map views). Learning engine modules are vendored from LookatStudy (MIT).
 
 ## Screenshots
 
@@ -38,7 +38,7 @@ Works with any profile. In the `web` profile the plugin additionally serves the 
 |---|---|
 | 左 · 课程 | Course picker, progress, due box with one-click review kickoff, lesson tree (gating, mastery bars, ⚡😣 weak spots, clickable focus), one-click demo import when empty |
 | 中 · 老师 | A read-only mini transcript of the live tutor conversation (assistant replies rendered through the plugin's markdown pipeline, tool calls as chips, streaming included) plus the soul pills (直讲/引导/实战), the focus lesson's starters, and the mastery-proposal banner (接受/再练练). Typing happens in dsh's own composer below the tab — the plugin never ships its own input; every button lands its text in that native composer and submits through the same path as the Send button |
-| 右 · 黑板 | The focus lesson's 讲解 (server-sanitized markdown, rendered rich on demand: KaTeX / syntax highlighting / mermaid), a 🧠 mindmap and 🕸 concept-map view of the same lesson, and the Cornell 笔记 three zones |
+| 右 · 黑板 | The focus lesson's 讲解 (server-sanitized markdown, rendered rich on demand: KaTeX / syntax highlighting / mermaid), a 🧠 mindmap and 🕸 concept-map view of the same lesson, the Cornell 笔记 three zones (each note deletable with an armed confirm), and the read-aloud bar — 朗读本课 speaks the lesson sentence-by-sentence through Microsoft's Edge neural voices (host-side synthesis, disk-cached; falls back to the browser's system voice offline) with the current sentence highlighted |
 
 The tutor column is a learning surface, not a generic chat: the tutor's quiz options (A–D) render as clickable answer buttons under the latest reply (clicking sends the answer through the native composer), graded answers show as ✓/✗ chips with the tested concept, and every course-tree glyph, tag, and mastery bar carries a hover tooltip explaining its meaning. All content text runs at the dsh chat transcript's own 16 px.
 
@@ -78,13 +78,13 @@ Misc: `study_set_mode`, `study_delete_course`
 
 ## What is intentionally not restored
 
-LookatStudy's Electron-native experiences have no host surface in dsh: the 伴学/voice companion line, persistent text highlighting with DOM anchors, and celebration particles. Everything else — engine, contracts, data models, exam mode with star grades, XP & streak, bilingual translation, image inlining, math/code/diagram rendering — is ported (diagram renderers load from CDN on demand and degrade silently offline).
+LookatStudy's Electron-native experiences have no host surface in dsh: the 伴学 companion creature and its celebration particles, and persistent text highlighting with DOM anchors (the read-aloud bar highlights in its own strip instead). Read-aloud itself IS ported (0.13.0) — Edge neural voices synthesized host-side with the browser's speechSynthesis as fallback. Everything else — engine, contracts, data models, exam mode with star grades, XP & streak, bilingual translation, image inlining, math/code/diagram rendering — is ported (diagram renderers load from CDN on demand and degrade silently offline).
 
 ## Development
 
 ```sh
 pnpm exec tsdown        # build lib/ (host + client entries, peers external)
-pnpm test               # 48 node:test cases over the real source (no key needed)
+pnpm test               # 218 node:test cases over the real source (no key needed)
 
 # iterate against a live dsh (this repo lives beside a deepseek-harness checkout):
 pnpm dsh web --patch ../dsh-plugin-lookatstudy/cordis.dev.yml   # run from the harness checkout

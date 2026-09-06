@@ -248,6 +248,13 @@ test('the dock pill projection renders due/streak/level segments, muted when zer
   assert.deepEqual(zeros.map(s => s.muted), [true, true, false], 'zero due/streak must not wear the warning/success tones')
 })
 
+test('normalizeStoredVoice allowlists the stored preference; junk falls back to 晓晓', async () => {
+  const { normalizeStoredVoice, TTS_VOICES } = await import('../src/client/data.ts')
+  assert.equal(normalizeStoredVoice(null), TTS_VOICES[0]!.id)
+  assert.equal(normalizeStoredVoice('zh-CN-YunxiNeural'), 'zh-CN-YunxiNeural')
+  assert.equal(normalizeStoredVoice('injected-voice'), TTS_VOICES[0]!.id, 'arbitrary stored strings never reach the synth route')
+})
+
 test('examStars reads the attempt from the card meta; the exam view carries a failure line', async () => {
   const { examStars } = await import('../src/client/toolviews.tsx')
   assert.deepEqual(examStars({ meta: ['2★'] }), { stars: 2, best: 2 })

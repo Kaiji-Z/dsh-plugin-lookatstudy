@@ -21,7 +21,7 @@ import {
   IconDownloadOutline16, IconLoadingOutline16, IconWarningOutline16,
 } from './icons.tsx'
 import type { ClientContext, SessionMachineSnapshot, StudyViewProps, TranscriptNode, TranscriptPartial, TranscriptSlice } from './faces.ts'
-import { useStudy } from './data.ts'
+import { useStudy, storedTtsVoice } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
 import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
 import { renderLessonConceptMap } from './diagrams.ts'
@@ -775,15 +775,33 @@ function systemSpeechEngine(): SpeechEngine {
   }
 }
 
-/** Edge-over-dashboard engine: MP3 from /api/tts played through an <audio>. */
+/** Edge-over-dashboard engine: MP3 from /api/tts played through an <audio>, with per-session prefetch. */
 function audioSpeechEngine(fetchTts: (text: string) => Promise<ArrayBuffer>): SpeechEngine {
   let audio: HTMLAudioElement | null = null
+  const prefetch = new Map<string, Promise<ArrayBuffer>>()
+  const load = (text: string): Promise<ArrayBuffer> => {
+    let pending = prefetch.get(text)
+    if (pending === undefined) {
+      pending = fetchTts(text)
+      pending.catch(() => prefetch.delete(text)) // failed fetches may be retried
+      prefetch.set(text, pending)
+    }
+    return pending
+  }
   return {
     speak(text: string): Promise<void> {
-      return fetchTts(text).then(buf => new Promise<void>((resolve, reject) => {
-        audio = new Audio(URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' })))
-        audio.onended = () => resolve()
-        audio.onerror = () => reject(new Error('audio playback failed'))
+      return load(text).then(buf => new Promise<void>((resolve, reject) => {
+        const blobUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }))
+        audio = new Audio(blobUrl)
+        const done = (): void => {
+          URL.revokeObjectURL(blobUrl)
+          resolve()
+        }
+        audio.onended = done
+        audio.onerror = () => {
+          URL.revokeObjectURL(blobUrl)
+          reject(new Error('audio playback failed'))
+        }
         void audio.play().catch(reject)
       }))
     },
@@ -793,6 +811,7 @@ function audioSpeechEngine(fetchTts: (text: string) => Promise<ArrayBuffer>): Sp
       audio?.pause()
       audio = null
     },
+    prewarm(text: string): void { void load(text) },
   }
 }
 
@@ -811,9 +830,10 @@ function BlackboardColumn({ data, deleteNote }: { data: StudyData; deleteNote: (
     if (lesson === null || lesson.speechText.trim() === '') return
     readCtl.current?.stop()
     const sentences = speechSentencesOf(lesson.speechText)
+    const voice = storedTtsVoice()
     const controller = new ReadAloudController(
       sentences.map(s => speakMathInSentence(s)),
-      audioSpeechEngine(text => tts(text)),
+      audioSpeechEngine(text => tts(text, voice)),
       systemSpeechEngine(),
       s => {
         setRead(s)
