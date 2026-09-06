@@ -37,6 +37,8 @@
 验收：单测（产物提取 fold、quiz 进度、幂等去重）+ 3081 实测（练习卡渲染→作答→判分→重开面板进度留存；产物自动进笔记区带角标）。
 
 - [ ] P1 完成
+  - [x] P1a（2026-09-07）：quiz 产物端到端 —— study_generate_quiz 工具、内容哈希幂等记录、QuizCard 交互卡（本地判分/进度留存/答完 hook/去向动作）、verify PASS @ 233、3081 实测全过（含同上下文 reload 进度恢复）
+  - [ ] P1b：compare_table / code_walkthrough 工具+卡、Mermaid 查看器模态、GuessArtifact、笔记 understand 区自动沉淀+角标+toast、讲解底部最新重产物
 
 ### P2 · 画线笔记（上游 NotebookPanel 选区交互）
 上游：讲解区选区浮动菜单「提问这段 / 加到笔记」、user_note 带 quote 溯源、持久高亮。
