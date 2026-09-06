@@ -87,7 +87,11 @@
 - AGENTS.md / README / backlog 重写；judge-criteria 若导师行为有变则同步。
 - `pnpm run judge` 复跑 PASS；`node scripts/release.mjs 0.15.0`。
 
-- [ ] P8 完成
+- [x] P8 完成（2026-09-07）
+  - 终审：上游 v0.27→v0.28 diff 复扫 = 伴学视觉打磨（按设计不移植）+ highlightText/speech-text 微调（v0.3.3 方案仍现行）——无一未解释缺项
+  - judge 复跑：PASS（8 项全 10/10，livetest-output.md 394 行由 livetest-run 重生成）
+  - AGENTS/README 重写（30 工具、新客户端模块、伴学生物移植说明）；verify PASS @ 241
+  - 发版 0.15.0
 
 ## 已知坑（执行时带brain）
 - 事件窗口只对 current 会话开；产物提取与聊天流共用同一订阅。

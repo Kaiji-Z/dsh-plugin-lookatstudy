@@ -55,11 +55,12 @@ Beyond the tab, the plugin rides the host's own integration points:
 - **Tool cards in the conversation tab** — keyed `tool.call.toolview` entries for `study_record_answer` (✓/✗ + concept), `study_lesson`, `study_due_reviews`, `study_exam_result`.
 - **Boot-tier prefetch** — `dsh.client.immediately: true`, so the sidebar 学习 row renders on first paint with no bundle fetch.
 
-## Tool surface (25)
+## Tool surface (30)
 
 Import: `study_import_markdown` / `study_import_folder` (12 doc formats incl. EPUB/DOCX/PPTX/PDF text) / `study_import_github` (jsDelivr CDN, works where github.com is unreachable) / `study_import_url` (articles, arXiv, video metadata) + `study_apply_design` (the tutor-designed structure protocol)
 Learn: `study_courses` (progress + full-text search), `study_map`, `study_lesson`
 Progress: `study_define_concepts`, `study_record_answer`, `study_complete_lesson`, `study_exam_result` (star grades)
+Artifacts (0.15.0): `study_generate_quiz` (interactive practice card), `study_pose_guess`, `study_compare_table`, `study_draw_diagram` (mermaid), `study_code_walkthrough` — each renders as an in-panel card and settles into the notebook
 Memory: `study_consolidate`, `study_translate_lesson` (bilingual lessons), `study_export` (course pack markdown)
 Proposals: `study_propose_mastery`, `study_resolve_proposal`
 Reviews: `study_due_reviews`, `study_record_review`
@@ -78,7 +79,7 @@ Misc: `study_set_mode`, `study_delete_course`
 
 ## What is intentionally not restored
 
-LookatStudy's Electron-native experiences have no host surface in dsh: the 伴学 companion creature and its celebration particles, and persistent text highlighting with DOM anchors (the read-aloud bar highlights in its own strip instead). Read-aloud itself IS ported (0.13.0) — Edge neural voices synthesized host-side with the browser's speechSynthesis as fallback. Everything else — engine, contracts, data models, exam mode with star grades, XP & streak, bilingual translation, image inlining, math/code/diagram rendering — is ported (diagram renderers load from CDN on demand and degrade silently offline).
+The companion creature IS ported (0.15.0, minimal DOM form: five selectable forms in the panel corner, mood-linked to read-aloud/rating/quiz moments, reduced-motion static) — but its Electron-native life system (microphone envelopes, typing squeeze, drag-and-throw) is not. Persistent text highlighting is ported through text-search anchors (selection → 提问这段/加到笔记, quotes restore as marks). Read-aloud itself IS ported (0.13.0) — Edge neural voices synthesized host-side with the browser's speechSynthesis as fallback. Everything else — engine, contracts, data models, exam mode with star grades, XP & streak, bilingual translation, image inlining, math/code/diagram rendering — is ported (diagram renderers load from CDN on demand and degrade silently offline).
 
 ## Development
 
