@@ -225,6 +225,14 @@ test('every tool output conforms to its declared output schema (the real tool-ca
     ['study_remember', { category: 'global', content: 'prefers analogies' }],
     ['study_notes', { lessonId }],
     ['study_note_save', { lessonId, zone: 'record', title: 't', text: 'x', source: 'chat' }],
+    ['study_generate_quiz', {
+      lessonId,
+      title: '小测',
+      questions: [
+        { prompt: '读取是什么？', options: ['读', '写'], answer: 0, explanation: '读取即输入。' },
+        { prompt: '写作是什么？', options: ['读', '写'], answer: 1, explanation: '写作即输出。' },
+      ],
+    }],
     ['study_set_mode', { mode: 'practice' }],
     ['study_lesson', { lessonId }],
   ]

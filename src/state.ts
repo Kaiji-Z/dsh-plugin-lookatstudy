@@ -16,6 +16,7 @@ import { masteryToCrown, updateMastery } from './vendor/bkt.ts'
 import { accuracyToStars } from './vendor/exam-logic.ts'
 import { computeStreakTransition } from './vendor/streak-transition.ts'
 import { XP_CORRECT, XP_WRONG, XP_MASTERED } from './vendor/xp.ts'
+import type { StudyArtifact } from './artifacts.ts'
 import type { ParsedCourse } from './vendor/markdown-course.ts'
 
 /** Lesson position on the mastery-gated path (LookatStudy NodeStatus). */
@@ -155,6 +156,10 @@ export interface LearningState {
   proposals: MasteryProposal[]
   /** Lesson id → dsh session id (the simplified thread system: one session per lesson node). */
   lessonSessions: Record<string, string>
+  /** Lesson id → recorded artifacts (upstream canvas_items: the panel's
+   *  interactive cards — practice quizzes, compare tables, walkthroughs).
+   *  Additive in 0.15.0; v2 files without it load with {}. */
+  artifacts: Record<string, StudyArtifact[]>
   /** Consolidation watermark (ISO): study_consolidate gathers friction/notes
    *  after this instant and advances it (upstream memory-service watermark). */
   lastConsolidatedAt: string | null
@@ -185,7 +190,7 @@ const FRICTION_CAP = 10
 /** Fresh empty state for a first run: dormant until the learner clicks 开始学习. */
 export function emptyState(): LearningState {
   return {
-    version: 2, courses: [], active: false, mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {},
+    version: 2, courses: [], active: false, mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, artifacts: {},
     proposals: [], lessonSessions: {}, lastConsolidatedAt: null,
     xp: { total: 0, todayKey: '', todayXp: 0 },
     streak: { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
@@ -265,6 +270,7 @@ export function loadState(path: string): LearningState {
     memoryPatterns: raw.memoryPatterns ?? {},
     proposals: raw.proposals ?? [],
     lessonSessions: raw.lessonSessions ?? {},
+    artifacts: raw.artifacts ?? {},
     lastConsolidatedAt: raw.lastConsolidatedAt ?? null,
     xp: raw.xp ?? { total: 0, todayKey: '', todayXp: 0 },
     streak: raw.streak ?? { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
@@ -385,6 +391,9 @@ export function deleteCourse(state: LearningState, courseId: string): void {
   if (i < 0) throw new Error(`lookatstudy-plugin: unknown course id ${JSON.stringify(courseId)}`)
   state.courses.splice(i, 1)
   state.proposals = state.proposals.filter(p => !p.lessonId.startsWith(`${courseId}:`))
+  for (const lessonId of Object.keys(state.artifacts)) {
+    if (lessonId.startsWith(`${courseId}:`)) delete state.artifacts[lessonId]
+  }
 }
 
 /**
@@ -828,6 +837,23 @@ export function addNote(
  * @param noteId - id of the note to remove.
  * @throws when the lesson or the note id is unknown (fail loud, like every id lookup).
  */
+/**
+ * Record one artifact on its lesson, idempotently: the key is the content
+ * hash (type + stable-stringified data) — re-importing or re-generating the
+ * same artifact returns the existing row instead of duplicating it (upstream
+ * learned this the hard way with message-id keys).
+ * @returns the stored artifact and whether this call created it.
+ */
+export function recordArtifact(state: LearningState, lessonId: string, artifact: StudyArtifact): { artifact: StudyArtifact; created: boolean } {
+  findLesson(state, lessonId)
+  const existing = state.artifacts[lessonId] ?? []
+  const hit = existing.find(a => a.hash === artifact.hash)
+  if (hit !== undefined) return { artifact: hit, created: false }
+  const next = [...existing, artifact]
+  state.artifacts[lessonId] = next
+  return { artifact, created: true }
+}
+
 export function deleteNote(state: LearningState, lessonId: string, noteId: string): void {
   const ref = findLesson(state, lessonId)
   const index = ref.lesson.notes.findIndex(n => n.id === noteId)

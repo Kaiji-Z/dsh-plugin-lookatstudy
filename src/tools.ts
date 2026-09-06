@@ -65,11 +65,13 @@ import {
   starterPrompts,
   defineConcepts as defineConceptsState,
   gatherConsolidationWindow,
+  recordArtifact,
   strategyBand,
   type CourseState,
   type LearningState,
   type LessonRef,
 } from './state.ts'
+import { artifactId, sanitizeQuiz, type StudyArtifact } from './artifacts.ts'
 
 /** State access handed in by `apply`; every mutation persists via {@link StudyStore.save}. */
 export interface StudyStore {
@@ -1766,6 +1768,91 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     presentCall: args => ({ card: 'generic', title: `Switch soul: ${args.mode}` }),
   })
 
+  const generateQuizTool = defineTool({
+    name: 'study_generate_quiz',
+    description:
+      'Generate an interactive practice card (quiz artifact) for the focus lesson: 3-4 questions (5 max), '
+      + 'each with 2-6 options, the 0-based correct `answer` index, and an `explanation` of why it is right. '
+      + 'The learner answers on the card itself (locally judged, progress kept); when they finish, a summary '
+      + 'hook arrives in the conversation — acknowledge it, address wrong answers, do NOT re-grade these '
+      + 'through study_record_answer. Use for practice blocks and review consolidation; single conversational '
+      + 'questions stay as prose A-D options.',
+    parameters: {
+      lessonId: { type: 'string', required: true, description: 'Lesson the practice card belongs to.' },
+      title: { type: 'string', description: 'Card title (defaults to 练习).' },
+      questions: {
+        type: 'array',
+        required: true,
+        description: 'The questions, in answering order.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            prompt: { type: 'string', required: true },
+            options: { type: 'array', required: true, items: { type: 'string' } },
+            answer: { type: 'integer', required: true, description: '0-based index into options.' },
+            explanation: { type: 'string', required: true, description: 'Why the right answer is right.' },
+          },
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          artifactType: { type: 'string', required: true, enum: ['quiz'] },
+          artifactId: { type: 'string', required: true },
+          created: { type: 'boolean', required: true },
+          title: { type: 'string', required: true },
+          questions: {
+            type: 'array',
+            required: true,
+            items: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                prompt: { type: 'string', required: true },
+                options: { type: 'array', required: true, items: { type: 'string' } },
+                answer: { type: 'integer', required: true },
+                explanation: { type: 'string', required: true },
+              },
+            },
+          },
+          warnings: { type: 'array', items: { type: 'string' } },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Practice card (${value.questions.length} questions): ${value.title}${value.created ? '' : ' (already recorded)'}${value.warnings === undefined || value.warnings.length === 0 ? '' : ` — warnings: ${value.warnings.join('; ')}`}`,
+      }],
+    },
+    async execute(args) {
+      const sanitized = sanitizeQuiz(args)
+      return mutate((state) => {
+        const id = artifactId('quiz', sanitized.data)
+        const artifact: StudyArtifact = {
+          id,
+          artifactType: 'quiz',
+          title: typeof sanitized.data.title === 'string' ? sanitized.data.title : '练习',
+          createdAt: new Date().toISOString(),
+          hash: id.slice('quiz-'.length),
+          data: sanitized.data,
+        }
+        const result = recordArtifact(state, args.lessonId, artifact)
+        return {
+          artifactType: 'quiz',
+          artifactId: result.artifact.id,
+          created: result.created,
+          title: result.artifact.title,
+          questions: (result.artifact.data.questions ?? []) as Array<{ prompt: string; options: string[]; answer: number; explanation: string }>,
+          warnings: (result.artifact.data.warnings ?? []) as string[],
+        }
+      })
+    },
+    presentCall: args => ({ card: 'generic', title: `Generate practice card: ${typeof args.title === 'string' ? args.title : '练习'} (${args.questions?.length ?? 0} questions)` }),
+  })
+
   return [
     importMarkdown,
     importFolder,
@@ -1791,6 +1878,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     exportTool,
     noteSaveTool,
     notesTool,
+    generateQuizTool,
     setModeTool,
   ]
 }

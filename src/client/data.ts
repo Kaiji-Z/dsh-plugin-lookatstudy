@@ -46,6 +46,7 @@ export interface StudyState {
     readonly strategy: string
     readonly concepts: ReadonlyArray<{ title: string; masteryPct: number; weak: boolean }>
     readonly starters: ReadonlyArray<{ label: string; message: string }>
+    readonly artifacts: ReadonlyArray<{ id: string; artifactType: string; title: string; data: Record<string, unknown> }>
     readonly notes: ReadonlyArray<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null }>
     readonly html: string
     readonly markdown: string

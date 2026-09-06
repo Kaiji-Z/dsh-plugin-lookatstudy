@@ -167,6 +167,30 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 @keyframes lks-toast-out{to{opacity:0;transform:translateY(-6px)}}
 @media (prefers-reduced-motion:reduce){.lks-toast{animation-duration:.01ms}}
 
+
+/* practice card (P1, upstream QuizArtifact port): chat column, below the stream */
+.lks-qcard{flex:none;margin:2px 12px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1);padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.lks-qcard-head{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-secondary)}
+.lks-qcard-count{margin-left:auto;font-weight:400;color:var(--dsw-alias-label-tertiary)}
+.lks-qcard-q{display:flex;flex-direction:column;gap:6px}
+.lks-qcard-prompt{font-size:13.5px;line-height:1.55;color:var(--dsw-alias-label-primary)}
+.lks-qcard-opts{display:flex;flex-direction:column;gap:4px}
+.lks-qcard-opt{text-align:left;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:9px;padding:6px 10px;cursor:pointer}
+.lks-qcard-opt:not(:disabled):hover{border-color:var(--dsw-alias-state-business-primary)}
+.lks-qcard-opt:disabled{cursor:default}
+.lks-qcard-opt.right{border-color:var(--dsw-alias-state-success-primary);color:var(--lks-ok-ink)}
+.lks-qcard-opt.wrong{border-color:var(--dsw-alias-state-error-primary);color:var(--lks-err-ink)}
+.lks-qcard-opt.dim{opacity:.75}
+.lks-qcard-expl{font-size:12.5px;line-height:1.6;color:var(--dsw-alias-label-secondary);border-left:2px solid var(--dsw-alias-state-business-primary);padding-left:8px}
+.lks-qcard-next{margin-top:2px;border:none;background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 86%,#000);color:#fff;font:inherit;font-size:12.5px;font-weight:600;border-radius:8px;padding:5px 14px;cursor:pointer}
+.lks-qcard-next:hover{filter:brightness(1.1)}
+.lks-qcard-review .lks-qcard-q.review{padding:6px 0;border-bottom:1px dashed var(--dsw-alias-border-l1)}
+.lks-qcard-review .lks-qcard-q.review.wrong .lks-qcard-prompt{color:var(--lks-err-ink)}
+.lks-qcard-ans{font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+.lks-qcard-actions{display:flex;flex-wrap:wrap;gap:6px}
+.lks-qcard-action{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:12.5px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:4px 12px;cursor:pointer}
+.lks-qcard-action:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3)}
+
 /* note cards (shared: panel notebook + settings-era shapes) */
 .lks-note{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 14px;margin-bottom:8px}
 .lks-note .lks-note-src{float:right;font-size:11.5px;color:var(--dsw-alias-label-secondary)}

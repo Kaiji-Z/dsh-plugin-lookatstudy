@@ -120,6 +120,8 @@ export interface WorkbenchLesson {
   concepts: Array<{ title: string; masteryPct: number; weak: boolean }>
   starters: Array<{ label: string; message: string }>
   notes: Array<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null }>
+  /** Recorded artifacts (0.15.0 P1): the panel's interactive cards. */
+  artifacts: Array<{ id: string; artifactType: string; title: string; data: Record<string, unknown> }>
   html: string
   /** Raw lesson body (the read-aloud control and the settings page speak from this). */
   markdown: string
@@ -205,6 +207,7 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
         masteryPct: ref.lesson.mastery === null ? null : Math.round(ref.lesson.mastery * 100),
         strategy: strategyBand(ref.lesson.mastery),
         concepts: conceptViews(ref.lesson) ?? [],
+        artifacts: (state.artifacts[ref.lesson.id] ?? []).map(a => ({ id: a.id, artifactType: a.artifactType, title: a.title, data: a.data })),
         starters: starterPrompts(ref.lesson.title).map(s => ({ label: s.label, message: s.message })),
         notes: ref.lesson.notes.map(n => ({
           id: n.id,

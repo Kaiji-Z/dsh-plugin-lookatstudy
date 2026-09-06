@@ -99,6 +99,13 @@ gate('bundle', () => {
     [client, 'tool.call.toolview', 'conversation-tab tool cards'],
     [client, 'lks-dockpill', 'dock pill styles'],
     [client, 'registerStudyLocale', 'locale namespace registration'],
+    // 0.15.0 P1: the artifact channel (upstream artifacts/canvas port)
+    [host, 'study_generate_quiz', 'practice card tool'],
+    [host, 'recordArtifact', 'idempotent artifact recording'],
+    [host, 'sanitizeQuiz', 'quiz artifact sanitization'],
+    [client, 'QuizCard', 'interactive practice card'],
+    [client, 'getPostQuizActions', 'post-quiz exits (never fewer than two)'],
+    [client, 'quizProgressKey', 'quiz progress persistence'],
     // 0.15.0 P6: the panel toast stack (upstream Toast port)
     [client, 'showStudyToast', 'toast entry point'],
     [client, 'SEVERITY_DURATION', 'per-severity toast durations'],

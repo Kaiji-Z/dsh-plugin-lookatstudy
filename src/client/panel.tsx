@@ -30,6 +30,7 @@ import { speakMathInSentence } from '../vendor/math-speech.ts'
 import { feedRows } from './session-feed.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
+import { QuizCard, type QuizData } from './quizcard.tsx'
 import { statusTitle, quizOptions, sectionDefaultOpen } from './views.tsx'
 import { tr } from './locale.ts'
 
@@ -561,6 +562,16 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           dormant ? tr('tutor.dormant') : tr('tutor.empty'), createElement('br'), tr('tutor.empty.hint'))
         : rows.map((row, i) => chatRow(row, !dormant && i === lastAssistant ? { send } : undefined)),
     ),
+    ...(lesson?.artifacts ?? [])
+      .filter(a => a.artifactType === 'quiz')
+      .map(a => createElement(QuizCard, {
+        key: a.id,
+        lessonId: lesson.lessonId,
+        artifactId: a.id,
+        data: a.data as unknown as QuizData,
+        masteryPct: lesson.masteryPct,
+        send,
+      })),
     createElement('div', { className: 'lks14-starters' },
       ...starters.map(s => createElement('button', {
         key: s.label,
