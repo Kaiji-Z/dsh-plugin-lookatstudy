@@ -8,7 +8,7 @@
 
 ## 基线（开工前实测一次留档）
 
-- [ ] `pnpm run verify` PASS；测试数 N₀ = 221（2026-09-07 记录）
+- [x] `pnpm run verify` PASS；测试数 N₀ = 221（2026-09-07 记录；开工实测 VERIFY: PASS）
 
 ## 排除清单（不移植——用户已定案：归宿主的能力一律不对齐）
 
@@ -24,7 +24,7 @@
 上游：`Toast.tsx`。插件落点：`panel.tsx` 轻量 toast 栈（面板右上角、自动消退、dsw token 样式、面板关闭即清）。
 验收：due 提醒与「有新笔记」等通知有统一出口；单测覆盖入队/消退。
 
-- [ ] P6 完成
+- [x] P6 完成（2026-09-07：toast.ts store + panel StudyToastStack + lks-toast 样式 + verify 3 针；VERIFY: PASS @ 226；视觉/消费方实测并入 P3 与 P1 轮）
 
 ### P1 · 产物卡体系（上游 artifacts/* + canvas 持久化）
 上游：`src/renderer/components/artifacts/`（Quiz/CompareTable/CodeWalkthrough/Mermaid/Guess + DiagramViewerModal）、`App.tsx` 的 extractArtifacts→canvas 自动持久化、`lib/quiz-progress`、`lib/post-quiz-actions`。
