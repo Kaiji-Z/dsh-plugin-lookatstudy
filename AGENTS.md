@@ -61,7 +61,9 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 ## Backlog
 
 - Full-text lesson search in the course rail (title search shipped).
-- Image inlining, translation system, exam star levels — intentionally not restored.
+- Note deletion (state/tools/dashboard/UI all lack a delete path) — needs a scope decision: UI-only delete vs a tutor-side tool too.
+- Read-aloud (朗读) via browser speechSynthesis — candidate plugin-original feature; upstream v0.28.0's `shared/speech-text.ts` (whole-sentence grouping, battle-tested) is a portable pure-function starting point. No companion creature (that surface stays upstream-only).
+- Deliberately not restored (accurate as of upstream v0.28.0): the companion creature + its TTS infra (Electron surface), and exam-v2's persistent machinery (background question generation, SQLite attempt settlement, retake shuffling — the plugin's exams are conversational). Image inlining, the translation system, and exam-star display ARE restored, contrary to this bullet's earlier text.
 
 ## Design rationale (the whys that outlived the code)
 
