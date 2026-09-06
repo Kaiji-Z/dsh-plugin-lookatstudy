@@ -1,24 +1,16 @@
 /**
- * The study tab's client logic: the pure transcript fold (user/assistant text
- * extraction, tool chips, streaming partial) and the shared poll store's
- * lifecycle and write actions, both runnable under plain node:test.
+ * The study client's pure logic under plain node:test: the rail/tree
+ * projections (statusTitle, sectionDefaultOpen, quizOptions), the shared poll
+ * store's lifecycle and write actions, and the stylesheet's architecture
+ * contracts (the panel takeover, the collapsed-sidebar entry row, ink
+ * re-scoping). The transcript fold lives in session-feed.test.ts.
  */
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { pickPane, pickTranscript, quizOptions, sectionDefaultOpen, statusTitle, transcriptRows } from '../src/client/views.tsx'
-import type { ConversationNode } from '@deepseek-ai/dsh-client-runtime/client'
+import { quizOptions, sectionDefaultOpen, statusTitle } from '../src/client/views.tsx'
 import { studyStore, type StudyState } from '../src/client/data.ts'
 import { STUDY_CSS } from '../src/client/styles.ts'
-
-test('pickPane keeps only valid pane ids and defaults to the tutor', () => {
-  assert.equal(pickPane('rail'), 'rail')
-  assert.equal(pickPane('tutor'), 'tutor')
-  assert.equal(pickPane('bb'), 'bb')
-  assert.equal(pickPane(null), 'tutor', 'nothing stored falls back to 导师')
-  assert.equal(pickPane('sidebar'), 'tutor', 'unknown stored values fall back')
-  assert.equal(pickPane(''), 'tutor')
-})
 
 test('statusTitle explains every course-tree glyph state', () => {
   assert.match(statusTitle('exam', 'locked'), /章节测验/)
@@ -67,72 +59,6 @@ test('quizOptions extracts the last consecutive A–D block and rejects noise', 
   assert.deepEqual(quizOptions('A. 只有一个'), [])
   assert.deepEqual(quizOptions('B. 从B开始\nC. 不连续'), [])
   assert.deepEqual(quizOptions('普通列表:\n- A. 不是选项'), [])
-})
-
-/** Synthesize one finalized conversation node (durable shapes, cast at the boundary). */
-function node(shape: Record<string, unknown>): ConversationNode {
-  return shape as never
-}
-
-test('transcriptRows folds user and assistant text in order', () => {
-  const rows = transcriptRows([
-    node({ kind: 'user', seq: 1, time: 0, content: [{ type: 'text', text: '什么是梯度下降?' }], source: {} }),
-    node({ kind: 'assistant', seq: 2, time: 0, turn: 1, step: 1, blocks: [
-      { kind: 'reasoning', text: 'thinking...' },
-      { kind: 'text', text: '梯度下降是...' },
-      { kind: 'text', text: '第二段' },
-      { kind: 'tool-call', callId: 'c1', name: 'study_lesson', argsRaw: '{}' },
-    ] }),
-  ], null)
-  assert.deepEqual(rows.map(r => [r.role, r.key]), [['user', 'u1'], ['assistant', 'a2']])
-  assert.equal(rows[0]!.text, '什么是梯度下降?')
-  assert.equal(rows[1]!.text, '梯度下降是...\n\n第二段', 'assistant text blocks join with a blank line; reasoning excluded')
-})
-
-test('transcriptRows skips tool results, skips noise, and appends the partial', () => {
-  const rows = transcriptRows([
-    node({ kind: 'assistant', seq: 2, time: 0, turn: 1, step: 1, blocks: [{ kind: 'tool-call', callId: 'c1', name: 'study_record_answer', argsRaw: '{}' }] }),
-    node({ kind: 'tool-result', seq: 3, time: 0, callId: 'c1', call: { name: 'study_record_answer', argsRaw: '{}' }, content: [], isError: false, subCalls: [] }),
-    node({ kind: 'tool-result', seq: 4, time: 0, callId: 'c2', call: null, content: [], isError: false, subCalls: [] }),
-    node({ kind: 'command', seq: 5, time: 0, commandId: 'x', name: 'goal', args: null, outcome: null }),
-    node({ kind: 'turn-error', seq: 6, time: 0, turn: 1, step: 2, message: 'provider down' }),
-    node({ kind: 'user', seq: 7, time: 0, content: [{ type: 'image', attachment: {} }], source: {} }),
-  ], { turn: 1, step: 3, blocks: [{ kind: 'text', text: '正在打字…' }] } as never)
-  assert.deepEqual(rows.map(r => [r.role, r.text]), [
-    ['error', 'provider down'],
-    ['streaming', '正在打字…'],
-  ], 'tool results skip entirely (host toolviews own them); image-only user rows skip; the partial lands last')
-})
-
-test('a text-less partial shows the thinking row instead of dead air', () => {
-  const thinking = transcriptRows([], { turn: 1, step: 1, blocks: [
-    { kind: 'reasoning', text: '先看这一课的概念…' },
-    { kind: 'tool-call', callId: 'c1', name: 'study_lesson', argsRaw: '{}' },
-  ] } as never)
-  assert.deepEqual(thinking.map(r => [r.role, r.text]), [['thinking', '导师思考中…']], 'reasoning/tool-only phases surface a thinking indicator')
-  const streaming = transcriptRows([], { turn: 1, step: 2, blocks: [
-    { kind: 'reasoning', text: '想好了' },
-    { kind: 'text', text: '我们开始' },
-  ] } as never)
-  assert.deepEqual(streaming.map(r => r.role), ['streaming'], 'once text arrives the streaming row replaces thinking')
-})
-
-test('transcriptRows degrades to an empty transcript when the host hands over no session data', () => {
-  // DSH v0.1.2-alpha.4 mounts the conversation view before the session
-  // snapshot exists (issue #1: the tab blanked with "nodes is not iterable").
-  assert.deepEqual(transcriptRows(undefined, undefined), [])
-  assert.deepEqual(transcriptRows(undefined, null), [], 'an absent partial never fabricates a thinking row')
-})
-
-test('pickTranscript resolves the transcript across host generations', () => {
-  const chatLegacy = { nodes: [{ kind: 'assistant', seq: 2 }], partial: null }
-  const conversation = { nodes: [{ kind: 'user', seq: 1 }], partial: null, sessionId: 's1' }
-  const machine = { blank: true }
-  assert.equal(pickTranscript(chatLegacy, undefined), chatLegacy, '0.1.3+ Chat legacy wins when present')
-  assert.equal(pickTranscript(chatLegacy, conversation as never), chatLegacy, 'Chat legacy wins even with a conversation snapshot present')
-  assert.equal(pickTranscript(undefined, conversation as never), conversation, 'pre-0.1.3 conversation snapshot (array nodes) is the fallback')
-  assert.equal(pickTranscript(undefined, machine as never), undefined, '0.1.3+ session MACHINE snapshot (no node array) is never mistaken for a transcript')
-  assert.equal(pickTranscript(undefined, undefined), undefined, 'no data from the host means no transcript')
 })
 
 /** Minimal server payload the poll path accepts. */
@@ -192,18 +118,23 @@ test('the shared store polls once per cycle and posts write actions to the host 
   }
 })
 
-test('the stylesheet keeps the width-adaptation contract (tutor proportional, blackboard floor, content guards)', () => {
-  // Tripwires for the width bugs seen live (2026-08-23): the tutor column's
-  // fixed 780px starved the blackboard to its 230px floor on 1256px-wide
-  // containers, and mermaid/KaTeX artifacts could stretch the column.
-  assert.match(STUDY_CSS, /\.lks-col-tutor\{[^}]*42cqi/, 'the tutor column is capped at 42% of the tab container')
-  assert.match(STUDY_CSS, /\.lks-col-tutor\{[^}]*min-width:360px/, 'the tutor column keeps a readable floor')
-  assert.match(STUDY_CSS, /\.lks-col-bb\{[^}]*min-width:320px/, 'the blackboard keeps a 320px floor (was 230)')
-  assert.match(STUDY_CSS, /\[data-composer-card\]\.lks-composer-follow\{[^}]*--lks-composer-follow-width/,
-    'the docked composer card tracks the tutor column live width')
-  assert.match(STUDY_CSS, /\.lks-prose svg\{max-width:100%;height:auto\}/, 'SVGs (mermaid/markmap/ELK) fit the column')
-  assert.match(STUDY_CSS, /\.lks-prose \.katex-display\{overflow-x:auto/, 'display math scrolls instead of stretching')
-  assert.match(STUDY_CSS, /\.lks-prose table\{[^}]*overflow-x:auto/, 'tables scroll instead of stretching')
+test('the stylesheet carries the panel takeover contract (hide-siblings, entry row, ink re-scoping)', () => {
+  // The 0.14.0 architecture: a sidebar-entry panel takes over the center
+  // column via the stardeck doctrine — the shell view is invisible until the
+  // <html> active attribute flips, and the host conversation column's own
+  // children hide behind !important so React never fights the takeover.
+  assert.match(STUDY_CSS, /html\[data-dsh-lookatstudy-active\] \.lks14-shell-view\{display:flex/,
+    'the panel shows only under the html active attribute')
+  assert.match(STUDY_CSS, /\[data-pane='conversation'\] > :not\(\[data-dsh-lookatstudy-view\]\)[^{}]*\{display:none !important\}/,
+    'host conversation children hide behind the takeover')
+  assert.match(STUDY_CSS, /\[class\*='_collapsed'\] \.lks14-sidebar-label\{display:none\}/,
+    'the collapsed icon rail keeps just the entry glyph')
+  assert.match(STUDY_CSS, /\.lks-root,\.lks-tv\{--lks-warn-ink/,
+    'state inks cover the toolview cards (they have no .lks-root ancestor in the host conversation)')
+  assert.match(STUDY_CSS, /\.lks14-composer\{[^}]*border-top/,
+    'the chat pane owns its composer — the host composer is never involved')
+  assert.match(STUDY_CSS, /\.lks14-node\[aria-disabled='true'\]/,
+    'locked lesson rows keep the aria-disabled contract (focusable, tooltip explains why)')
 })
 
 test('the lookatstudy locale dictionaries keep zh/en parity and translate with fallback', async () => {
@@ -234,10 +165,6 @@ test('the pure projections translate through an injected translator', async () =
   const { makeT } = await import('../src/client/locale.ts')
   const tEn = makeT('en')
   assert.match(statusTitle('exam', 'locked', tEn), /Section exam/)
-  const { transcriptRows: rows } = await import('../src/client/views.tsx')
-  const partial = { blocks: [] } as never
-  const thinking = rows([], partial, tEn)
-  assert.equal(thinking[0]!.text, 'tutor is thinking…')
 })
 
 test('the dock pill projection renders due/streak/level segments, muted when zero', async () => {

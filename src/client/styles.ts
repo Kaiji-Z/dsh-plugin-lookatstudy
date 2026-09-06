@@ -1,7 +1,10 @@
 /**
- * Style injection for the study tab: one `<style>` element of `.lks-*`
- * classes authored against the dsh `--dsw-*` design tokens, so the tab
- * follows the app's theme (light/dark) instead of carrying its own palette.
+ * Style injection for the study surfaces: one `<style>` element carrying the
+ * `.lks14-*` panel classes (the sidebar-entry center-takeover, arranged like
+ * upstream LookatStudy) plus the shared `.lks-*` classes the host-native
+ * surfaces still use (toolview cards, dock pill, settings section, note
+ * cards, read-aloud bar). Authored against the dsh `--dsw-*` design tokens so
+ * everything follows the app's theme instead of carrying its own palette.
  * CSS Modules are unavailable to patch-layer bundles, so the stylesheet is
  * injected once at client-plugin apply; the `data-` attribute keeps the
  * injection idempotent.
@@ -12,8 +15,10 @@
 const STYLE_ID = 'data-dsh-plugin-lookatstudy'
 
 /**
- * The study tab's stylesheet. Class names are `lks-*` namespaced; colors,
- * fonts, and radii come from `--dsw-*` tokens wherever the concept exists.
+ * The study stylesheet. The center-takeover visibility follows the stardeck
+ * panel doctrine: the shell view is display:none until the `<html>` active
+ * attribute flips, and the host conversation column's own children are hidden
+ * behind `!important` so React never fights the takeover.
  */
 export const STUDY_CSS = `
 /* State inks: small colored text must clear WCAG AA (4.5:1), but the host's
@@ -22,211 +27,125 @@ export const STUDY_CSS = `
    host at all (the tv-chip used to reference them and silently inherit).
    Mixing the state color toward label-primary keeps the hue while pulling
    luminance to the readable pole — and works in BOTH themes, because
-   label-primary is always the current theme's high-contrast ink. */
-.lks-root{--lks-warn-ink:color-mix(in srgb,var(--dsw-alias-state-warn-label) 45%,var(--dsw-alias-label-primary));--lks-ok-ink:color-mix(in srgb,var(--dsw-alias-state-success-primary) 40%,var(--dsw-alias-label-primary));--lks-err-ink:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,var(--dsw-alias-label-primary));font-family:var(--dsw-font-family)}
+   label-primary is always the current theme's high-contrast ink. Declared on
+   every surface family that consumes the inks: .lks-root (dock pill,
+   settings) and .lks-tv (toolview cards, which render in the host
+   conversation with no .lks-root ancestor). */
+.lks-root,.lks-tv{--lks-warn-ink:color-mix(in srgb,var(--dsw-alias-state-warn-label) 45%,var(--dsw-alias-label-primary));--lks-ok-ink:color-mix(in srgb,var(--dsw-alias-state-success-primary) 40%,var(--dsw-alias-label-primary));--lks-err-ink:color-mix(in srgb,var(--dsw-alias-state-error-primary) 55%,var(--dsw-alias-label-primary))}
+.lks-root{font-family:var(--dsw-font-family)}
 .lks-root :where(button){font-family:var(--dsw-font-family);cursor:pointer;border:none;background:none;padding:0}
-.lks-root :where(a){color:var(--dsw-alias-state-business-primary)}
 
-/* ── the study tab: composer-width center, self-scrolling flanks ──
-   data-conversation-composer-overlay (set on the root element) opts the
-   view into the host's overlay mode: viewArea becomes a fixed-height
-   non-growing host and the composer floats over the tab's bottom band, so
-   the tab itself never feeds the page scroll. The bottom padding clears the
-   floating composer via the host-published live --dsh-composer-height. The
-   tutor column shares the conversation column's width axis
-   (--dsh-composer-card-max-width inherits from ConversationRoot's root) but
-   is capped at 42% of the tab so the BLACKBOARD — the reading surface —
-   keeps the lion's share at every wide width; the composer card follows the
-   tutor column's real measured width (views.tsx), so the two stay visually
-   tied. Flanking columns absorb the remaining width and scroll independently. */
-.lks-study{height:100%;min-height:0;width:100%;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;padding:10px 14px calc(var(--dsh-composer-height, 152px) + 12px);color:var(--dsw-alias-label-primary);container:lksstudy/inline-size}
-/* Direction carrier (a container query cannot style the container itself). */
-.lks-body{flex:1;min-height:0;min-width:0;display:flex;gap:16px}
-.lks-col{display:flex;flex-direction:column;min-width:0}
-.lks-colhead{flex:none;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
-.lks-col-rail{flex:0 1 260px;min-width:180px;overflow-y:auto;padding:2px 6px}
-.lks-col-tutor{flex:0 1 auto;width:min(100%,var(--dsh-composer-card-max-width,780px),42cqi);min-width:360px;overflow:hidden}
-.lks-col-bb{flex:1 1 0;min-width:320px;overflow-y:auto;padding:2px 6px}
-/* While the study view is mounted in wide mode, the host composer card is
-   shifted under the tutor column (the transcript's width axis) instead of the
-   scroll body's center — views.tsx measures the offset, sets the variables
-   and toggles the class, and removes all three whenever the shift collapses
-   (narrow pane, hidden view) so the host's natural centering and width come
-   back. max-width tracks the tutor column's live width: the tutor shrinks
-   proportionally below ~1857px containers, and the card shrinks with it. */
-[data-composer-card].lks-composer-follow{align-self:flex-start;margin-left:var(--lks-composer-shift,0px);max-width:var(--lks-composer-follow-width,var(--dsh-composer-card-max-width,780px))}
-/* narrow (<1220px): one composer-width pane at a time, chosen by a centered
-   segmented pill group (joined buttons in one capsule — button language, not
-   tab language, against the host's view tabs right above). */
-.lks-switch{display:none;flex-direction:row;gap:2px;align-self:center;margin-bottom:10px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:3px}
-.lks-switch-btn{border-radius:999px;padding:5px 18px;font-size:14px;color:var(--dsw-alias-label-tertiary);background:transparent;transition:background .12s ease,color .12s ease}
-.lks-switch-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
-.lks-switch-btn.on{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 86%,#000);color:#fff;font-weight:600}
-@container lksstudy (max-width: 1220px){
-  .lks-body{flex-direction:column}
-  .lks-switch{display:flex}
-  .lks-colhead{display:none}
-  .lks-col{flex:1 1 auto;min-height:0;width:auto;overflow-y:auto}
-  .lks-col-tutor{width:min(100%,var(--dsh-composer-card-max-width,780px));overflow:hidden;display:flex;flex-direction:column}
-  .lks-study[data-pane='rail'] .lks-col-tutor,.lks-study[data-pane='rail'] .lks-col-bb,
-  .lks-study[data-pane='tutor'] .lks-col-rail,.lks-study[data-pane='tutor'] .lks-col-bb,
-  .lks-study[data-pane='bb'] .lks-col-rail,.lks-study[data-pane='bb'] .lks-col-tutor{display:none}
-}
+/* ── sidebar entry row (DOM-injected next to the session family) ── */
+.lks14-sidebar-row{display:flex;align-items:center;gap:9px;width:100%;padding:7px 10px;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:13px;font-family:var(--dsw-font-family);cursor:pointer;border-radius:8px;text-align:left}
+.lks14-sidebar-row:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.lks14-sidebar-row[data-active='true']{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-weight:600}
+.lks14-sidebar-row:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks14-sidebar-icon{display:inline-flex;align-items:center;flex:0 0 auto;color:currentColor}
+.lks14-sidebar-label{white-space:nowrap}
+/* Host sidebar collapsed to the icon rail: hide the label, center the icon. */
+[class*='_collapsed'] .lks14-sidebar-row{justify-content:center;padding:7px 0;gap:0}
+[class*='_collapsed'] .lks14-sidebar-label{display:none}
 
-/* ── left column: course rail ── */
-.lks-rail-head{display:flex;align-items:center;gap:6px;margin-bottom:4px}
-.lks-rail-head .lks-rail-select{flex:1;min-width:0;margin-bottom:0}
-.lks-rail-head .lks-btn{padding:3px 8px;font-size:13px}
-.lks-rail-title{font-size:16px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lks-rail-sub{font-size:13px;color:var(--dsw-alias-label-secondary);margin:4px 0 6px}
-.lks-masterybar{height:5px;border-radius:3px;background:var(--dsw-alias-bg-layer-3);overflow:hidden;margin-bottom:8px}
-.lks-masterybar i{display:block;height:100%;width:100%;background:var(--dsw-alias-state-success-primary);transform-origin:0 50%;transition:transform .3s ease}
-.lks-masterybar.gold i{background:var(--dsw-alias-state-warn-primary)}
-.lks-search{width:100%;box-sizing:border-box;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:13.5px;padding:5px 9px;margin-bottom:4px}
-.lks-search:focus{outline:none;border-color:var(--dsw-alias-state-business-primary);box-shadow:0 0 0 2px var(--dsw-alias-border-l3)}
-.lks-sec-num{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;border-radius:50%;background:var(--dsw-alias-state-warn-tertiary);color:var(--lks-warn-ink);font-size:11px;font-weight:700;margin-right:4px}
-.lks-tag.due{background:var(--dsw-alias-state-warn-tertiary);color:var(--lks-warn-ink)}
-.lks-import{margin-top:8px}
-.lks-import .lks-inputrow{margin-top:0}
-.lks-inputrow{display:flex;gap:8px;align-items:flex-end;flex:none;margin-top:8px}
-.lks-input{flex:1;min-width:0;resize:none;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:1.6;padding:8px 10px}
-.lks-input:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
-.lks-input:disabled{opacity:.55}
-.lks-import-hint{font-size:12.5px;color:var(--dsw-alias-label-secondary);margin-top:6px;line-height:1.7}
-.lks-duebox{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 12px;margin:8px 0 14px;font-size:13.5px}
-.lks-duebox .lks-due-item{color:var(--dsw-alias-label-secondary);margin-top:4px;display:flex;justify-content:space-between;gap:10px}
-.lks-duebox .lks-over{color:var(--lks-warn-ink);flex:none}
+/* ── center-column takeover (the study panel) ── */
+.lks14-shell-view{display:none}
+html[data-dsh-lookatstudy-active] .lks14-shell-view{display:flex;flex-direction:column;height:100%;min-height:0}
+html[data-dsh-lookatstudy-active] [data-pane='conversation'] > :not([data-dsh-lookatstudy-view]),
+html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatstudy-view]){display:none !important}
+[data-dsh-lookatstudy-view]{container-type:inline-size}
+.lks14{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);overflow:hidden;font-family:var(--dsw-font-family)}
+.lks14 button{font-family:var(--dsw-font-family);cursor:pointer}
+.lks14-body{display:flex;flex:1;min-width:0;min-height:0}
+.lks14-col{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
+.lks14-colhead{flex:none;display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:13px;font-weight:600;color:var(--dsw-alias-label-secondary);border-bottom:1px solid var(--dsw-alias-border-l1)}
 
-.lks-sec{font-size:12px;color:var(--dsw-alias-label-secondary);text-transform:uppercase;letter-spacing:.05em;margin:14px 0 4px}
-/* Collapsible section head: a real button (keyboard can toggle it), sticky so
-   the current chapter stays identified while 4000px of nodes scroll under it. */
-.lks-sechead{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary);text-align:left;padding:6px 4px;margin:14px 0 4px;border-radius:6px;position:sticky;top:0;z-index:1;background:var(--dsw-alias-bg-base)}
-.lks-sechead:hover{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-interactive-bg-hover)}
-.lks-sechead:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
-.lks-sechead-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lks-sechead-c{flex:none;font-size:10px}
-.lks-sechead-n{flex:none;font-size:11px;text-transform:none;letter-spacing:0}
-.lks-node{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 9px;border-radius:8px;margin:1px 0;cursor:pointer}
-.lks-node:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.lks-node:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
-.lks-node.focus{background:var(--dsw-alias-bg-layer-3);outline:1px solid var(--dsw-alias-border-l2)}
-.lks-node .lks-g{width:18px;text-align:center;flex:none}
-.lks-node .lks-t{flex:1;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* aria-disabled (not the disabled attribute): the row stays focusable so the
-   status tooltip can explain WHY it is locked — Firefox drops titles on truly
-   disabled form controls. */
-.lks-node[aria-disabled='true']{opacity:.45;cursor:not-allowed}
-.lks-node[aria-disabled='true']:hover{background:none}
-.lks-tag{font-size:11px;border-radius:4px;padding:0 4px;flex:none}
-.lks-tag.weak{background:var(--dsw-alias-state-warn-tertiary);color:var(--lks-warn-ink)}
-.lks-tag.fric{background:var(--dsw-alias-state-error-tertiary);color:var(--lks-err-ink)}
-.lks-bar{width:44px;height:4px;border-radius:2px;background:var(--dsw-alias-bg-layer-3);overflow:hidden;flex:none}
-.lks-bar i{display:block;height:100%;width:100%;background:var(--dsw-alias-state-success-primary);transform-origin:0 50%}
-.lks-pct{font-size:12px;color:var(--dsw-alias-label-secondary);flex:none;width:32px;text-align:right}
+/* 左 rail: course picker, tree, review, import */
+.lks14-rail{flex:0 0 240px;border-right:1px solid var(--dsw-alias-border-l1);padding:0 10px 10px;overflow-y:auto}
+.lks14-railhead{display:flex;align-items:center;gap:6px;margin-top:10px}
+.lks14-railtitle{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.lks14-railsub{font-size:12px;color:var(--dsw-alias-label-secondary);margin:6px 0}
+.lks14-masterybar{height:5px;border-radius:3px;background:var(--dsw-alias-bg-layer-2);overflow:hidden;margin-bottom:8px}
+.lks14-masterybar i{display:block;height:100%;background:var(--dsw-alias-business-primary);transform-origin:left;transition:transform .3s}
+.lks14-masterybar.gold i{background:var(--dsw-alias-state-warn-primary)}
+.lks14-search{width:100%;box-sizing:border-box;font:inherit;font-size:12.5px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:5px 8px;margin:4px 0}
+.lks14-search:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
+.lks14-duebox{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:12.5px}
+.lks14-dueitem{display:flex;justify-content:space-between;gap:6px;padding:2px 0;color:var(--dsw-alias-label-secondary)}
+.lks14-over{color:var(--dsw-alias-state-error-primary)}
+.lks14-sechead{display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12.5px;font-weight:600;padding:6px 2px;cursor:pointer;text-align:left}
+.lks14-sechead:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks14-secnum{flex:none;width:18px;height:18px;border-radius:5px;background:var(--dsw-alias-bg-layer-2);display:inline-flex;align-items:center;justify-content:center;font-size:11px}
+.lks14-secheadt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks14-node{display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;padding:5px 6px;border-radius:8px;cursor:pointer;text-align:left}
+.lks14-node:hover{background:var(--dsw-alias-bg-layer-1)}
+.lks14-node:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks14-node.focus{background:var(--dsw-alias-bg-layer-2)}
+.lks14-node[aria-disabled='true']{color:var(--dsw-alias-label-tertiary);cursor:default}
+.lks14-g{flex:none;display:inline-flex}
+.lks14-t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks14-tag{flex:none;display:inline-flex;align-items:center;gap:2px;font-size:10.5px;border-radius:6px;padding:1px 4px}
+.lks14-tag.weak{color:var(--dsw-alias-state-warn-primary)}
+.lks14-bar{flex:none;width:26px;height:4px;border-radius:2px;background:var(--dsw-alias-bg-layer-2);overflow:hidden}
+.lks14-bar i{display:block;height:100%;background:var(--dsw-alias-business-primary);transform-origin:left}
+.lks14-pct{flex:none;font-size:10.5px;color:var(--dsw-alias-label-tertiary)}
+.lks14-empty{color:var(--dsw-alias-label-tertiary);font-size:13px;padding:18px 6px;line-height:1.7}
+.lks14-import{margin:8px 0}
+.lks14-inputrow{display:flex;gap:6px}
+.lks14-hint{font-size:11.5px;color:var(--dsw-alias-label-tertiary);margin-top:6px;line-height:1.6}
 
-.lks-empty{color:var(--dsw-alias-label-secondary);text-align:center;padding:48px 8px;font-size:14px;line-height:2}
-.lks-actbar{display:flex;flex-direction:row;justify-content:flex-end;flex:none;padding-bottom:8px}
+/* 中 chat: the tutor stream + its own composer (upstream ChatStream/ChatComposer) */
+.lks14-chat{flex:1 1 46%;min-width:340px;border-right:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-0, transparent)}
+.lks14-chatlesson{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;color:var(--dsw-alias-label-tertiary)}
+.lks14-pills{display:inline-flex;gap:2px}
+.lks14-pill{border:none;background:none;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;padding:2px 8px;border-radius:7px;cursor:pointer}
+.lks14-pill:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks14-pill.on{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.lks14-stream{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.lks14-msg{max-width:92%;line-height:1.65;font-size:13.5px}
+.lks14-msg-user{align-self:flex-end;background:var(--dsw-alias-bg-layer-2);border-radius:12px 12px 3px 12px;padding:7px 11px;white-space:pre-wrap}
+.lks14-msg-assistant{align-self:flex-start;background:var(--dsw-alias-bg-layer-1);border-radius:12px 12px 12px 3px;padding:8px 12px}
+.lks14-msg.streaming{opacity:.7}
+.lks14-msg-assistant p{margin:4px 0}
+.lks14-msg-assistant pre{overflow-x:auto;font-size:12px}
+.lks14-msg-assistant table{border-collapse:collapse;margin:6px 0;display:block;max-width:100%;overflow-x:auto}
+.lks14-msg-assistant th,.lks14-msg-assistant td{border:1px solid var(--dsw-alias-border-l2);padding:4px 8px;font-size:12px}
+.lks14-turn{max-width:92%;align-self:flex-start;display:flex;flex-direction:column;gap:6px}
+.lks14-quiz{display:flex;flex-direction:column;gap:4px}
+.lks14-opt{display:flex;gap:6px;align-items:baseline;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:9px;padding:6px 10px;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);cursor:pointer;text-align:left}
+.lks14-opt:hover{background:var(--dsw-alias-bg-layer-2)}
+.lks14-opt:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks14-optletter{flex:none;font-weight:700;color:var(--dsw-alias-business-primary)}
+.lks14-starters{flex:none;display:flex;flex-wrap:wrap;gap:4px;padding:6px 12px}
+.lks14-starter{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;border-radius:14px;padding:3px 10px;cursor:pointer}
+.lks14-starter:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2)}
+.lks14-starter:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks14-starter[aria-disabled='true']{opacity:.5;cursor:default}
+.lks14-composer{flex:none;display:flex;gap:6px;align-items:flex-end;padding:8px 12px 10px;border-top:1px solid var(--dsw-alias-border-l1)}
+.lks14-composertext{flex:1;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:7px 10px;resize:none;box-sizing:border-box}
+.lks14-composertext:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
 
-/* ── middle column: the tutor ── */
-.lks-transcript{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:4px 2px}
-.lks-msg{max-width:94%;font-size:16px;line-height:1.7;border-radius:12px;padding:8px 12px;word-break:break-word}
-.lks-msg.user{align-self:flex-end;white-space:pre-wrap;background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish)}
-.lks-msg.assistant{align-self:flex-start;background:var(--dsw-alias-bg-layer-2)}
-.lks-msg.streaming{opacity:.7}
-.lks-msg.thinking{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--dsw-alias-label-secondary);background:none;border-radius:0;padding:2px}
-.lks-msg.error{align-self:stretch;color:var(--dsw-alias-state-error-primary);font-size:13px;background:none;border-radius:0;padding:1px 2px}
-/* quiz-taking surface: the tutor's A–D options become clickable answers on the last settled reply */
-.lks-turn{display:flex;flex-direction:column;align-items:flex-start;max-width:94%}
-.lks-quiz{display:flex;flex-direction:column;gap:6px;width:100%;margin:2px 0 4px}
-.lks-opt{display:flex;align-items:baseline;gap:10px;text-align:left;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:10px;padding:8px 14px;font-size:14px;line-height:1.5;color:var(--dsw-alias-label-secondary);cursor:pointer;font-family:inherit;transition:border-color .12s ease,color .12s ease,background .12s ease}
-.lks-opt:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary);background:var(--dsw-alias-state-business-tertiary)}
-.lks-opt:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
-.lks-optletter{font-weight:700;color:var(--dsw-alias-label-primary-bluish);flex:none}
+/* 右 notebook: 讲解/概念图/笔记 (upstream NotebookPanel) */
+.lks14-note{flex:0 0 clamp(320px, 30vw, 460px);padding:0 12px 12px;overflow-y:auto}
+.lks14-lessonhead{margin:10px 0 6px}
+.lks14-lessonhead h2{margin:0 0 4px;font-size:16px}
+.lks14-meta{font-size:12px;color:var(--dsw-alias-label-secondary);margin:2px 0}
+.lks14-viewtabs{display:flex;gap:2px;margin:8px 0}
+.lks14-viewtab{border:none;background:none;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12.5px;padding:4px 10px;border-radius:8px;cursor:pointer;display:inline-flex;align-items:center;gap:4px}
+.lks14-viewtab:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks14-viewtab.on{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.lks14-prose{font-size:13.5px;line-height:1.7;color:var(--dsw-alias-label-primary);min-height:200px}
+.lks14-prose h1,.lks14-prose h2,.lks14-prose h3{font-size:15px;margin:12px 0 4px}
+.lks14-prose p{margin:6px 0}
+.lks14-prose pre{overflow-x:auto;font-size:12px;background:var(--dsw-alias-bg-layer-1);border-radius:8px;padding:8px}
+.lks14-prose code{font-family:var(--dsw-font-markdown-code);background:var(--dsw-alias-bg-layer-1);border-radius:4px;padding:1px 4px;font-size:.95em}
+.lks14-prose table{border-collapse:collapse;margin:6px 0;display:block;max-width:100%;overflow-x:auto}
+.lks14-prose th,.lks14-prose td{border:1px solid var(--dsw-alias-border-l2);padding:4px 8px;font-size:12.5px}
+.lks14-prose svg{max-width:100%;height:auto}
+.lks14-prose .katex-display{overflow-x:auto}
+.lks14-zones{min-height:200px}
+.lks14-zone{margin-bottom:12px}
+.lks14-zoneh{font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-secondary);margin-bottom:6px}
 
-/* soul pills (native tool-row trigger language: 28px transparent, tinted active) */
-.lks-pills{display:inline-flex;align-items:center;height:28px}
-.lks-pill{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:none;border-radius:24px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px;font-weight:500;transition:background .12s ease,color .12s ease}
-.lks-pill:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
-.lks-pill:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
-.lks-pill.on{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish)}
-.lks-pill.on:hover{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish)}
-
-/* SVG glyph alignment (status icons, tag badges, dock segments, icon buttons) */
-.lks-g svg{display:block;margin:0 auto}
-.lks-tag{display:inline-flex;align-items:center;gap:2px;line-height:1}
-.lks-dockseg{display:inline-flex;align-items:center;gap:3px}
-.lks-dock-due svg,.lks-dock-streak svg{flex:none}
-.lks-dock-due.lks-muted svg,.lks-dock-streak.lks-muted svg{opacity:.75}
-.lks-btn svg,.lks-viewtab svg,.lks-sechead svg{flex:none}
-.lks-viewtab svg,.lks-btn svg{align-self:center}
-
-/* ic_ds_* glyph carriers + busy spinner (native .8s linear spin) */
-@keyframes lks-spin{to{transform:rotate(360deg)}}
-.lks-spin{animation:lks-spin .8s linear infinite}
-
-/* dormant state: pills/starters stay visible but inert (aria-disabled, same
-   contract as locked lesson rows — focusable so the hint explains why) */
-.lks-pill[aria-disabled='true'],.lks-starter[aria-disabled='true']{opacity:.45;cursor:not-allowed}
-.lks-pill[aria-disabled='true']:hover,.lks-starter[aria-disabled='true']:hover{background:transparent;border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary)}
-.lks-dormant{font-size:13px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border:1px dashed var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;margin:8px 0;line-height:1.7}
-
-/* starter chips */
-.lks-dock{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:0 2px 6px;flex:none}
-.lks-starter{border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);transition:border-color .12s ease,color .12s ease}
-.lks-starter:hover{border-color:var(--dsw-alias-state-business-primary);color:var(--dsw-alias-label-primary)}
-
-/* proposal banner + shared buttons */
-/* A mastery proposal is a positive, informational moment — business tint, not
-   the warn tint it previously wore (a reviewer flagged the semantic mismatch). */
-.lks-banner{display:flex;align-items:center;gap:10px;background:var(--dsw-alias-state-business-tertiary);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 14px;margin:8px 0;font-size:14px;flex:none}
-.lks-banner .lks-why{flex:1;color:var(--dsw-alias-label-secondary)}
-.lks-btn{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:6px 14px;font-size:13.5px;font-weight:600;flex:none}
-.lks-btn:focus-visible,.lks-starter:focus-visible,.lks-switch-btn:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
-.lks-btn.primary{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 86%,#000);color:#fff}
-.lks-btn.primary:hover{filter:brightness(1.1)}
-.lks-btn.primary:disabled{opacity:.5;cursor:default;filter:none}
-.lks-btn.ghost{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l2)}
-.lks-btn.ghost:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3)}
-
-/* ── right column: blackboard ── */
-.lks-lessonhead h2{font-size:18px;margin:0 0 4px;font-weight:700}
-.lks-lessonhead .lks-meta{color:var(--dsw-alias-label-secondary);font-size:13px;margin-bottom:4px}
-.lks-chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
-.lks-chip{border-radius:999px;padding:2px 10px;font-size:12.5px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
-.lks-chip.weak{background:var(--dsw-alias-state-warn-tertiary);color:var(--lks-warn-ink)}
-
-/* blackboard view tabs (same joined-capsule button language as the narrow
-   mode switcher — buttons, not tabs, against the host's view tabs above) */
-.lks-viewtabs{display:flex;gap:2px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:999px;padding:3px;width:max-content;margin:10px 0}
-.lks-viewtab{border-radius:999px;padding:4px 16px;font-size:13.5px;color:var(--dsw-alias-label-secondary);background:transparent;transition:background .12s ease,color .12s ease}
-.lks-viewtab:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.lks-viewtab.on{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 86%,#000);color:#fff;font-weight:600}
-.lks-viewtab:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
-
-/* rendered markdown (host-sanitized lesson bodies and assistant replies) */
-.lks-prose{font-size:16px;line-height:1.75}
-.lks-prose h1,.lks-prose h2,.lks-prose h3,.lks-prose h4{margin:14px 0 6px;line-height:1.4}
-.lks-prose p{margin:6px 0}
-.lks-prose pre{background:var(--dsw-alias-markdown-code-block);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px;overflow-x:auto;margin:8px 0;font-size:13.5px;font-family:var(--dsw-font-markdown-code-block-small)}
-.lks-prose code{font-family:var(--dsw-font-markdown-code);background:var(--dsw-alias-bg-layer-3);border-radius:4px;padding:1px 5px;font-size:.92em}
-.lks-prose pre code{background:none;padding:0}
-.lks-prose table{border-collapse:collapse;margin:8px 0;display:block;max-width:100%;overflow-x:auto}
-.lks-prose th,.lks-prose td{border:1px solid var(--dsw-alias-border-l2);padding:5px 11px;font-size:14px}
-.lks-prose th{background:var(--dsw-alias-bg-layer-2)}
-.lks-prose blockquote{border-left:3px solid var(--dsw-alias-state-business-primary);padding:2px 12px;color:var(--dsw-alias-label-secondary);margin:8px 0}
-.lks-prose ul,.lks-prose ol{padding-left:22px;margin:6px 0}
-.lks-prose img{max-width:100%}
-/* width guards for CDN-rendered artifacts (both teach and diagram panes are
-   .lks-prose): mermaid/elk SVGs carry fixed width attributes; KaTeX
-   display math can exceed the column; both must degrade to fit/scroll
-   internally instead of stretching the blackboard. */
-.lks-prose svg{max-width:100%;height:auto}
-.lks-prose .katex-display{overflow-x:auto;overflow-y:hidden;padding:2px 0}
-
-/* Cornell notes zones */
-.lks-bb-notes{margin-top:14px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l1)}
-.lks-zone{margin-bottom:14px}
-.lks-zone-h{font-size:14px;color:var(--dsw-alias-label-secondary);margin:0 0 8px;font-weight:600}
+/* note cards (shared: panel notebook + settings-era shapes) */
 .lks-note{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 14px;margin-bottom:8px}
 .lks-note .lks-note-src{float:right;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
 .lks-note-del{float:right;clear:right;border:none;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:2px;border-radius:5px;line-height:0}
@@ -240,14 +159,27 @@ export const STUDY_CSS = `
 .lks-note .lks-note-text code{font-family:var(--dsw-font-markdown-code);background:var(--dsw-alias-bg-layer-3);border-radius:4px;padding:1px 4px;font-size:.95em}
 .lks-note .lks-note-q{margin-top:6px;color:var(--dsw-alias-label-tertiary);font-size:12px;border-left:2px solid var(--dsw-alias-state-warn-primary);padding-left:8px}
 
-/* inline error text (write-action failures) */
+/* shared buttons + inline error text */
+.lks-btn{display:inline-flex;align-items:center;gap:6px;border-radius:8px;padding:6px 14px;font-size:13.5px;font-weight:600;flex:none;font-family:var(--dsw-font-family);cursor:pointer}
+.lks-btn:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks-btn.primary{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 86%,#000);color:#fff}
+.lks-btn.primary:hover{filter:brightness(1.1)}
+.lks-btn.primary:disabled{opacity:.5;cursor:default;filter:none}
+.lks-btn.ghost{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);border:1px solid var(--dsw-alias-border-l2)}
+.lks-btn.ghost:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3)}
 .lks-propcard-err{color:var(--dsw-alias-state-error-primary);font-size:12px;margin-top:6px;flex:none}
 
-/* read-aloud bar (teach pane, under the view tabs) */
+/* read-aloud bar (notebook teach pane) + busy spinner */
+@keyframes lks-spin{to{transform:rotate(360deg)}}
+.lks-spin{animation:lks-spin .8s linear infinite}
 .lks-readbar{display:flex;align-items:center;gap:6px;margin:0 0 8px;min-height:26px}
 .lks-readbar .lks-btn{display:inline-flex;align-items:center;gap:4px}
 .lks-readbar-cur{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--dsw-alias-label-secondary);border-left:2px solid var(--dsw-alias-state-info-primary,var(--dsw-alias-business-primary));padding-left:8px}
 .lks-readbar-notice{flex:none;font-size:11.5px;color:var(--dsw-alias-label-tertiary)}
+
+/* concept map legend (amber = weak) */
+.lks-cmap-legend{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--dsw-alias-label-secondary);margin-top:4px}
+.lks-cmap-legend i{width:10px;height:10px;border-radius:3px;background:var(--dsw-alias-state-warn-tertiary,#fef5e7);border:1px solid var(--dsw-alias-state-warn-primary,#dd8629)}
 
 /* settings section (settings.section entry inside the host settings shell) */
 .lks-settings{display:flex;flex-direction:column;gap:18px;font-family:var(--dsw-font-family);color:var(--dsw-alias-label-primary)}
@@ -258,16 +190,19 @@ export const STUDY_CSS = `
 .lks-set-stats{margin:0;padding-left:18px;font-size:14px;line-height:1.9}
 .lks-set-path{font-family:var(--dsw-font-markdown-code);font-size:12.5px;background:var(--dsw-alias-bg-layer-3);border-radius:6px;padding:3px 8px;word-break:break-all}
 
+/* soul pills (settings reuse) */
+.lks-pills{display:inline-flex;align-items:center;height:28px}
+.lks-pill{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:none;border-radius:24px;background:transparent;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px;font-weight:500;transition:background .12s ease,color .12s ease;font-family:var(--dsw-font-family);cursor:pointer}
+.lks-pill:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.lks-pill:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks-pill.on{background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-primary-bluish)}
+
 /* composer dock status pill (conversation.composer.dock entry) */
 .lks-dockpill{display:inline-flex;gap:10px;align-items:center;font-size:12px;color:var(--dsw-alias-label-secondary)}
-.lks-dockseg{white-space:nowrap}
+.lks-dockseg{white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
 .lks-dock-due{color:var(--lks-warn-ink)}
 .lks-dock-streak{color:var(--dsw-alias-state-business-primary)}
 .lks-dockseg.lks-muted{color:var(--dsw-alias-label-secondary)}
-
-/* concept map legend (amber = weak) */
-.lks-cmap-legend{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--dsw-alias-label-secondary);margin-top:4px}
-.lks-cmap-legend i{width:10px;height:10px;border-radius:3px;background:var(--dsw-alias-state-warn-tertiary,#fef5e7);border:1px solid var(--dsw-alias-state-warn-primary,#dd8629)}
 
 /* keyed tool.call.toolview cards (conversation tab tool rows) */
 .lks-tv{display:flex;flex-direction:column;gap:4px;padding:6px 10px;border-radius:10px;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);font-size:13px}
@@ -276,6 +211,7 @@ export const STUDY_CSS = `
 .lks-tv-chip{align-self:flex-start;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600}
 .lks-tv-chip.ok{background:var(--dsw-alias-state-success-tertiary);color:var(--lks-ok-ink)}
 .lks-tv-chip.bad{background:var(--dsw-alias-state-error-tertiary);color:var(--lks-err-ink)}
+.lks-tv-lines{display:flex;flex-direction:column;gap:4px}
 .lks-tv-line{color:var(--dsw-alias-label-secondary);line-height:1.6;white-space:pre-wrap}
 /* exam star card + the failure moment */
 .lks-tv-stars{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:600;color:var(--lks-warn-ink)}
@@ -290,7 +226,7 @@ export const STUDY_CSS = `
  */
 export function ensureStudyStyles(): HTMLStyleElement {
   const existing = document.head.querySelector(`style[${STYLE_ID}]`)
-  if (existing !== null) return existing
+  if (existing !== null) return existing as HTMLStyleElement
   const style = document.createElement('style')
   style.setAttribute(STYLE_ID, '')
   style.textContent = STUDY_CSS

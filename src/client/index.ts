@@ -1,20 +1,22 @@
 /**
- * Browser half of dsh-plugin-lookatstudy (`dsh.client`): ONE conversation
- * view tab — 「学习」— carrying the whole plugin. Inside the tab it is a
- * simplified LookatStudy in three columns (课程 | 老师 | 黑板); nothing
- * outside the tab modifies dsh chrome. Live study state comes from the shared
- * poll store over the host plugin's `/lookatstudy/api/*` routes; the tutor
- * column additionally reads the session snapshot through the framework
- * standard kit and sends messages via the same reverse channel as the
- * standalone workbench page.
+ * Browser half of dsh-plugin-lookatstudy (`dsh.client`) — since 0.14.0 the
+ * study surface is a SIDEBAR-ENTRY PANEL (the stardeck panel-entry doctrine):
+ * a 「学习」 row in the sidebar toggles a center-column takeover arranged like
+ * upstream LookatStudy's app (rail | tutor chat | notebook). The host is the
+ * conversation-model + agent-turn engine; the panel drives it through the
+ * session face and renders from the thread's event window. Host conversation
+ * surfaces we still ride: the settings section, the composer dock pill, and
+ * the keyed tool cards (visible when a lesson thread is opened in the host
+ * conversation). Styles inject once; the locale namespace rides the framework
+ * service.
  * @module dsh-plugin-lookatstudy/client
  */
 
 import type { ReactNode } from 'react'
 import type { ClientContext } from './faces.ts'
 import { ensureStudyStyles } from './styles.ts'
-import { studyView } from './views.tsx'
-import { studyStartButton } from './starter.tsx'
+import { studyPanelView, setPanelShell } from './panel.tsx'
+import { mountStudyShell } from './shell-entry.ts'
 import { StudySettingsSection } from './settings.tsx'
 import { StudyDockPill } from './dock.tsx'
 import { StudyAnswerView, StudyDueView, StudyExamView, StudyLessonView, type ToolViewPropsFace } from './toolviews.tsx'
@@ -23,20 +25,15 @@ import { registerStudyLocale, setStudyTranslator, studyTranslator, tr, type Loca
 /** The toolview components' expected props (structural slice of ToolCallViewProps). */
 type ToolViewProps = ToolViewPropsFace
 
-export { studyView, transcriptRows } from './views.tsx'
+export { feedRows } from './session-feed.ts'
 export type { ChatRow } from './views.tsx'
 
 export const inject = ['slots', 'workspaces', 'sessions', 'locale']
 
 /**
- * Register the study surfaces: styles inject once; the single
- * `conversation.view` tab carries the whole plugin; the hero starter button
- * (`conversation.input.left`, blank sessions only) automates the onboarding —
- * study workspace + session + kickoff prompt in one click. The `lookatstudy`
- * locale namespace rides the framework locale service (zh/en) and the
- * client-wide translator is installed before any component renders; both
- * slot entries declare the namespace so the framework synthesizes their `t`
- * seat and follows locale switches for the labels.
+ * Register the study surfaces: styles + locale once; the sidebar-entry panel
+ * carries the whole study UI; the host-native extras (settings, dock, tool
+ * cards) ride their slots as before.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -44,23 +41,20 @@ export function apply(ctx: ClientContext): void {
   const localeSvc = (ctx as { locale?: LocaleServiceFace }).locale
   ctx.effect(() => registerStudyLocale(localeSvc), 'lookatstudy.locale()')
   setStudyTranslator(studyTranslator(localeSvc))
-  ctx.slots.inject('conversation.view', () => ctx.slots.register(
-    { name: 'conversation.view', id: 'lookatstudy-study', order: 15, label: () => tr('tab.label'), locale: 'lookatstudy' },
-    studyView(ctx),
-  ))
-  ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
-    { name: 'conversation.input.left', id: 'lookatstudy-start', order: 10, locale: 'lookatstudy' },
-    studyStartButton(ctx),
-  ))
-  // One settings page in the host settings shell: teaching style + study mode
-  // through the same host routes the tab uses, plus read-only stats and the
-  // state-file path.
+
+  // The study panel: sidebar row in, center-column takeover out. The host
+  // session list rides along so USER navigation hands the column back.
+  const shell = mountStudyShell(studyPanelView(ctx), () => tr('tab.label'), undefined, ctx.sessions)
+  setPanelShell(shell)
+  ctx.effect(() => () => {
+    setPanelShell(null)
+    shell.dispose()
+  }, 'lookatstudy.studyPanel()')
+
   ctx.slots.inject('settings.section', () => ctx.slots.register(
     { name: 'settings.section', id: 'lookatstudy', order: 30, label: () => tr('settings.nav'), locale: 'lookatstudy' },
     StudySettingsSection,
   ))
-  // The ambient study-status pill under the composer (due/streak/level); the
-  // component itself renders nothing while dormant or loading.
   ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register(
     { name: 'conversation.composer.dock', id: 'lookatstudy-status', order: 10, locale: 'lookatstudy' },
     StudyDockPill,
