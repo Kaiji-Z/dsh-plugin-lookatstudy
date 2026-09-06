@@ -802,8 +802,14 @@ export function addNote(
   now: Date,
 ): LessonNote {
   const ref = findLesson(state, lessonId)
+  // Ids survive deletion: length-based ids would collide once a note is
+  // deleted and a new one added ([n0,n2] + add → length 2 → ":n2" again).
+  const maxSuffix = ref.lesson.notes.reduce((max, n) => {
+    const m = /:n(\d+)$/.exec(n.id)
+    return m !== null ? Math.max(max, Number(m[1])) : max
+  }, -1)
   const note: LessonNote = {
-    id: `${lessonId}:n${ref.lesson.notes.length}`,
+    id: `${lessonId}:n${maxSuffix + 1}`,
     zone,
     title,
     text,
@@ -813,6 +819,22 @@ export function addNote(
   }
   ref.lesson.notes.push(note)
   return note
+}
+
+/**
+ * Delete one notebook entry from a lesson's Cornell zones.
+ * @param state - state to mutate.
+ * @param lessonId - lesson the note belongs to.
+ * @param noteId - id of the note to remove.
+ * @throws when the lesson or the note id is unknown (fail loud, like every id lookup).
+ */
+export function deleteNote(state: LearningState, lessonId: string, noteId: string): void {
+  const ref = findLesson(state, lessonId)
+  const index = ref.lesson.notes.findIndex(n => n.id === noteId)
+  if (index === -1) {
+    throw new Error(`lookatstudy-plugin: note ${JSON.stringify(noteId)} not found on lesson ${JSON.stringify(lessonId)}`)
+  }
+  ref.lesson.notes.splice(index, 1)
 }
 
 /**

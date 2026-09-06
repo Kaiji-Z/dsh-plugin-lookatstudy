@@ -229,6 +229,9 @@ export const STUDY_CSS = `
 .lks-zone-h{font-size:14px;color:var(--dsw-alias-label-secondary);margin:0 0 8px;font-weight:600}
 .lks-note{background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:10px 14px;margin-bottom:8px}
 .lks-note .lks-note-src{float:right;font-size:11.5px;color:var(--dsw-alias-label-secondary)}
+.lks-note-del{float:right;clear:right;border:none;background:none;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:2px;border-radius:5px;line-height:0}
+.lks-note-del:hover{color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2)}
+.lks-note-del.armed{color:#fff;background:var(--dsw-alias-state-error-primary)}
 .lks-note .lks-note-title{font-weight:600;font-size:13px}
 .lks-note .lks-note-text{margin-top:4px;font-size:13px;color:var(--dsw-alias-label-secondary);line-height:1.65}
 .lks-note .lks-note-text p{margin:4px 0}

@@ -12,10 +12,12 @@ import { join } from 'node:path'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
 import {
   addFriction,
+  addNote,
   attemptLesson,
   completeLesson,
   courseSummaries,
   deleteCourse,
+  deleteNote,
   dueReviews,
   emptyState,
   findCourse,
@@ -50,6 +52,29 @@ function importedFixture(): { state: LearningState; courseId: string } {
   const course = importCourse(state, parsed, 'markdown', 'fixture')
   return { state, courseId: course.id }
 }
+
+test('deleteNote removes one entry; ids stay collision-free across deletions; unknown ids fail loud', () => {
+  const { state } = importedFixture()
+  const courseId = state.courses[0]!.id
+  const lessonId = `${courseId}:0:0`
+  const first = addNote(state, lessonId, 'understand', 'a', 'body a', 'ai', null, T0)
+  const second = addNote(state, lessonId, 'record', 'b', 'body b', 'learner', 'quote b', T0)
+  const third = addNote(state, lessonId, 'understand', 'c', 'body c', 'ai', null, T0)
+  assert.notEqual(first.id, second.id)
+
+  deleteNote(state, lessonId, second.id)
+  const lesson = findLesson(state, lessonId).lesson
+  assert.deepEqual(lesson.notes.map(n => n.id), [first.id, third.id])
+
+  // the length-based id scheme would have minted ":n2" again here
+  const added = addNote(state, lessonId, 'understand', 'd', 'body d', 'ai', null, T0)
+  assert.notEqual(added.id, third.id, 'a new note must not collide with an id that outlived a deletion')
+  assert.equal(findLesson(state, lessonId).lesson.notes.length, 3)
+
+  assert.throws(() => deleteNote(state, lessonId, 'ghost'), /not found/, 'unknown note id fails loud')
+  assert.throws(() => deleteNote(state, 'ghost:0:0', first.id), /unknown course/, 'unknown lesson fails loud')
+  assert.equal(findLesson(state, lessonId).lesson.notes.length, 3, 'failed deletions leave the notes untouched')
+})
 
 test('import gates the path: first study lesson available, rest locked, exams free', () => {
   const { state, courseId } = importedFixture()

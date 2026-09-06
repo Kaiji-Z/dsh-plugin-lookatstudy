@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
-import { emptyState, importCourse, proposeMastery, recordAnswer, addNote } from '../src/state.ts'
+import { emptyState, importCourse, proposeMastery, recordAnswer, addNote, deleteNote, findLesson } from '../src/state.ts'
 import type { LearningState } from '../src/state.ts'
 import {
   registerDashboard,
@@ -130,6 +130,27 @@ test('routes: state API, focus switching, and unknown paths', async () => {
 
   const missing = await handle(routes2, new FakeRequest('GET', '/lookatstudy/api/nope'), new FakeResponse())
   assert.equal(missing.status, 404)
+})
+
+test('note delete route: removes one entry, persists, 400 on bad body, 404 on unknown ids', async () => {
+  const { state, lessonId } = fixture()
+  const note = addNote(state, lessonId, 'understand', 'map', 'body', 'ai', null, new Date())
+  let saved = 0
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+
+  const bad = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/note/delete', { lessonId }), new FakeResponse())
+  assert.equal(bad.status, 400, 'missing noteId is a 400')
+
+  const ghost = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/note/delete', { lessonId, noteId: 'ghost' }), new FakeResponse())
+  assert.equal(ghost.status, 404, 'unknown note id is a 404')
+  assert.equal(saved, 0, 'failed deletions do not persist')
+
+  const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/note/delete', { lessonId, noteId: note.id }), new FakeResponse())
+  assert.equal(ok.status, 200)
+  assert.equal(saved, 1, 'a successful delete persists')
+  assert.equal(findLesson(state, lessonId).lesson.notes.length, 0, 'the note is gone from the live state')
+  assert.throws(() => deleteNote(state, lessonId, note.id), /not found/, 'deleting twice fails loud')
 })
 
 test('mode route: switches and persists the soul mode; 400 on bad values', async () => {

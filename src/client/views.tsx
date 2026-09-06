@@ -273,7 +273,7 @@ export function studyView(ctx: ClientContext): (props: StudyViewProps) => ReactN
 
 /** Tab body: the factory-bound ctx carries workspaces/sessions for the per-lesson session jumps. */
 function StudyTab({ inputActions, ctx, ...standard }: StudyViewProps & { ctx: ClientContext }): ReactNode {
-  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, bindLessonSession } = useStudy()
+  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession } = useStudy()
   // The transcript moved twice across host generations (see pickTranscript).
   // Both hooks are version-stable, so the optional calls keep hook order
   // constant on any given host.
@@ -391,7 +391,7 @@ function StudyTab({ inputActions, ctx, ...standard }: StudyViewProps & { ctx: Cl
     ),
     createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, bindLessonSession, send, ctx, currentSessionId }),
     createElement(TutorColumn, { data, setMode, send, snapshot }),
-    createElement(BlackboardColumn, { data }),
+    createElement(BlackboardColumn, { data, deleteNote }),
   ),
   )
 }
@@ -750,9 +750,27 @@ function TutorColumn({ data, setMode, send, snapshot }: {
 }
 
 /** Right column: the blackboard — focus-lesson 讲解/脑图/概念图 plus the Cornell 笔记. */
-function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
+function BlackboardColumn({ data, deleteNote }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void> }): ReactNode {
   const lesson = data?.lesson ?? null
   const [pane, setPane] = useState<'teach' | 'cmap'>('teach')
+  const [error, setError] = useState<string | null>(null)
+  // Armed note deletion: one click arms ("确认删除?"), the next confirms —
+  // mirroring the rail's course delete; a stray click anywhere else disarms.
+  const [armedNote, setArmedNote] = useState<string | null>(null)
+  useEffect(() => {
+    if (armedNote === null) return
+    const disarm = (): void => { setArmedNote(null) }
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') disarm() }
+    window.addEventListener('click', disarm)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('click', disarm)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [armedNote])
+  const fire = (action: Promise<void>): void => {
+    action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
+  }
   const proseRef = useRef<HTMLDivElement | null>(null)
   const diagRef = useRef<HTMLDivElement | null>(null)
   // Post-render enhancement: math/shiki/mermaid via CDN, every failure degrades silently.
@@ -810,6 +828,17 @@ function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
               createElement('div', { className: 'lks-zone-h' }, tr(labelKey)),
               ...lesson.notes.filter(n => n.zone === zone).map(n => createElement('div', { key: n.id, className: 'lks-note' },
                 createElement('span', { className: 'lks-note-src' }, n.source),
+                createElement('button', {
+                  className: `lks-note-del${armedNote === n.id ? ' armed' : ''}`,
+                  title: armedNote === n.id ? tr('note.delete.confirm') : tr('note.delete'),
+                  'aria-label': armedNote === n.id ? tr('note.delete.confirm') : tr('note.delete'),
+                  onClick: (e: { stopPropagation: () => void }) => {
+                    e.stopPropagation()
+                    if (armedNote !== n.id) { setArmedNote(n.id); return }
+                    setArmedNote(null)
+                    fire(deleteNote(lesson.lessonId, n.id))
+                  },
+                }, createElement(IconTrashOutline16, { size: 12 })),
                 createElement('div', { className: 'lks-note-title' }, n.title),
                 createElement('div', { className: 'lks-note-text', dangerouslySetInnerHTML: { __html: renderMarkdown(n.text) } }),
                 n.quote !== null ? createElement('div', { className: 'lks-note-q' }, `“${n.quote}”`) : null,
@@ -820,5 +849,6 @@ function BlackboardColumn({ data }: { data: StudyData }): ReactNode {
   return createElement('div', { className: 'lks-col lks-col-bb' },
     createElement('div', { className: 'lks-colhead' }, tr('col.bb')),
     body,
+    createElement(ActionError, { error }),
   )
 }

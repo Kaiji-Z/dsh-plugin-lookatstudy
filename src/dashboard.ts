@@ -17,6 +17,7 @@ import {
   searchLessons,
   conceptViews,
   deleteCourse,
+  deleteNote,
   dueReviews,
   findCourse,
   findLesson,
@@ -364,6 +365,22 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
           if (deps.store.get().focus?.lessonId.startsWith(`${course.id}:`)) {
             deps.store.get().focus = null
           }
+          deps.store.save()
+          sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/note/delete') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string' || typeof body.noteId !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'lessonId and noteId (strings) required' })
+          return
+        }
+        try {
+          deleteNote(deps.store.get(), body.lessonId, body.noteId)
           deps.store.save()
           sendJson(res, 200, { ok: true })
         } catch (error) {
