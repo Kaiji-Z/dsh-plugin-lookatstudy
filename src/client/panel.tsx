@@ -40,14 +40,12 @@ import { showStudyToast } from './toast.ts'
 import { Companion, useCompanionMood } from './companion.tsx'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue } from './views.tsx'
-import { MapSectionView, pickSky, sectionWorldOf } from './maprail.tsx'
+import { ListSectionView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
 import { ExamView, type ExamSession } from './examview.tsx'
 import { CelebrationLayer } from './celebration-layer.tsx'
 import { CanvasStage } from './canvasstage.tsx'
-import { MapSky, courseEnv, makeWeatherChannels, useSectionIsland, type WeatherChannels } from './physics-map.tsx'
-import { usePrefersReducedMotion } from './celebration-layer.tsx'
 import { celebrate, celebrationDiff, type CelebrationSnapshot } from './celebration.ts'
 import { tr } from './locale.ts'
 
@@ -919,18 +917,11 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   // 3s poll confirms it (cleared once the feed's focus matches).
   const [optFocus, setOptFocus] = useState<string | null>(null)
   const railEl = useRef<HTMLDivElement | null>(null)
-  // P15: the physics map — islands + weather canvases (reduced-motion keeps static)
-  const physicsOn = !usePrefersReducedMotion()
   const scrollEl = useRef<HTMLDivElement | null>(null)
-  const weatherChannels = useRef<WeatherChannels>(makeWeatherChannels())
   // Course resolution lives above every effect that names it in deps (TDZ).
   const courseId = data !== null && data.courses.length > 0
     ? (data.courses.some(c => c.courseId === selectedCourse) ? selectedCourse : data.courses[0]!.courseId)
     : null
-  // P15: the deterministic weather for the course (islands + canvases) —
-  // after courseId's declaration (the TDZ trap has bitten three times here).
-  const physicsEnv = courseEnv(courseId)
-  const physicsWeather = physicsEnv.weather
   // D6: reset the world on course change — after courseId's declaration (the
   // TDZ trap has bitten here; a stale practice selection on a course without
   // one would strand the rail on an empty view).
@@ -1104,13 +1095,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
           onBlankTap()
         },
       },
-        createElement('div', {
-          className: `lks-mapsec-list env-${physicsEnv.season} env-${physicsEnv.weather}`,
-          // D6: upstream carries both env classes on the map content wrapper —
-          // the season filters every bubble (status colors stay relative),
-          // the weather class is a marker only (its visuals live on canvas).
-          'data-lks-env': `${physicsEnv.season}|${physicsEnv.weather}`,
-        },
+        createElement('div', { className: 'lks-raillist' },
           // D6 (upstream world switcher): practice sections are free-explore and
           // never study-gated; in-rail search overrides the world (matches can
           // live in either world); an empty practice world carries its own
@@ -1122,13 +1107,8 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             const lessons = section.lessons.filter(l => query.trim() === '' || titleMatches(l.title, query) || l.focus)
             if (lessons.length === 0) return []
             const open = query.trim() !== '' || effectiveOpen(section.title, sectionDefaultOpen(section), sectionOverrides)
-            return [createElement(MapSectionView, {
+            return [createElement(ListSectionView, {
               key: section.title,
-              physics: physicsOn,
-              physicsWeather,
-              scrollRef: scrollEl,
-              railRef: railEl,
-              channels: weatherChannels.current,
               streamingId: streamingLessonId,
               section: {
                 title: section.title, index: section.index,
@@ -1138,7 +1118,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
               examAllowed,
               open,
               onToggle: () => { toggleSection(section.title, !open) },
-              // Upstream alignment: tapping a bubble only FOCUSES the lesson —
+              // Upstream alignment: tapping a row only FOCUSES the lesson —
               // the state-side attempt runs host-side, zero LLM traffic.
               onJump: (id: string) => {
                 setOptFocus(id)
@@ -1265,10 +1245,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
 
   // Upstream: no course → the import pane is the home pane.
   const effectivePanel = data !== null && data.courses.length === 0 ? 'import' : panel
-  return createElement('div', { ref: railEl, className: `lks14-col lks14-rail${courseId !== null ? ` lks-sky-${pickSky(courseId)}` : ''}` },
-    physicsOn && effectivePanel === 'map' && courseId !== null
-      ? createElement(MapSky, { scrollRef: scrollEl, railRef: railEl, courseId, channels: weatherChannels.current })
-      : null,
+  return createElement('div', { ref: railEl, className: 'lks14-col lks14-rail' },
     topbar,
     createElement('div', { className: 'lks14-railbody' },
       createElement('div', {

@@ -199,6 +199,34 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
   .lks14-body[data-pane='note'] .lks14-note{display:flex}
 }
 
+/* rail course list (2026-09-08 owner pivot: the upstream balloon/physics map
+   is a deliberate deviation — the rail reads as a course tree in the same
+   quiet row language as search results and the notebook) */
+.lks-raillist{display:flex;flex-direction:column;gap:10px;padding:2px 2px 24px}
+.lks-railsec-head{display:flex;align-items:center;gap:7px;width:100%;text-align:left;font:inherit;padding:6px 8px;cursor:pointer;border:none;border-radius:8px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.lks-railsec-head:hover{background:var(--dsw-alias-interactive-bg-active)}
+.lks-railsec-num{flex:none;min-width:17px;height:17px;display:inline-flex;align-items:center;justify-content:center;border-radius:5px;background:var(--dsw-alias-bg-layer-3);font-size:10.5px;font-weight:700;color:var(--dsw-alias-label-secondary)}
+.lks-railsec-title{flex:1;font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-railsec-count{flex:none;font-size:10.5px;font-weight:600;color:var(--dsw-alias-label-tertiary);font-variant-numeric:tabular-nums}
+.lks-railsec-caret{flex:none;font-size:10px;color:var(--dsw-alias-label-tertiary)}
+.lks-railsec-list{display:flex;flex-direction:column;padding:2px 0 0}
+.lks-lessorow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;font:inherit;padding:6px 8px 6px 10px;cursor:pointer;border:none;border-left:2px solid transparent;border-radius:0 8px 8px 0;background:none;color:var(--dsw-alias-label-primary)}
+.lks-lessorow:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.lks-lessorow.selected{border-left-color:var(--dsw-alias-business-primary);background:var(--dsw-alias-interactive-bg-hover)}
+.lks-lessorow[aria-disabled='true']{cursor:not-allowed;opacity:.62}
+.lks-lessorow-glyph{flex:none;display:inline-flex;color:var(--dsw-alias-label-tertiary)}
+.lks-lessorow-glyph .dim{opacity:.75}
+.lks-lessorow.st-available .lks-lessorow-glyph,.lks-lessorow.st-in-progress .lks-lessorow-glyph{color:var(--dsw-alias-business-primary)}
+.lks-lessorow.st-mastered .lks-lessorow-glyph{color:var(--dsw-alias-state-warning-primary)}
+.lks-lessorow.st-exam .lks-lessorow-glyph,.lks-lessorow.st-exam-passed .lks-lessorow-glyph{color:var(--dsw-alias-state-attention-primary)}
+.lks-lessorow-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.lks-lessorow-title{font-size:12.5px;font-weight:600;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-lessorow-bar{display:block;height:3px;border-radius:2px;background:var(--dsw-alias-bg-layer-3);overflow:hidden}
+.lks-lessorow-bar i{display:block;height:100%;background:var(--dsw-alias-business-primary);transform-origin:left;transition:transform .3s}
+.lks-lessorow.st-mastered .lks-lessorow-bar i{background:var(--dsw-alias-state-warning-primary)}
+.lks-lessorow-due{flex:none;min-width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;border-radius:7px;background:var(--dsw-alias-state-error-tertiary);color:var(--dsw-alias-state-error-label);font-size:10px;font-weight:800}
+.lks-lessorow-spin{flex:none;display:inline-flex;color:var(--dsw-alias-business-primary);animation:lks-spin 1s linear infinite}
+
 /* rail search results panel (P4, upstream CourseSearchPanel) */
 .lks14-searchpanel{margin:4px 0 6px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}
 .lks14-searchrow{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;text-align:left;font:inherit;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--dsw-alias-border-l1)}

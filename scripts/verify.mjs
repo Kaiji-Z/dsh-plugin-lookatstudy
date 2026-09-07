@@ -138,13 +138,12 @@ gate('bundle', () => {
     [client, 'lks-ui', 'the skin scope class on the panel root'],
     [client, 'lks14-appheader', 'the floating XP/streak app header'],
     [client, 'lks14-righthalf', 'the header-over-row structural wrapper'],
-    // 0.16.0 P9b: the balloon course map (upstream MapRail static path)
-    [client, 'MapSectionView', 'the map section renderer (signpost + balloon field)'],
-    [client, 'computeBalloonLayout', 'vendored balloon layout engine rides the bundle'],
-    [client, 'lks-bubble-available', 'state-sphere styles'],
-    [client, 'lks-signpost', 'frosted section signposts'],
-    [client, 'lks-balloon-bob', 'balloon bob animation'],
-    [client, 'lks-path-draw', 'walked-rope draw-in animation'],
+    // 0.16.0 P9b → 2026-09-08 pivot: the course rail as a list (the balloon/
+    // physics map is a deliberate deviation — quiet course tree instead)
+    [client, 'ListSectionView', 'the list section renderer (head + lesson rows)'],
+    [client, 'lks-raillist', 'the rail list wrapper'],
+    [client, 'lks-lessorow', 'the lesson row (glyph + bar + badges)'],
+    [client, 'lks-railsec-head', 'the quiet section toggle'],
     // 0.17.0 P10a (A-track): island zeroing + the audit gate
     [client, '.lks-ui .lks14-starter', 'starter chips ride the dark skin'],
     [client, 'lks-crown-sparkle', 'upstream feedback animations'],
@@ -198,28 +197,21 @@ gate('bundle', () => {
     [client, 'board-canvas-stage', 'the board canvas stage'],
     [client, 'diagram-modal-stage', 'the mermaid modal stage'],
     [client, 'cmap-modal-stage', 'the concept-map modal stage'],
-    [client, 'data-node-id', 'focus bubble anchor'],
-    // 0.18.0 P15 (D5): the physics map
-    [client, 'lks-physics', 'the physics mapfield mode class'],
-    [client, 'lks-sky-canvas', 'the weather sky canvas'],
-    [client, 'lks-orb-weather-canvas', 'the orb weather canvas'],
-    [client, 'createSectionIsland', 'the vendored island factory'],
-    [client, 'classifyPointer', 'the drag-vs-click classifier'],
-    [client, 'weatherPhysFor', 'the weather physics table'],
-    [client, 'attachSky', 'the vendored sky painter'],
-    [client, 'attachOrbWeather', 'the vendored orb weather painter'],
+    [client, 'data-node-id', 'focus row anchor'],
+    // 0.18.0 P15 (D5) removed 2026-09-08: the physics map retired with the map
+    [client, 'rowStateClass', 'the lesson-row state fold'],
+    [client, 'rowMasteryPct', 'the row mastery-bar fold'],
     // 0.18.0 D4: in-stream artifact hydration + the sediment backlog
     [client, 'hydrateArtifactRows', 'the artifact row hydrator'],
     [client, 'sedimentBacklog', 'the sediment backlog fold'],
     [client, 'lks14-inline-artifact', 'the inline artifact wrapper'],
     [client, 'ARTIFACT_TOOLS', 'the artifact tool map'],
-    // 0.18.0 D6: map ambiance — env-* filters, world switcher, streaming ball
-    [client, 'courseEnv', 'the deterministic season/weather picker'],
+    // 0.18.0 D6 → 2026-09-08: world switcher + streaming row spinner stay;
+    // the env-* seasonal filters retired with the map
     [client, 'sectionWorldOf', 'the section world derivation'],
-    [client, 'lks-bubble-spin', 'the streaming ball spinner badge'],
+    [client, 'lks-lessorow-spin', 'the streaming row spinner badge'],
     [client, 'lks-worldswitch', 'the two-world switcher'],
     [client, 'lks-stream-note', 'the rail streaming notice'],
-    [client, 'env-spring', 'the seasonal env filter rules'],
     // 0.18.0 D7: the import pane tabs + installer progress screen
     [client, 'importProgressOf', 'the import tool-chip fold'],
     [client, 'epubFolderPath', 'the epub tab path fold'],
@@ -237,7 +229,6 @@ gate('bundle', () => {
     [client, 'wirePanelTheme', 'the host-theme follow machinery'],
     [client, 'mermaidThemeVariables', 'the live mermaid palette'],
     [client, "data-lks-theme='light'", 'the light token override block'],
-    [client, 'map-rail-scope', 'the rail dark-lock'],
     [client, '--shiki-light', 'the shiki light flip'],
     // 0.18.0 P17: host-capability replacements
     [client, 'lks14-ctxmeter', 'the context meter'],

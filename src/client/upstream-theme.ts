@@ -119,11 +119,6 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-toast .lks-toast-glyph.info{color:var(--accent)}
 .lks-ui .lks-toast-action{color:var(--brand)}
 
-/* ── rail: signpost section heads + due box ── */
-.lks-ui .lks14-sechead{background:rgb(var(--surface-rail-rgb)/0.55);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);border:1px solid rgb(var(--gold-rgb)/0.18);border-top-color:rgb(var(--gold-rgb)/0.35);border-radius:.75rem;padding:7px 10px;margin:12px 0 6px;box-shadow:0 2px 8px rgb(var(--shadow-rgb)/0.35),inset 0 1px 0 rgb(255 255 255/0.06);color:var(--gold-light)}
-.lks-ui .lks14-secnum{background:rgb(var(--gold-rgb)/0.15);color:var(--gold-light)}
-.lks-ui .lks14-node{color:var(--ink);border-radius:.75rem}
-.lks-ui .lks14-node:hover{background:rgb(var(--ink-rgb)/0.05)}
 .lks-ui .lks14-node.focus{background:rgb(var(--accent-rgb)/0.1);outline:1px solid rgb(var(--accent-rgb)/0.25)}
 .lks-ui .lks14-node[aria-disabled='true']{color:var(--ink-faint)}
 .lks-ui .lks14-search,.lks-ui .lks-set-select{background:rgb(var(--ink-rgb)/0.05);border:1px solid var(--border-faint);color:var(--ink-strong)}
@@ -190,87 +185,37 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-thinking{color:var(--ink-muted)}
 
 /* ══════════ P9b: the balloon course map (upstream v0.28 MapRail, static path) ══════════ */
-.lks-ui{--exam-locked-mix:#A7A2B2}
-/* the sky: upstream's canvas presets reduced to layered gradients (essence port;
-   deterministic per-course via pickSky) */
-.lks-ui .lks-map{position:relative;min-height:100%;background-repeat:no-repeat}
-.lks-ui .lks-sky-day{background-image:
-  radial-gradient(1.5px 1.5px at 18% 12%,rgb(255 255 255/0.5),transparent 100%),
-  radial-gradient(1px 1px at 64% 8%,rgb(255 255 255/0.35),transparent 100%),
-  radial-gradient(1px 1px at 82% 22%,rgb(255 255 255/0.3),transparent 100%),
-  radial-gradient(120px 60px at 78% 6%,rgb(124 172 255/0.08),transparent 100%),
-  linear-gradient(to bottom,#16233F 0%,#0F1B33 55%,var(--surface-rail) 100%)}
-.lks-ui .lks-sky-dusk{background-image:
-  radial-gradient(1.5px 1.5px at 24% 10%,rgb(255 255 255/0.45),transparent 100%),
-  radial-gradient(1px 1px at 70% 16%,rgb(255 255 255/0.3),transparent 100%),
-  radial-gradient(140px 70px at 22% 10%,rgb(255 160 90/0.07),transparent 100%),
-  linear-gradient(to bottom,#2A2140 0%,#1D1A38 50%,var(--surface-rail) 100%)}
-.lks-ui .lks-sky-night{background-image:
-  radial-gradient(1.5px 1.5px at 12% 18%,rgb(255 255 255/0.55),transparent 100%),
-  radial-gradient(1px 1px at 38% 6%,rgb(255 255 255/0.4),transparent 100%),
-  radial-gradient(1px 1px at 58% 24%,rgb(255 255 255/0.35),transparent 100%),
-  radial-gradient(1.5px 1.5px at 88% 10%,rgb(255 255 255/0.5),transparent 100%),
-  radial-gradient(1px 1px at 76% 30%,rgb(255 255 255/0.3),transparent 100%),
-  radial-gradient(90px 90px at 84% 8%,rgb(200 214 255/0.06),transparent 100%),
-  linear-gradient(to bottom,#0B1024 0%,#0A0D1C 55%,var(--surface-rail) 100%)}
-.lks-ui .lks-mapsec{padding:12px 8px 4px}
-/* the signpost (map-signpost verbatim): frosted board with a gold rim */
-.lks-ui .lks-signpost{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;border-radius:8px;font:inherit;cursor:pointer;text-align:left;
-  background:rgb(var(--surface-rail-rgb)/0.55);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);
-  border:1px solid rgb(var(--gold-rgb)/0.18);border-top-color:rgb(var(--gold-rgb)/0.35);
-  box-shadow:0 2px 8px rgb(var(--shadow-rgb)/0.35),inset 0 1px 0 rgb(255 255 255/0.06)}
-.lks-ui .lks-signpost-num{width:24px;height:24px;border-radius:999px;background:var(--gold);color:#201500;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:0 0 0 2px rgb(var(--gold-rgb)/0.4)}
-.lks-ui .lks-signpost-title{flex:1;font-size:12.5px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,0.7)}
-.lks-ui .lks-signpost-caret{color:rgb(var(--ink-rgb)/0.5);font-size:10px}
-.lks-ui .lks-mapfield{position:relative}
-.lks-ui .lks-mapropes{position:absolute;inset:0;width:100%;pointer-events:none;overflow:visible}
-.lks-ui .lks-mapnode{position:absolute;width:110px;display:flex;flex-direction:column;align-items:center;
-  animation:lks-balloon-bob var(--bob-duration,6s) ease-in-out infinite;animation-delay:var(--bob-delay,0s)}
-@keyframes lks-balloon-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-@keyframes lks-path-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
-@media (prefers-reduced-motion: reduce){.lks-ui .lks-mapnode{animation:none}.lks-ui .lks-bubble-available{animation:none}}
-/* the bubbles (lesson-bubble verbatim): 3D sphere lighting + ::before inner highlight */
-.lks-ui .lks-bubble{position:relative;width:56px;height:56px;border-radius:999px;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;transition:all .2s var(--ease-out-back);background-position:30% 25%}
-.lks-ui .lks-bubble::before{content:'';position:absolute;top:12%;left:22%;width:38%;height:28%;border-radius:50%;
-  background:radial-gradient(ellipse at center,var(--inner-highlight) 0%,rgb(255 255 255/0) 70%);pointer-events:none;z-index:1}
-.lks-ui .lks-bubble[aria-disabled='true']{cursor:not-allowed}
-.lks-ui .lks-bubble.selected{outline:4px solid var(--accent);outline-offset:3px}
-.lks-ui .lks-bubble-glyph{position:relative;z-index:2;color:#fff;display:inline-flex;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.4))}
-.lks-ui .lks-bubble-glyph.dim{opacity:.5}
-.lks-ui .lks-bubble-ring{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);pointer-events:none}
-.lks-ui .lks-bubble-due{position:absolute;top:-4px;right:-4px;width:16px;height:16px;border-radius:999px;background:var(--review);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--surface-rail);z-index:3}
-.lks-ui .lks-bubble-name{margin-top:4px;max-width:120px;font-size:11px;font-weight:700;color:#fff;background:rgb(var(--brand-rgb)/0.9);padding:2px 6px;border-radius:6px;text-align:center;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* locked: heavy sunken stone */
-.lks-ui .lks-bubble-locked{background:radial-gradient(circle at 35% 30%,var(--surface-3) 0%,var(--surface-2) 60%,var(--surface-1) 100%);
-  box-shadow:inset 0 3px 6px rgb(var(--shadow-rgb)/0.5),inset 0 -2px 4px rgb(255 255 255/0.04),0 2px 4px rgb(var(--shadow-rgb)/0.3)}
-.lks-ui .lks-bubble-locked::before{background:radial-gradient(ellipse at center,rgb(255 255 255/0.12) 0%,rgb(255 255 255/0) 70%)}
-/* available: bright glowing sphere, your move */
-.lks-ui .lks-bubble-available{background:radial-gradient(circle at 32% 28%,var(--brand-light) 0%,var(--brand) 45%,var(--brand-dark) 100%);
-  box-shadow:0 0 0 4px var(--brand-ring),0 0 16px var(--brand-glow),0 4px 10px rgb(var(--shadow-rgb)/0.25)}
-.lks-ui .lks-bubble-available:hover{transform:translateY(-3px) scale(1.03);
-  box-shadow:0 0 0 5px rgb(var(--brand-rgb)/0.2),0 0 22px rgb(var(--brand-rgb)/0.5),0 6px 14px rgb(var(--shadow-rgb)/0.3)}
-.lks-ui .lks-bubble-available:active{transform:translateY(2px) scale(0.97);
-  box-shadow:0 0 0 3px var(--brand-ring),0 0 10px rgb(var(--brand-rgb)/0.3),0 2px 6px rgb(var(--shadow-rgb)/0.2)}
-@keyframes lks-bubble-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
-.lks-ui .lks-bubble-available{animation:lks-bubble-pulse 2.4s ease-in-out infinite}
-/* in_progress: blue in motion */
-.lks-ui .lks-bubble-in-progress{background:radial-gradient(circle at 32% 28%,var(--accent-light) 0%,var(--accent) 45%,var(--accent-dark) 100%);
-  box-shadow:0 0 0 4px var(--accent-ring),0 0 14px var(--accent-glow),0 4px 10px rgb(var(--shadow-rgb)/0.25)}
-.lks-ui .lks-bubble-in-progress:hover{transform:translateY(-2px) scale(1.03);
-  box-shadow:0 0 0 5px rgb(var(--accent-rgb)/0.2),0 0 20px rgb(var(--accent-rgb)/0.45),0 6px 14px rgb(var(--shadow-rgb)/0.3)}
-/* mastered: gold crown halo, scaled up */
-.lks-ui .lks-bubble-mastered{background:radial-gradient(circle at 32% 28%,var(--gold-light) 0%,var(--gold) 45%,var(--gold-dark) 100%);
-  box-shadow:0 0 0 4px var(--gold-ring),0 0 22px var(--gold-glow),0 0 40px rgb(var(--gold-rgb)/0.15),0 4px 12px rgb(var(--shadow-rgb)/0.25);transform:scale(1.1)}
-.lks-ui .lks-bubble-mastered::before{background:radial-gradient(ellipse at center,rgb(255 255 255/0.7) 0%,rgb(255 255 255/0) 70%)}
-.lks-ui .lks-bubble-mastered:hover{transform:scale(1.13) translateY(-2px);
-  box-shadow:0 0 0 5px rgb(var(--gold-rgb)/0.25),0 0 28px rgb(var(--gold-rgb)/0.55),0 0 50px rgb(var(--gold-rgb)/0.2),0 6px 16px rgb(var(--shadow-rgb)/0.3)}
-/* exam: the section boss */
-.lks-ui .lks-exam{background:radial-gradient(circle at 32% 28%,var(--exam-light) 0%,var(--exam) 45%,var(--exam-dark) 100%);
-  box-shadow:0 0 0 4px var(--exam-ring),0 0 16px var(--exam-glow),0 4px 10px rgb(var(--shadow-rgb)/0.25)}
-.lks-ui .lks-exam-locked{background:radial-gradient(circle at 35% 30%,var(--exam-locked) 0%,var(--exam-locked-mix) 60%,var(--surface-1) 100%);
-  box-shadow:inset 0 3px 6px rgb(var(--shadow-rgb)/0.5),inset 0 -2px 4px rgb(255 255 255/0.04),0 2px 4px rgb(var(--shadow-rgb)/0.3)}
-.lks-ui .lks-exam-passed{background:radial-gradient(circle at 32% 28%,rgb(var(--exam-light-rgb,192 132 252)) 0%,var(--exam-light) 40%,var(--exam) 100%);
-  box-shadow:0 0 0 4px var(--gold-ring),0 0 18px var(--exam-glow),0 0 28px rgb(var(--gold-rgb)/0.15),0 4px 12px rgb(var(--shadow-rgb)/0.25)}
+/* ══════════ the course rail as a list (2026-09-08 owner pivot) ══════════ */
+/* the upstream balloon/physics map is a deliberate deviation — the rail reads
+   as a course tree in the same quiet row language as the chat/notebook
+   columns, riding the same skin tokens so dark/light follow the host */
+.lks-ui .lks-raillist{display:flex;flex-direction:column;gap:12px}
+.lks-ui .lks-railsec-head{display:flex;align-items:center;gap:7px;width:100%;padding:7px 9px;border:none;border-radius:9px;background:var(--surface-2);font:inherit;cursor:pointer;text-align:left;transition:background .15s}
+.lks-ui .lks-railsec-head:hover{background:var(--surface-3)}
+.lks-ui .lks-railsec-num{flex:none;min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:rgb(var(--brand-rgb)/0.16);color:var(--brand);font-size:10.5px;font-weight:800}
+.lks-ui .lks-railsec-title{flex:1;font-size:12.5px;font-weight:700;color:var(--ink-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-ui .lks-railsec-count{flex:none;font-size:10.5px;font-weight:700;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.lks-ui .lks-railsec-caret{flex:none;font-size:10px;color:var(--ink-faint)}
+.lks-ui .lks-railsec-list{display:flex;flex-direction:column;padding-top:2px}
+.lks-ui .lks-lessorow{display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px 6px 10px;border:none;border-left:2px solid transparent;border-radius:0 9px 9px 0;background:none;font:inherit;cursor:pointer;text-align:left;color:var(--ink);transition:background .15s,border-color .15s}
+.lks-ui .lks-lessorow:hover{background:rgb(var(--ink-rgb)/0.05)}
+.lks-ui .lks-lessorow.selected{border-left-color:var(--brand);background:rgb(var(--brand-rgb)/0.08)}
+.lks-ui .lks-lessorow.selected .lks-lessorow-title{color:var(--ink-strong)}
+.lks-ui .lks-lessorow[aria-disabled='true']{cursor:not-allowed;opacity:.55}
+.lks-ui .lks-lessorow[aria-disabled='true']:hover{background:none}
+.lks-ui .lks-lessorow-glyph{flex:none;display:inline-flex;color:var(--ink-faint)}
+.lks-ui .lks-lessorow.st-available .lks-lessorow-glyph{color:var(--brand)}
+.lks-ui .lks-lessorow.st-in-progress .lks-lessorow-glyph{color:var(--accent)}
+.lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph{color:var(--gold)}
+.lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph svg{animation:lks-crown-sparkle 1.6s ease-in-out infinite}
+.lks-ui .lks-lessorow.st-exam .lks-lessorow-glyph,.lks-ui .lks-lessorow.st-exam-passed .lks-lessorow-glyph{color:var(--exam-light)}
+.lks-ui .lks-lessorow-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.lks-ui .lks-lessorow-title{font-size:12.5px;font-weight:600;line-height:1.35;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-ui .lks-lessorow-bar{display:block;height:3px;border-radius:2px;background:rgb(0 0 0/0.4);overflow:hidden}
+.lks-ui .lks-lessorow-bar i{display:block;height:100%;background:var(--brand);transform-origin:left;transition:transform .3s var(--ease-out-expo)}
+.lks-ui .lks-lessorow.st-mastered .lks-lessorow-bar i{background:var(--gold)}
+.lks-ui .lks-lessorow-due{flex:none;min-width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:var(--review);color:#fff;font-size:10px;font-weight:800;box-shadow:0 0 0 2px var(--surface-1)}
+.lks-ui .lks-lessorow-spin{flex:none;display:flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:999px;background:var(--surface-0);color:var(--accent);box-shadow:0 2px 8px -2px rgb(var(--shadow-rgb)/0.45);pointer-events:none;animation:lks-spin 1s linear infinite}
 /* the floating rail head card (upstream map-header card) */
 .lks-ui .lks14-railhead{background:rgb(var(--surface-rail-rgb)/0.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgb(255 255 255/0.06);border-radius:12px;padding:8px 10px}
 .lks-ui .lks14-railtitle{color:#fff;font-weight:800;font-size:.875rem;text-shadow:0 1px 3px rgba(0,0,0,0.6)}
@@ -352,7 +297,6 @@ export const UPSTREAM_CSS = `
 .lks-ui ::-webkit-scrollbar-thumb:hover{background:var(--surface-3);background-clip:padding-box}
 /* A7 feedback/ambient animations (upstream values verbatim) */
 @keyframes lks-crown-sparkle{0%,100%{transform:scale(1);filter:drop-shadow(0 0 0 var(--gold))}50%{transform:scale(1.08);filter:drop-shadow(0 0 6px var(--gold-glow))}}
-.lks-ui .lks-bubble-mastered .lks-bubble-glyph{animation:lks-crown-sparkle 1.6s ease-in-out infinite;display:inline-flex}
 @keyframes lks-energy-breathe{0%,100%{opacity:.78;filter:drop-shadow(0 0 0 var(--gold))}50%{opacity:1;filter:drop-shadow(0 0 4px var(--gold-glow))}}
 @keyframes lks-flame-flicker{0%,100%{transform:scale(1) rotate(-2deg)}25%{transform:scale(1.06) rotate(1deg)}50%{transform:scale(.97) rotate(-1deg)}75%{transform:scale(1.04) rotate(2deg)}}
 .lks-ui .lks-hdr-xp .lks-hdr-glyph{display:inline-flex;animation:lks-energy-breathe 2s ease-in-out infinite}
@@ -398,8 +342,6 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-railtrack{display:flex;height:100%;width:200%;transition:transform .3s var(--ease-out-expo)}
 .lks-ui .lks14-railpane{width:50%;height:100%;position:relative}
 .lks-ui .lks14-railscroll{height:100%;overflow-y:auto;overflow-x:hidden;padding:196px 8px 16px}
-.lks-ui .lks-mapsec-list{display:flex;flex-direction:column;gap:24px}
-.lks-ui .lks-mapsec{padding:12px 8px 0}
 .lks-ui .lks14-railpane-import{height:100%;overflow-y:auto;padding:64px 12px 12px}
 .lks-ui .lks14-raillist{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
 .lks-ui .lks14-railcourse{text-align:left;padding:10px 12px;border-radius:12px;background:rgb(255 255 255/0.05);display:flex;flex-direction:column;gap:2px}
@@ -502,17 +444,6 @@ export const UPSTREAM_CSS = `
 .lks-confirmcard.danger{border-color:rgb(var(--warning-rgb)/0.4)}
 .lks-confirmcard-msg{font-size:12.5px;color:var(--ink);line-height:1.5;margin-bottom:8px}
 .lks-confirmcard-row{display:flex;gap:8px;justify-content:flex-end}
-/* ══════════ P15 (D5): the physics map — sky canvases + physics mode ══════════ */
-.lks-physky{position:absolute;inset:0;pointer-events:none;z-index:0}
-.lks-sky-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block}
-.lks-orb-weather-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block;z-index:20}
-/* physics mode: the rail column owns the backdrop — let the nav-level sky show through */
-.lks-ui .lks14-rail:has(.lks-physky){background:transparent}
-.lks-ui .lks14-rail:has(.lks-physky) .lks14-railbody,.lks-ui .lks14-rail:has(.lks-physky) .lks14-railscroll{background:transparent}
-/* physics owns the transform — the CSS bob must not fight it (per-keyframe transform war) */
-.lks-ui .lks-mapfield.lks-physics .lks-mapnode{animation:none}
-.lks-ui .lks-mapfield.lks-physics .lks-mapnode .lks-bubble{transition:none}
-.lks-ui .lks-mapfield.lks-physics{background:transparent}
 /* ══════════ P14 (D3): CanvasStage + the board tab + canvas modals ══════════ */
 .lks-ui .lks14-stage{position:relative;height:100%;width:100%;overflow:hidden;user-select:none;touch-action:none}
 .lks-ui .lks14-stage.grid{background-image:radial-gradient(circle,rgb(var(--ink-rgb)/0.10) 1px,transparent 1px);background-size:22px 22px}
@@ -612,17 +543,6 @@ export const UPSTREAM_CSS = `
 .lks14-examleave-row{display:flex;gap:10px;justify-content:flex-end}
 @keyframes lks-fade-in{from{opacity:0}to{opacity:1}}
 
-/* ── D6: map ambiance — seasonal bubble filters (upstream v0.6 env-*), ──
-   the world switcher, the streaming spinner badge + rail notice ── */
-/* v0.6 节点球季节滤镜(整球色温调,不动状态色本身): status colors are game
-   language — the filter warms/cools every bubble but keeps their relative
-   differences. env-{weather} rides the same wrapper as a marker only (its
-   visuals live on the orb-weather canvas). */
-.lks-ui .env-spring .lks-bubble{filter:hue-rotate(-12deg) saturate(1.15) brightness(1.02)}
-.lks-ui .env-summer .lks-bubble{filter:saturate(1.4) brightness(1.08) contrast(1.05)}
-.lks-ui .env-autumn .lks-bubble{filter:hue-rotate(-22deg) saturate(1.1) brightness(0.97)}
-.lks-ui .env-winter .lks-bubble{filter:saturate(0.5) brightness(1.05) hue-rotate(8deg)}
-.lks-ui .lks-mapsec-list{position:relative;z-index:1}
 /* the two-world switcher (upstream map.world pills: brand study / accent practice) */
 .lks-ui .lks-worldswitch{display:flex;gap:4px;margin-top:6px;padding:3px;border-radius:10px;background:rgb(0 0 0/0.3)}
 .lks-ui .lks-worldtab{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:4px 0;border:none;border-radius:7px;background:none;color:rgb(255 255 255/0.5);font:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:color .15s}
@@ -632,7 +552,6 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-worldtab:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
 .lks-ui .lks-empty-practice{padding:32px 16px;text-align:center;color:var(--ink-muted);font-size:12.5px}
 /* the streaming spinner badge on the ball (upstream Loader2 chip) */
-.lks-ui .lks-bubble-spin{position:absolute;top:-7px;right:-7px;z-index:10;display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;background:var(--surface-0);color:var(--accent);box-shadow:0 2px 8px -2px rgb(var(--shadow-rgb)/0.45);pointer-events:none;animation:lks-spin 1s linear infinite}
 /* the rail's streaming notice pill (typing dot + copy) */
 .lks-ui .lks-stream-note{display:flex;align-items:center;gap:7px;margin-top:6px;padding:4px 10px;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);font-size:11px;font-weight:700}
 .lks-ui .lks-typing-dot{width:6px;height:6px;border-radius:999px;background:currentColor;animation:lks-blink 1.2s ease-in-out infinite}
@@ -701,8 +620,7 @@ export const UPSTREAM_CSS = `
 
 /* ── P16: the light theme — upstream html.light verbatim, keyed to the panel's
    data-lks-theme (the host-following store drives it). Semantic hues keep
-   their hue, only L drops for WCAG AA on white; the gamified rail re-locks
-   its neutrals dark (upstream map-rail-scope); locked bubbles keep their
+   their hue, only L drops for WCAG AA on white; shiki flips via --shiki-light. ── */
    dark stones; shiki flips via --shiki-light. ── */
 .lks-ui[data-lks-theme='light']{
   --surface-rail:#F1F2F4;--surface-rail-rgb:241 242 244;
@@ -733,33 +651,6 @@ export const UPSTREAM_CSS = `
   --cm-c0-fill:#DAE8FC;--cm-c0-line:#6C8EBF;--cm-c1-fill:#D5E8D4;--cm-c1-line:#82B366;
   --cm-c2-fill:#FFE6CC;--cm-c2-line:#D79B00;--cm-c3-fill:#FFF2CC;--cm-c3-line:#D6B656;
   --cm-c4-fill:#E1D5E7;--cm-c4-line:#9673A6;
-}
-/* the gamified rail stays dark (upstream map-rail-scope): neutrals re-locked,
-   semantic hues keep the light-adjusted values */
-.lks-ui[data-lks-theme='light'] .lks14-rail{
-  --surface-rail:#08090B;--surface-rail-rgb:8 9 11;
-  --surface-0:#0C0D0F;--surface-0-rgb:12 13 15;
-  --surface-1:#111114;--surface-1-rgb:17 17 20;
-  --surface-2:#1A1A1D;--surface-2-rgb:26 26 29;
-  --ink:#F1F2F4;--ink-rgb:245 245 250;
-  --ink-strong:#FAFAFA;--ink-strong-rgb:250 250 250;
-  --ink-muted:#9D9EA2;--ink-muted-rgb:166 166 176;
-  --ink-faint:#88898C;--ink-faint-rgb:136 137 140;
-  --border:#252629;--border-rgb:37 38 41;
-  --border-faint:#1A1A1D;--border-faint-rgb:26 26 29;
-}
-/* locked bubbles keep their dark stones on the light page (upstream pins
-   gradients — the surface ramps would turn white inside the dark rail too) */
-.lks-ui[data-lks-theme='light'] .lks-bubble-locked{
-  background:radial-gradient(circle at 35% 30%,#858689 0%,#68696C 60%,#545558 100%);
-  box-shadow:inset 0 3px 6px rgb(0 0 0/0.25),inset 0 -2px 4px rgb(255 255 255/0.15),0 2px 4px rgb(0 0 0/0.15);
-}
-.lks-ui[data-lks-theme='light'] .lks-bubble-locked::before{
-  background:radial-gradient(ellipse at center,rgb(255 255 255/0.25) 0%,rgb(255 255 255/0) 70%);
-}
-.lks-ui[data-lks-theme='light'] .lks-exam-locked{
-  background:radial-gradient(circle at 35% 30%,#7D778A 0%,#605A6C 60%,#4A4553 100%);
-  box-shadow:inset 0 3px 6px rgb(0 0 0/0.25),inset 0 -2px 4px rgb(255 255 255/0.12),0 2px 4px rgb(0 0 0/0.15);
 }
 /* shiki dual-theme: spans carry --shiki-dark/--shiki-light; light flips */
 .lks-ui .lks-shiki span{color:var(--shiki-dark,var(--ink))}

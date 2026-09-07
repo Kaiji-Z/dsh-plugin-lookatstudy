@@ -1,6 +1,7 @@
 /**
- * D6 live probe (map ambiance): the seasonal env-* filter rides the rail and
- * actually filters a bubble (computed filter, not class names), the world
+ * D6 live probe: the world switcher filters the rail list, the streaming
+ * lesson row wears the spinner badge + the rail notice (the seasonal env-*
+ * filters retired with the 2026-09-08 map pivot).
  * switcher filters sections to the seeded practice world, and a live tutor
  * turn spins the focus ball + shows the rail streaming notice.
  * Usage: node scripts/probe-d6.mjs <token> [--url http://127.0.0.1:3081]
@@ -33,28 +34,22 @@ await page.click('[data-dsh-lookatstudy-entry]')
 await page.waitForSelector('.lks-ui', { timeout: 30000 })
 await page.waitForTimeout(3000)
 
-// ——— the env-* filter: classes on the map wrapper + a REAL computed filter on a bubble ———
-const env = await page.evaluate(() => {
-  const wrap = document.querySelector('.lks-mapsec-list')
-  const bubble = document.querySelector('.lks-mapnode .lks-bubble')
-  return {
-    wrapClass: wrap === null ? '' : wrap.className,
-    attr: wrap === null ? '' : wrap.getAttribute('data-lks-env') ?? '',
-    filter: bubble === null ? 'none' : getComputedStyle(bubble).filter,
-  }
-})
-const hasSeason = /env-(spring|summer|autumn|winter)/.test(env.wrapClass)
-const realFilter = env.filter !== 'none' && env.filter !== ''
-probe('the env-* season filter rides the map wrapper and filters bubbles', hasSeason && realFilter,
-  `env=${env.attr} computedFilter=${env.filter.slice(0, 60)}`)
+// ——— the list rail mounts: section heads + lesson rows ———
+const railList = await page.evaluate(() => ({
+  secs: document.querySelectorAll('.lks-railsec-head').length,
+  rows: document.querySelectorAll('.lks-lessorow').length,
+  lockedRows: document.querySelectorAll('.lks-lessorow[aria-disabled="true"]').length,
+}))
+probe('the rail renders as a sectioned list (rows, some gated)', railList.secs > 0 && railList.rows > 0 && railList.lockedRows > 0,
+  `secs=${railList.secs} rows=${railList.rows} locked=${railList.lockedRows}`)
 
 // ——— the world switcher: hidden before… no — the seeded course HAS a practice world ———
 const switcherVisible = await page.locator('[data-testid="world-tab-study"]').count()
-const studySections = await page.evaluate(() => document.querySelectorAll('.lks-mapsec').length)
+const studySections = await page.evaluate(() => document.querySelectorAll('.lks-railsec-head').length)
 await page.click('[data-testid="world-tab-practice"]')
 await page.waitForTimeout(600)
 const practiceState = await page.evaluate(() => ({
-  sections: [...document.querySelectorAll('.lks-mapsec')].map(s => s.querySelector('.lks-signpost-title')?.textContent ?? '?'),
+  sections: [...document.querySelectorAll('.lks-railsec-head .lks-railsec-title')].map(s => s.textContent ?? '?'),
   studyOn: document.querySelector('[data-testid="world-tab-study"]')?.getAttribute('aria-selected'),
 }))
 const onlyPractice = practiceState.sections.length > 0 && practiceState.sections.every(t => t === 'seed-practice')
@@ -62,7 +57,7 @@ probe('the practice world tab filters the rail to practice sections only', switc
   `before=${studySections}sections after=[${practiceState.sections.join(',')}] studyTabSelected=${practiceState.studyOn}`)
 await page.click('[data-testid="world-tab-study"]')
 await page.waitForTimeout(600)
-const backToStudy = await page.evaluate(() => document.querySelectorAll('.lks-mapsec').length)
+const backToStudy = await page.evaluate(() => document.querySelectorAll('.lks-railsec-head').length)
 probe('switching back to the study world restores the study sections', backToStudy === studySections, `sections=${backToStudy}`)
 
 // ——— the streaming spinner + rail notice during a live tutor turn ———

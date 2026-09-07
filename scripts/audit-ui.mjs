@@ -15,8 +15,8 @@
  * Usage: node scripts/audit-ui.mjs <token> [--url http://127.0.0.1:3081] [--theme light|dark]
  * P16: --theme selects the expectation set AND asserts the panel follows the
  * host (data-lks-theme matches). Light mode inverts the flags — dark
- * backgrounds / light text outside the (legitimately dark) rail column are
- * the suspects; the rail keeps the dark allowlist in both themes.
+ * backgrounds / light text anywhere in the panel are the suspects (since the
+ * 2026-09-08 list pivot the rail follows the theme like the other columns).
  */
 import { createRequire } from 'node:module'
 
@@ -59,7 +59,6 @@ await page.waitForTimeout(800)
 const audit = await page.evaluate((mode) => {
   const DARK_SURFACES = new Set(['rgb(8, 9, 11)', 'rgb(12, 13, 15)', 'rgb(17, 17, 20)', 'rgb(26, 26, 29)', 'rgb(42, 43, 46)'])
   const LIGHT_SURFACES = new Set(['rgb(241, 242, 244)', 'rgb(255, 255, 255)', 'rgb(248, 248, 248)', 'rgb(234, 235, 237)'])
-  const inRail = (el) => el.closest('.lks14-rail') !== null
   const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b
   const sat = (r, g, b) => Math.max(r, g, b) - Math.min(r, g, b)
   const parse = (v) => {
@@ -73,7 +72,6 @@ const audit = await page.evaluate((mode) => {
     const bg = parse(cs.backgroundColor)
     const bgSaturatedLight = bg !== null && bg.a > 0.5 && lum(bg.r, bg.g, bg.b) > 40 && sat(bg.r, bg.g, bg.b) > 60
     const note = []
-    const railDarkOk = mode === 'light' && inRail(el)
     if (mode === 'dark') {
       if (bg !== null && bg.a > 0.85 && !DARK_SURFACES.has(`rgb(${bg.r}, ${bg.g}, ${bg.b})`) && lum(bg.r, bg.g, bg.b) > 40 && !bgSaturatedLight) {
         note.push(`lightbg ${cs.backgroundColor}`)
@@ -87,16 +85,15 @@ const audit = await page.evaluate((mode) => {
         if (bd !== null && bd.a > 0.5 && lum(bd.r, bd.g, bd.b) > 120 && sat(bd.r, bd.g, bd.b) <= 60) note.push(`lightborder ${cs.borderTopColor}`)
       }
     } else {
-      // light: outside the dark-locked rail, dark backgrounds and light text
-      // are the islands; the rail is exempt (dark by design, own rules).
-      if (!railDarkOk && bg !== null && bg.a > 0.85 && !LIGHT_SURFACES.has(`rgb(${bg.r}, ${bg.g}, ${bg.b})`) && lum(bg.r, bg.g, bg.b) < 40 && !bgSaturatedLight) {
+      // light: dark backgrounds and light text anywhere are the islands
+      if (bg !== null && bg.a > 0.85 && !LIGHT_SURFACES.has(`rgb(${bg.r}, ${bg.g}, ${bg.b})`) && lum(bg.r, bg.g, bg.b) < 40 && !bgSaturatedLight) {
         note.push(`darkbg ${cs.backgroundColor}`)
       }
       const tx = parse(cs.color)
-      if (!railDarkOk && tx !== null && tx.a > 0.5 && lum(tx.r, tx.g, tx.b) > 200 && sat(tx.r, tx.g, tx.b) <= 60 && !bgSaturatedLight) {
+      if (tx !== null && tx.a > 0.5 && lum(tx.r, tx.g, tx.b) > 200 && sat(tx.r, tx.g, tx.b) <= 60 && !bgSaturatedLight) {
         note.push(`lighttext ${cs.color}`)
       }
-      if (!railDarkOk && cs.borderStyle !== 'none' && parseFloat(cs.borderTopWidth) > 0) {
+      if (cs.borderStyle !== 'none' && parseFloat(cs.borderTopWidth) > 0) {
         const bd = parse(cs.borderTopColor)
         if (bd !== null && bd.a > 0.5 && lum(bd.r, bd.g, bd.b) < 40 && sat(bd.r, bd.g, bd.b) <= 60) note.push(`darkborder ${cs.borderTopColor}`)
       }
