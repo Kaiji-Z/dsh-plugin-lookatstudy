@@ -203,7 +203,13 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   useEffect(() => { wireCodeBlockCopy() }, [])
   // P16: the skin follows the host theme store (wirePanelTheme drives it).
   const [theme, setTheme] = useState(panelTheme)
-  useEffect(() => subscribePanelTheme(() => { setTheme(panelTheme()) }), [])
+  // sync-on-mount: if the theme transitioned between this component's state
+  // initialization and its subscription, the live value pulls it back.
+  useEffect(() => {
+    const sync = (): void => { setTheme(panelTheme()) }
+    sync()
+    return subscribePanelTheme(sync)
+  }, [])
   // E7: the panel font scale — three tiers persisted locally (zoom scales the
   // px-fixed panel layout in Chromium without rewriting every font rule).
   const [zoomTier, setZoomTier] = useState<number>(() => {

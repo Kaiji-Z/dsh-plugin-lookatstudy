@@ -68,11 +68,17 @@ export function wirePanelTheme(ctx: ClientContext): () => void {
     readDom()
   }
   attachBody()
+  // boot-order hardening (live P18 catch): the host presenter's theme
+  // application is order-nondeterministic against plugin apply — a dark
+  // application landing in the read-then-observe gap strands the panel light
+  // with no later mutation to wake it. One delayed re-read closes the gap;
+  // mid-session flips stay on the observers.
+  const settle = setTimeout(readDom, 600)
   // service nudges: any snapshot change → re-read the DOM the presenter just
   // wrote (order-independent: if the event races ahead of the presenter, the
   // observers still catch the attrs).
   const off = (ctx as unknown as { on?: (event: string, cb: () => void) => (() => void) | void }).on?.('theme/change', () => {
     requestAnimationFrame(readDom)
   })
-  return () => { obs.disconnect(); bodyObs.disconnect(); off?.() }
+  return () => { clearTimeout(settle); obs.disconnect(); bodyObs.disconnect(); off?.() }
 }

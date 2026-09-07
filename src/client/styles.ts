@@ -54,7 +54,10 @@ html[data-dsh-lookatstudy-active] .lks14-shell-view{display:flex;flex-direction:
 html[data-dsh-lookatstudy-active] [data-pane='conversation'] > :not([data-dsh-lookatstudy-view]),
 html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatstudy-view]){display:none !important}
 [data-dsh-lookatstudy-view]{container-type:inline-size}
-.lks14{position:relative;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);overflow:hidden;font-family:var(--dsw-font-family)}
+/* the root must be a bounded flex item of the shell-view column — without it
+   every column below grew content-sized, the stream never overflowed (the C1
+   scroll-FAB + sticky composer were dead), and the host page scrolled instead */
+.lks14{position:relative;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);overflow:hidden;font-family:var(--dsw-font-family);display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
 .lks14 button{font-family:var(--dsw-font-family);cursor:pointer}
 .lks14-body{display:flex;flex:1;min-width:0;min-height:0}
 .lks14-righthalf{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
