@@ -197,3 +197,27 @@ export function IconFlameFill16({ size = 16, className }: IconProps) {
     createElement('path', { d: 'M8.9 1.2c.4 2.5-.9 3.9-2.1 5.2C5.6 7.7 4.4 9 4.4 10.9a3.9 3.9 0 0 0 7.8 0c0-1.6-.7-2.9-1.5-4-.3.8-.8 1.4-1.6 1.7.5-2.4-.2-5.4-1.2-7.4Z', fill: 'currentColor' }))
 }
 
+/** IconArrowUpFill16 — the 3D send button glyph (upstream: lucide Send direction) */
+export function IconArrowUpFill16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M8 2.6 13.2 8h-3v5.4H5.8V8h-3L8 2.6Z', fill: 'currentColor' }))
+}
+
+/** IconCloseFill16 — toast/modal close */
+export function IconCloseFill16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M3.4 2 2 3.4 6.6 8 2 12.6 3.4 14 8 9.4l4.6 4.6 1.4-1.4L9.4 8 14 3.4 12.6 2 8 6.6 3.4 2Z', fill: 'currentColor' }))
+}
+
+/** IconMaximizeOutline16 — artifact expand (upstream: lucide Maximize2 corners) */
+export function IconMaximizeOutline16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M9.5 2H14v4.5M6.5 14H2V9.5M14 2 9.2 6.8M2 14l4.8-4.8', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
+}
+

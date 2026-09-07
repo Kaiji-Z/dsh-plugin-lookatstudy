@@ -10,6 +10,7 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { tr } from './locale.ts'
+import { IconCloseFill16, IconMaximizeOutline16 } from './icons.tsx'
 
 /** One artifact row from the state feed. */
 export interface ArtifactRow {
@@ -109,7 +110,7 @@ export function DiagramCard({ artifact }: { artifact: ArtifactRow }): ReactNode 
     : createElement('div', { className: 'lks-acard-diagram', ref: bodyRef })
   return createElement('div', { className: 'lks-acard', 'data-lks-artifact': artifact.id },
     createElement('div', { className: 'lks-acard-head' }, artifact.title,
-      createElement('button', { className: 'lks-acard-expand', title: tr('artifact.expand'), onClick: () => { setExpanded(true) } }, '⤢')),
+      createElement('button', { className: 'lks-acard-expand', title: tr('artifact.expand'), onClick: () => { setExpanded(true) } }, createElement(IconMaximizeOutline16, { size: 13 }))),
     body,
     expanded
       ? createElement('div', {
@@ -118,7 +119,7 @@ export function DiagramCard({ artifact }: { artifact: ArtifactRow }): ReactNode 
         },
         createElement('div', { className: 'lks-acard-modal-body', onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() } },
           createElement('div', { className: 'lks-acard-modal-title' }, artifact.title,
-            createElement('button', { className: 'lks-acard-expand', onClick: () => { setExpanded(false) } }, '×')),
+            createElement('button', { className: 'lks-acard-expand', onClick: () => { setExpanded(false) } }, createElement(IconCloseFill16, { size: 13 }))),
           failed ? createElement('pre', { className: 'lks-acard-code' }, mermaid) : createElement('div', {
             ref: (el: HTMLDivElement | null) => {
               if (el !== null) void renderMermaidInto(el, mermaid, () => { setFailed(true) })

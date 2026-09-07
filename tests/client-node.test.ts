@@ -168,9 +168,27 @@ test('the upstream v0.28 skin is layered over the panel foundation (P9a)', async
   assert.match(UPSTREAM_CSS, /@keyframes lks-balloon-bob/, 'balloons bob on the static path')
   assert.match(UPSTREAM_CSS, /@keyframes lks-path-draw/, 'walked ropes draw themselves in')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-bubble\[aria-disabled='true'\]\{cursor:not-allowed\}/, 'locked bubbles keep the aria-disabled contract (focusable, tooltip explains why)')
+  // P10a (A-track): island zeroing — the highest-traffic un-skinned surfaces
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-opt\{[^}]*background:rgb\(var\(--ink-rgb\)\/0\.05\)/, 'in-chat quiz options are dark neutral pills')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-starter\{[^}]*border:1px solid var\(--border-faint\)/, 'starter chips ride the dark border scale')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-quote-btn\{[^}]*box-shadow:0 4px 12px -2px/, 'the selection popover is a surface-0 card with shadow-pop')
+  assert.match(UPSTREAM_CSS, /\.lks-ui ::-webkit-scrollbar-thumb\{[^}]*background:var\(--border\)/, 'scrollbars inside the panel are dark, not host-light')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-prose a,\.lks-ui \.lks-note-text a\{[^}]*rgb\(var\(--accent-rgb\)\)/, 'prose links are accent, not UA blue')
+  assert.match(UPSTREAM_CSS, /@keyframes lks-crown-sparkle/, 'the mastered crown sparkles (upstream 1.6s)')
+  assert.match(UPSTREAM_CSS, /@keyframes lks-answer-wrong/, 'wrong answers shake (upstream 320ms)')
+  assert.match(UPSTREAM_CSS, /--cm-c0-fill:#1C3352/, 'the concept-map palette tokens ride the panel scope')
+  assert.match(UPSTREAM_CSS, /--brand-light-rgb:126 217 87/, 'rgb-channel companions complete the token block')
   // the structural wrappers the skin rides on live in the base stylesheet
   assert.match(STUDY_CSS, /\.lks14-righthalf\{flex:1;min-width:0;display:flex;flex-direction:column/, 'the right half is a column under the app header')
   assert.match(STUDY_CSS, /\.lks14-body\[data-pane='rail'\] \.lks14-righthalf\{display:none\}/, 'narrow rail mode hides the whole right half')
+})
+
+test('the audit gate script exists with an exit-code contract', async () => {
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../scripts/audit-ui.mjs', import.meta.url), 'utf8')
+  assert.match(src, /suspectCount === 0 \? 0 : 1/, 'exit 0 iff zero suspects')
+  assert.match(src, /borderStyle !== 'none'/, 'border flags skip border-style:none false positives')
+  assert.match(src, /sat\(/, 'saturated brand hues are exempt by design')
 })
 
 test('the lookatstudy locale dictionaries keep zh/en parity and translate with fallback', async () => {

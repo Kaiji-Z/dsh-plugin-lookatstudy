@@ -16,7 +16,7 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
 import {
-  IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16,
+  IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
   IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16,
 } from './icons.tsx'
@@ -288,9 +288,11 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       createElement('div', { className: 'lks14-appheader' },
         createElement('span', { className: 'lks-hdr-title' }, lesson?.courseTitle ?? tr('tab.label')),
         createElement('span', { className: 'lks-hdr-xp', title: tr('header.xp', { xp: progress?.totalXp ?? 0 }) },
-          createElement('span', { className: 'lks-hdr-stat' }, '\u26a1'),
+          createElement('span', { className: 'lks-hdr-stat lks-hdr-glyph' }, createElement(IconBoltFill16, { size: 14 })),
           createElement('span', { className: 'lks-hdr-xpbar' }, createElement('i', { style: { width: `${Math.min(100, progress?.levelPct ?? 0)}%` } }))),
-        createElement('span', { className: 'lks-hdr-stat lks-hdr-streak', title: tr('header.streak') }, '\ud83d\udd25', String(progress?.streak ?? 0)),
+        createElement('span', { className: 'lks-hdr-stat lks-hdr-streak', title: tr('header.streak') },
+          createElement('span', { className: 'lks-hdr-glyph' }, createElement(IconFlameFill16, { size: 14 })),
+          String(progress?.streak ?? 0)),
         createElement('span', { className: 'lks-hdr-stat', title: tr('header.level') }, `Lv${String(progress?.level ?? 1)}`),
       ),
       createElement('div', { className: 'lks14-row' },
@@ -349,7 +351,7 @@ function StudyToastStack(): ReactNode {
         className: 'lks-toast-close',
         'aria-label': tr('toast.close'),
         onClick: () => { toastStore.startExit(t.id) },
-      }, '×'),
+      }, createElement(IconCloseFill16, { size: 12 })),
     )))
 }
 
@@ -678,7 +680,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           'aria-label': tr('composer.send'),
           disabled: busy || dormant || draft.trim() === '',
           onClick: () => { send(draft) },
-        }, busy ? createElement(IconLoadingOutline16, { size: 16, className: 'lks-spin' }) : '↑'),
+        }, busy ? createElement(IconLoadingOutline16, { size: 16, className: 'lks-spin' }) : createElement(IconArrowUpFill16, { size: 18 })),
       ),
     sendError !== null || error !== null
       ? createElement('div', { className: 'lks-propcard-err' }, sendError ?? error)

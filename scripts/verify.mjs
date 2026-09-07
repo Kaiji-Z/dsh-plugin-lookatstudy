@@ -144,6 +144,12 @@ gate('bundle', () => {
     [client, 'lks-signpost', 'frosted section signposts'],
     [client, 'lks-balloon-bob', 'balloon bob animation'],
     [client, 'lks-path-draw', 'walked-rope draw-in animation'],
+    // 0.17.0 P10a (A-track): island zeroing + the audit gate
+    [client, '.lks-ui .lks14-starter', 'starter chips ride the dark skin'],
+    [client, 'lks-crown-sparkle', 'upstream feedback animations'],
+    [client, '::-webkit-scrollbar', 'scoped dark scrollbar'],
+    [client, '--cm-c0-fill', 'concept-map palette tokens'],
+    [client, 'IconArrowUpFill16', 'SVG send glyph (emoji retired)'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [

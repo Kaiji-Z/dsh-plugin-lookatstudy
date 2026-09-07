@@ -281,4 +281,96 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-search{background:rgb(0 0 0/0.25);border:1px solid rgb(255 255 255/0.15);color:var(--ink-strong);border-radius:10px}
 .lks-ui .lks14-search:focus{border-color:var(--brand);outline:none}
 .lks-ui .lks14-search::placeholder{color:rgb(var(--ink-rgb)/0.35)}
+
+/* ══════════ A-track (P10a): island zeroing — the 27+6 un-skinned leftovers ══════════ */
+/* buttons reset to UA buttontext/buttonface (black/light) — the panel's ink must flow through */
+.lks-ui button{color:inherit;background-color:transparent;border-color:transparent}
+/* A6 token completion: rgb-channel companions + concept-map palette (upstream :root) */
+.lks-ui{--brand-dark-rgb:70 163 2;--brand-light-rgb:126 217 87;
+  --accent-dark-rgb:10 140 220;--accent-light-rgb:94 212 255;
+  --gold-dark-rgb:217 158 0;--gold-light-rgb:255 230 128;
+  --warning-dark-rgb:230 43 43;--warning-light-rgb:255 117 117;
+  --exam-dark-rgb:126 34 206;--exam-light-rgb:192 132 252;
+  --cm-c0-fill:#1C3352;--cm-c0-line:#6F9FD4;--cm-c1-fill:#1F3A29;--cm-c1-line:#7FB37F;
+  --cm-c2-fill:#42301A;--cm-c2-line:#CFA05E;--cm-c3-fill:#3D3620;--cm-c3-line:#CBB75E;
+  --cm-c4-fill:#33294A;--cm-c4-line:#A48DCB}
+/* A1 in-chat quiz options (click = send answer; neutral pill, hover brand) */
+.lks-ui .lks14-opt{background:rgb(var(--ink-rgb)/0.05);border:2px solid transparent;color:var(--ink)}
+.lks-ui .lks14-opt:hover{border-color:var(--brand);background:rgb(var(--ink-rgb)/0.05)}
+.lks-ui .lks14-optletter{color:var(--brand-light)}
+.lks-ui .lks14-starter{background:transparent;border:1px solid var(--border-faint);color:var(--ink-muted)}
+.lks-ui .lks14-starter:hover{background:rgb(var(--ink-rgb)/0.06);color:var(--ink);border-color:var(--border)}
+.lks-ui .lks14-chatlesson{color:var(--ink-muted)}
+.lks-ui .lks14-meta{color:var(--ink-muted)}
+.lks-ui .lks14-dueitem{color:var(--ink-muted)}
+.lks-ui .lks14-hint{color:var(--ink-faint)}
+.lks-ui .lks-readbar-notice{color:var(--ink-faint)}
+.lks-ui .lks-cmap-legend{color:var(--ink-muted)}
+/* A2 quiz-card body family */
+.lks-ui .lks-qcard-prompt{color:var(--ink)}
+.lks-ui .lks-qcard-count{color:var(--ink-faint)}
+.lks-ui .lks-qcard-ans{color:var(--ink-faint)}
+.lks-ui .lks-qcard-expl{color:var(--ink-muted);border-left-color:var(--accent)}
+.lks-ui .lks-qcard-prompt.review.wrong{color:var(--warning-light)}
+.lks-ui .lks-qcard-q.review{border-bottom-color:var(--border)}
+/* A2 artifact bits */
+.lks-ui .lks-acard-expand{color:var(--ink-faint);border:none;background:none}
+.lks-ui .lks-acard-expand:hover{color:var(--ink);background:rgb(var(--ink-rgb)/0.06)}
+.lks-ui .lks-acard-modal-title{color:var(--ink-strong)}
+.lks-ui .lks-acard-guess-prompt{color:var(--ink)}
+.lks-ui .lks-acard-guess-wait{color:var(--ink-faint)}
+.lks-ui .lks-acard-note b{color:var(--ink-strong)}
+.lks-ui .lks-acard-stage{border-top-color:var(--border)}
+/* A2 note family */
+.lks-ui .lks-note-text{color:var(--ink-muted)}
+.lks-ui .lks-note-text th,.lks-ui .lks-note-text td{border-color:var(--border)}
+.lks-ui .lks-note-src{color:var(--ink-faint)}
+.lks-ui .lks-note-del{color:var(--ink-faint)}
+.lks-ui .lks-note-del:hover{color:var(--warning-light);background:rgb(var(--warning-rgb)/0.08)}
+.lks-ui .lks-note-del.armed{color:#fff;background:var(--warning)}
+.lks-ui .lks-note-q{color:var(--ink-muted)}
+.lks-ui .lks-note-title{color:var(--ink-strong)}
+/* A3 selection popover → surface-0 floating card */
+.lks-ui .lks-quote-btn{background:var(--surface-0);border:1px solid var(--border);box-shadow:0 4px 12px -2px rgb(var(--shadow-rgb)/0.14),0 1px 3px -1px rgb(var(--shadow-rgb)/0.08);border-radius:10px;overflow:hidden;animation:lks-confirm-enter 160ms var(--ease-out-back)}
+.lks-ui .lks-quote-btn button{color:var(--ink)}
+.lks-ui .lks-quote-btn button:hover{background:rgb(var(--ink-rgb)/0.06)}
+.lks-ui .lks-quote-btn button + button{border-left-color:var(--border)}
+/* A4 prose links / markers / strong / hr */
+.lks-ui .lks14-prose a,.lks-ui .lks-note-text a{color:rgb(var(--accent-rgb));text-decoration:none;font-weight:500}
+.lks-ui .lks14-prose a:hover,.lks-ui .lks-note-text a:hover{text-decoration:underline}
+.lks-ui .lks14-prose li::marker,.lks-ui .lks-note-text li::marker{color:rgb(var(--brand-rgb))}
+.lks-ui .lks14-prose strong,.lks-ui .lks-note-text strong{color:var(--ink-strong)}
+.lks-ui .lks14-prose hr,.lks-ui .lks-note-text hr{border-color:var(--border)}
+/* A8 table borders inside bubbles/cards/notes */
+.lks-ui .lks14-msg-assistant th,.lks-ui .lks14-msg-assistant td{border-color:var(--border)}
+.lks-ui .lks-acard-table th,.lks-ui .lks-acard-table td{border-color:var(--border)}
+.lks-ui .lks-acard-table th{border-bottom-color:var(--brand)}
+/* A5 scoped scrollbar (host-light chrome otherwise scrolls inside dark columns) */
+.lks-ui ::-webkit-scrollbar{width:8px;height:8px}
+.lks-ui ::-webkit-scrollbar-track{background:transparent}
+.lks-ui ::-webkit-scrollbar-thumb{background:var(--border);border-radius:9999px;border:2px solid transparent;background-clip:padding-box}
+.lks-ui ::-webkit-scrollbar-thumb:hover{background:var(--surface-3);background-clip:padding-box}
+/* A7 feedback/ambient animations (upstream values verbatim) */
+@keyframes lks-crown-sparkle{0%,100%{transform:scale(1);filter:drop-shadow(0 0 0 var(--gold))}50%{transform:scale(1.08);filter:drop-shadow(0 0 6px var(--gold-glow))}}
+.lks-ui .lks-bubble-mastered .lks-bubble-glyph{animation:lks-crown-sparkle 1.6s ease-in-out infinite;display:inline-flex}
+@keyframes lks-energy-breathe{0%,100%{opacity:.78;filter:drop-shadow(0 0 0 var(--gold))}50%{opacity:1;filter:drop-shadow(0 0 4px var(--gold-glow))}}
+@keyframes lks-flame-flicker{0%,100%{transform:scale(1) rotate(-2deg)}25%{transform:scale(1.06) rotate(1deg)}50%{transform:scale(.97) rotate(-1deg)}75%{transform:scale(1.04) rotate(2deg)}}
+.lks-ui .lks-hdr-xp .lks-hdr-glyph{display:inline-flex;animation:lks-energy-breathe 2s ease-in-out infinite}
+.lks-ui .lks-hdr-streak .lks-hdr-glyph{display:inline-flex;animation:lks-flame-flicker 1.2s ease-in-out infinite}
+@keyframes lks-answer-correct{0%{transform:scale(1)}40%{transform:scale(1.05)}100%{transform:scale(1)}}
+@keyframes lks-answer-wrong{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-3px)}40%,80%{transform:translateX(3px)}}
+.lks-ui .lks-qcard-opt.right{animation:lks-answer-correct 350ms var(--ease-spring)}
+.lks-ui .lks-qcard-opt.wrong{animation:lks-answer-wrong 320ms ease-in-out}
+@keyframes lks-confirm-enter{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+/* A7 toast enter/exit at upstream values (replaces the base sheet's simplified pair) */
+@keyframes lks-toast-in-up{from{opacity:0;transform:translateY(-12px) scale(.96)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes lks-toast-out-up{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(-8px) scale(.97)}}
+.lks-ui .lks-toast{animation:lks-toast-in-up 220ms var(--ease-out-back)}
+.lks-ui .lks-toast.exiting{animation:lks-toast-out-up 180ms var(--ease-out-quart) forwards}
+.lks-ui .lks-toast-close{color:var(--ink-faint)}
+.lks-ui .lks-toast-close:hover{color:var(--ink);background:rgb(var(--ink-rgb)/0.08)}
+/* search rows: complete the half-covered pair */
+.lks-ui .lks14-searchrow{border-bottom-color:var(--border)}
+.lks-ui .lks14-searchrow-title{color:var(--ink-strong)}
+.lks-ui .lks14-searchrow-course{color:var(--ink-faint)}
 `

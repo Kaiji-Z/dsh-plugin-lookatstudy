@@ -1,102 +1,142 @@
-# 全量对齐移植 SPEC · 上游 LookatStudy v0.28.0 → dsh-plugin-lookatstudy（目标 0.15.0）
+# UI 1:1 还原 SPEC · 上游 LookatStudy v0.28.0 → dsh-plugin-lookatstudy（0.17.0 → 0.21.x 分轨发版）
 
-上游基准：`D:/Users/kaiji/vibecodingKJ/projects/LookatStudy` @ v0.28.0（commit 0266714，只读参照，禁改；本地 CRLF，diff 时 strip-trailing-cr）。
-插件基线：0.14.1（面板架构已立：侧栏入口、三栏、自有 composer、懒铸线程、事件窗口流；221 测试绿）。
-执行环境：web-lks profile @ 3081（隔离实测）；发版走 `node scripts/release.mjs`。
-**执行顺序：P6 → P1 → P2 → P3 → P4 → P5 → P7 → P8**（Toast 先行是基座；每轮只做一项，P1 可拆轮）。
-每完成一项勾选下方复选框；全部勾完才算本轮完成。
+上游基准：`D:/Users/kaiji/vibecodingKJ/projects/LookatStudy` @ v0.28.0（只读参照，禁改；本地 CRLF，diff 时 strip-trailing-cr）。
+插件基线：0.16.0 已上线（面板 + 上游皮肤第一层 + 静态气球地图；248 测试绿，verify PASS）。
+执行环境：web-lks profile @ 3081（kill→remove→restore file: dep→corepack install→reboot with env；token 从启动日志抓）。
+审计基座：六路子智能体扫描报告已并入本 SPEC（组件层/CSS 层/DOM 孤岛普查/布局骨架/token+动画/交互逻辑 48 项）；DOM 审计探针 `probe-audit.mjs` 语义（明暗两主题 suspect=0）是本目标的机器验收面。
+**执行顺序：P10a → P10b →(发版 0.17.0)→ P11a → P11b →(发版 0.18.0)→ P12 → P13 →(发版 0.19.0)→ P14 → P15 →(发版 0.20.0)→ P0 探测 → P16 → P17 →(发版 0.21.0)→ P18 终审**。每轮只做一个 P 项或一个实测修复批次；每项完成勾选。
 
-## 基线（开工前实测一次留档）
+## 基线（开工实测留档）
 
-- [x] `pnpm run verify` PASS；测试数 N₀ = 221（2026-09-07 记录；开工实测 VERIFY: PASS）
+- [x] `pnpm run verify` PASS；测试数 N₀ = 248（2026-09-07 开工实测：249 绿，AUDIT exit 0 @ suspect=0）
 
-## 排除清单（不移植——用户已定案：归宿主的能力一律不对齐）
+## 用户拍板记录（2026-09-07，覆盖旧 SPEC 的排除清单）
 
-1. **模型/供应商/effort 选择器**（ModelPicker / CustomProviderForm / EffortPicker）— 宿主拥有模型面。【用户指定】
-2. **ContextMeter + v0.27 对话历史预算裁剪**（resolveActiveContextWindow）— 宿主拥有 agent loop 与窗口管理。【用户指定】
-3. **exam-v2 后台题库**（后台出题、SQLite 结算、重考洗牌）— 需要后台模型客户端，插件没有；考试保持对话式。【归宿主/结构性，用户认可】
-4. **composer 附件/语音输入** — 附件投递归宿主 composer 的 intake。【归宿主，用户认可】
-5. **CommandPalette** — 宿主 chrome 层；课程搜索由 P4 覆盖。【归宿主，用户认可】
+1. **ABCD 四轨全量移植**（清单见下）。
+2. **B6 按上游**：assistant 消息全文无卡排版（去掉现在的 surface-2 卡片）。
+3. **D5 上物理引擎**：vendor matter-js + 上游 mapPhysics 物理岛（拖拽/碰撞/绳链）+ 天气画布 + 吹哨召唤。
+4. **明暗双主题**：移植上游 html.light 全套 token；面板主题跟随宿主明暗切换（无需刷新）。
+5. **宿主分工修订**：宿主只负责后端模型（= 上游 BYOK 的等价物）。原"归宿主"清单（ContextMeter、v0.27 历史预算裁剪、composer 附件、CommandPalette、exam-v2 后台题库、线程切换 UI、模型/effort 切换面）全部改为**插件内置替换宿主能力**。
+6. **宿主 API 缺口策略**：等价降级（用插件侧可得数据做等价实现，如 ContextMeter 用会话事件估算）+ SPEC 缺口清单记录，不阻塞不追问。
+7. **语音听写不移植**（VoicePanel/按住说话——本地 ASR 模型，明确排除）。
+8. 预算 60 轮；分轨发版；judge 全项 ≥8；终态 1:1。
+
+## 修订后排除清单
+
+1. **语音听写**（VoicePanel + ChatComposer 语音模式 + mic 工具栏钮）— 本地 ASR 模型。【用户指定】
+2. **CustomProviderForm / API key 管理** — 宿主即模型后端，密钥管理归宿主。【结构性】
+3. 上游 Electron 专属：桌面宠物窗口（PetCompanion）、titlebar 栖息、系统托盘。
 
 ## 移植清单
 
-### P6 · 面板级 Toast 系统（先行基座）
-上游：`Toast.tsx`。插件落点：`panel.tsx` 轻量 toast 栈（面板右上角、自动消退、dsw token 样式、面板关闭即清）。
-验收：due 提醒与「有新笔记」等通知有统一出口；单测覆盖入队/消退。
+### A 轨 · 外观孤岛清零（并入 P10a）
 
-- [x] P6 完成（2026-09-07：toast.ts store + panel StudyToastStack + lks-toast 样式 + verify 3 针；VERIFY: PASS @ 226；视觉/消费方实测并入 P3 与 P1 轮）
+来源：DOM 普查 27 孤岛 + 6 半盖 + CSS 审计缺规则。
 
-### P1 · 产物卡体系（上游 artifacts/* + canvas 持久化）
-上游：`src/renderer/components/artifacts/`（Quiz/CompareTable/CodeWalkthrough/Mermaid/Guess + DiagramViewerModal）、`App.tsx` 的 extractArtifacts→canvas 自动持久化、`lib/quiz-progress`、`lib/post-quiz-actions`。
-插件落点：
-- 后端：新增 `study_generate_quiz` 工具（输出 `{questions[]}`，带 output.schema，schema-conformance 测试覆盖）；compare-table / code-walkthrough 产物走同一结构化通道（工具结果带 `artifactType`）；导师人格更新何时出卡。
-- 前端：事件窗口订阅扩展出产物流（tool/call+tool/result → 产物卡数据；与聊天流共用同一订阅，不另开窗口）；聊天流内渲染产物卡；QuizArtifact 可交互：作答→判分→进度持久化（localStorage，对齐上游 quizProgressKey）→ post-quiz 动作；Mermaid 查看器模态。
-- 持久化：产物自动存入课时笔记 understand 区（幂等 key：`artifactType`+内容 hash——上游用消息 id 被重复咬过）；笔记 tab 数字角标 + toast；讲解底部展示最新重产物（上游 CanvasStage 黑板语义）。
-- GuessArtifact：开场两选一猜（不计分、下回合揭晓）— 人格提示词 + 卡。
+- [x] A1 聊天内 quiz `.lks14-opt/.lks14-optletter`、`.lks14-starter`、`.lks14-chatlesson`、`.lks14-meta`、`.lks14-dueitem`、`.lks14-hint`、`.lks-readbar-notice`、`.lks-cmap-legend` 补 `.lks-ui` 暗色覆盖
+- [x] A2 quiz 卡正文族（prompt/count/ans/expl；review-wrong→`--warning-light`）+ artifact 细节（expand/modal-title/guess-prompt/guess-wait/note b）+ 笔记正文族（text/src/del/title + 表格边框→`--border`）
+- [x] A3 选区弹泡 `.lks-quote-btn` → surface-0 浮卡 + shadow-pop + confirm-enter
+- [x] A4 正文链接 accent + hover 下划线、`li::marker` 品牌绿、`strong` ink-strong、hr
+- [x] A5 面板内 `::-webkit-scrollbar`（暗色 thumb，hover surface-3）
+- [x] A6 补 token：10 个 `-dark-rgb/-light-rgb` 通道 + `--cm-c0..c4` 十色 + shadow-pop/brand-soft/accent-soft 等价规则
+- [x] A7 补动画：crown-sparkle、energy-breathe/flame-flicker、answer-correct/wrong、confirm-enter、tab-slide、artifact-render；toast 进出对齐上游值（-12px scale.96 / out-back 220ms）
+- [x] A8 聊天气泡内表格、对比表四边、笔记表格边框 dsw-l2 → `--border`
+- [x] A9 emoji→SVG：⚡🔥（头标）、↑（发送）、⤢×（展开/关闭）、toast ×——icons.tsx 已有等价字形
+- [x] A10 审计探针固化：probe-audit 语义进 `scripts/audit-ui.mjs`（border-style 过滤误报、饱和色豁免），verify 外独立跑，明暗两主题 suspect=0 为判据
 
-验收：单测（产物提取 fold、quiz 进度、幂等去重）+ 3081 实测（练习卡渲染→作答→判分→重开面板进度留存；产物自动进笔记区带角标）。
+### B 轨 · 布局骨架（P10b，对齐上游 App.tsx/MapRail 骨架）
 
-- [x] P1 完成（2026-09-07：P1a+P1b 全落，verify PASS @ 235，3081 实测含对比表/角标+toast 沉淀/笔记区/讲解底台/mermaid+放大/Guess 挑选流）
-  - [x] P1a（2026-09-07）：quiz 产物端到端 —— study_generate_quiz 工具、内容哈希幂等记录、QuizCard 交互卡（本地判分/进度留存/答完 hook/去向动作）、verify PASS @ 233、3081 实测全过（含同上下文 reload 进度恢复）
-  - [x] P1b：compare_table / code_walkthrough 工具+卡、Mermaid 查看器模态、GuessArtifact、笔记 understand 区自动沉淀+角标+toast、讲解底部最新重产物
+- [ ] B1 rail 300px；天幕升 rail 全高（.lks14-rail 承载）；砍掉 课程/导师/黑板 三条 colhead；悬浮玻璃 tab 胶囊（地图/导入双面板横滑）+ 悬浮标题卡（标题/掌握条+%/搜索 pill/复习 pill+due 数/删课）；内容区独立滚动 + pt-48 顶部预留
+- [ ] B2 地图章节 space-y-6（24px）+ py-3/px-2 节奏
+- [ ] B3 宽度对调：聊天 `clamp(480px,36vw,800px)`、黑板 `flex-1 min-width:440px`
+- [ ] B4 模式药丸（风格：直讲/引导/实战 + 图标）移入 composer 胶囊第一行；导师列头位置改为细行显示当前课时（ThreadSwitcher 空态样式）
+- [ ] B5 黑板 tab 胶囊化（px-3 pt-3 pb-1）+ 内容 max-w-960 居中 + p-5；朗读条改 sticky 圆钮
+- [ ] B6 assistant 消息全文无卡排版（上游 ChatStream：prose max-w-80ch，无气泡卡）；user 右对齐 max-w-85% 圆角气泡保留
+- [ ] B7 starters 单行横滚 + `rows.length>0` 门控；空会话显示摘要卡 +「开始学习」3D CTA（发 starters[0]/专用提示词）
+- [ ] B8 聊天流 px-5 py-6 space-y-6；空态卡化（居中问候+摘要+CTA）
 
-### P2 · 画线笔记（上游 NotebookPanel 选区交互）
-上游：讲解区选区浮动菜单「提问这段 / 加到笔记」、user_note 带 quote 溯源、持久高亮。
-插件落点：讲解 prose selectionchange → 浮动菜单；「提问这段」把引文拼进面板 send；「加到笔记」经 dashboard 新路由存 user_note（zone=record，带 quote）；文本位置锚点（稳定字符偏移，非 DOM 引用）跨重渲还原高亮；笔记区渲染 user 笔记与溯源。
+### C 轨 · 交互逻辑（P11a 快赢 + P11b 闭环）
 
-验收：单测（锚点计算、user_note 路由）+ 3081 实测（选区加笔记→笔记区出现带引用条目→重开面板高亮还原）。
+P11a：
+- [ ] C1 滚动 sticky-follow（80px 贴底容差，上滑脱钩）+ 回底 FAB + 流式红点
+- [ ] C2 停止生成按钮（send↔stop 状态机）+ Esc 中止流式（host session face abort/interrupt 语义，缺则降级：停止后续轮询标记）
+- [ ] C3 焦点球 scrollIntoView（视口外 ±60px 平滑居中）
+- [ ] C4 代码块复制按钮（语言标签 + hover 复制 + 1.5s ✓，enhance 后注入头条）
+- [ ] C5 quiz 提交步进（先选后提交，保留犹豫窗口；本地持久化随步进改）
+- [ ] C7 窄屏选球后自动切 chat 栏
+- [ ] C8 proposal 状态闭环（决策后 applied 金勾 / rejected 徽章只读卡）
+- [ ] C9 删课 toast；复习「随机抽一个 due」交错按钮
+- [ ] C12 点球乐观聚焦（本地先置 focus 再等快照）；armed 确认 Enter=确认；coarse 指针 settle 600ms 分档；触屏水平滑切栏（上游 swipeTarget 阈值语义）
+- [ ] C13 点空白吹哨→companion poke 事件（物理版并入 P15）
 
-- [x] P2 完成（2026-09-07：verify PASS @ 237；3081 实测浮钮/提问落行/保存+toast/实时高亮/重载还原）
+P11b：
+- [ ] C6 笔记溯源闭环：「回到原文」定位+闪烁；备注编辑；pin；三区折叠+新笔记自动展开
+- [ ] C10 模态 Esc + CanvasStage 缩放（并入 P14 大件）
+- [ ] C11 对话流逐消息朗读（🔊 + n/total + 句级 karaoke 高亮，复用 readaloud/highlights）
+- [ ] C14 流内 reasoning 折叠块 + 工具调用三态 chip（loading/ready/error；宿主事件流有则渲染，无则降级占位行）
+- [ ] C15 GlobalTooltip（portal + hover 跟随 + 长按 500ms 通道 + 视口钳制）；ConfirmCard 锚定浮层化（outside/Esc/Enter + 翻转）
 
-### P3 · 复习面（上游 ReviewPanel + 自评卡 + 复习提醒）
-上游：复习抽屉（due 列表）、讲解底部 SM-2 自评卡（again/hard/good/easy）、due 主动 toast（每会话一次）。
-插件落点：rail 复习盒升级为抽屉；自评卡四键 → `study_record_review`（工具已存在，补 UI）；due 提醒 toast（P6 之上，每开面板一次）。
+### D 轨 · 大件（P12-P15 + P17）
 
-验收：单测（自评→工具参数映射）+ 3081 实测（自评打分→state 的 review 记录变化；due>0 开面板出提醒）。
+- [ ] D1/P12 考试作答 UI（ExamView 五态：generating 进度→ready 元信息+开始+重出题确认→answering 逐题限时 60/90s+超时自动记+KC chip→submitting→result 星级+KC 分解+逐题回顾+重考/重出题）+ 考试离开守卫（导航拦截警告模态）+ exam-v2 后台题库语义（宿主模型经 tutor 出题，题库状态入 state.json）
+- [ ] D2/P13 庆祝粒子层（CelebrationLayer：correct/wrong/mastery/unlock/streak/energy-full/exam-pass；锚定 quiz 卡/解锁球；reduced-motion 静态降级）
+- [ ] D3/P14 黑板 board tab + CanvasStage（平移/捏合/滚轮/双击适屏 + −/%/适屏/+ 浮动工具条；mermaid/对比表/代码走查/概念图模态全部接入）
+- [ ] D4 流内 artifact 内联渲染（quiz 可直接作答）——sediment 模型并存（流内优先展示未见过的）
+- [ ] D5/P15 物理地图：vendor matter-js + 上游 mapPhysics.ts（createSectionIsland/classifyPointer/squash/绳链粒子）；拖拽（阈值分类点击 vs 拖拽、锁定球禁拖、300ms click 抑制、touch-action pan-y）；天气画布（attachSky/attachOrbWeather：雨/雪/雾 preset、碰撞事件队列、雪载真值）；视口 ±200px 冻结节流；FPS 实测 ≥40（低于两轮→停：降级需用户确认）
+- [ ] D6 地图氛围补全：季节滤镜 env-*、解锁庆祝锚点、流式球 spinner、世界切换器（study/practice 分组）
+- [ ] D7 导入面板：六来源 tab 化（URL/MD/文件夹/EPUB/课程包；语音 tab 不做）+ 安装式进度屏（步骤打勾/耗时/自动滚底）+「导入进行中」占位（轮询 courses 数变化）；agent 代办管线不变
+- [ ] D8 ErrorBoundary（prose/markdown 危险区包裹）+ 代码块共享（chat+notebook 同一 CodeBlock 头条）
 
-- [x] P3 完成（2026-09-07：verify PASS @ 238；3081 实测 nudge+动作/三档自评→SM-2 前进/due 清零/duebox 可点跳转）
+### P0 · 宿主能力探测（P16/P17 前置一轮）
 
-### P4 · 全文课程搜索（上游 CourseSearchPanel）
-插件落点：rail 搜索升级——标题未命中走全文（dashboard 路由代理 store 全文搜索，`study_courses` 已有该能力）；结果面板列 命中课时+片段，点击 setFocus 跳转。
+- [ ] 探测宿主 API：模型/effort 切换接口、上下文用量（token/事件）、附件注入、全局快捷键注册、主题信号（html 属性/事件）、tab 切换。产出：可行性矩阵写入本节；缺口项按"等价降级+记录"处理
 
-验收：单测（搜索代理路由）+ 3081 实测（输入正文关键词→命中→跳转 focus）。
+### P16 · 明暗双主题
 
-- [x] P4 完成（2026-09-07：verify PASS @ 239；3081 实测正文关键词→面板→点击跳转+清理）
+- [ ] 上游 html.light 全套 token 移植为 `.lks-ui[data-lks-theme=light]`（或宿主属性直连）覆盖块；浅色 surface/ink/语义色/shiki 翻转（--shiki-light）；map-rail-scope 暗锁等价物；主题跟随宿主切换（监听宿主主题属性/事件，无 API 则 MutationObserver html 属性 + prefers-color-scheme）；审计探针两主题 suspect=0
 
-### P5 · 提案横幅 + 面板尾巴（0.14.0 重构欠账）
-- 掌握度提案横幅（上游 ConfirmCard 语义）：pendingProposals 非空时聊天列顶部横幅，接受/再练练 → 面板内 send（对应 `study_resolve_proposal`）。
-- 栏分区真实折叠（点击切换，记忆分区状态）。
-- 首字前思考指示（attempt 进行中、无 text-delta 时显示思考行）。
-- 窄屏堆叠（容器断点：三栏→单栏+列切换）。
+### P17 · 替换宿主能力（宿主只留模型后端）
 
-验收：单测（折叠记忆、横幅动作文本）+ 3081 实测（构造 pendingProposal→横幅出现→点接受→state 清空；窄容器列切换可用）。
+- [ ] E1 ContextMeter（上下文用量条：宿主有用量 API 用之；缺→会话事件字符量估算，标注估算口径）
+- [ ] E2 v0.27 历史预算裁剪（面板侧配置 + tutor 提示词指令化；裁剪执行在导师层）
+- [ ] E3 composer 附件（图片粘贴/拖入/选择→study 工作区落盘 + 导师可见路径；宿主 intake 缺则走 dashboard 路由）
+- [ ] E4 CommandPalette（Cmd+K 面板内版：课程/课时搜索+跳转、开始复习、切课、开始学习；宿主快捷键冲突则面板聚焦时捕获）
+- [ ] E5 线程切换器（lessonSessions 会话列表 pill 行：当前课时线程 + 已开线程跳转，宿主 sessions API 驱动）
+- [ ] E6 模型/effort 切换面（宿主有 API→完整 UI；缺→只读显示当前模型 + 缺口记录）
+- [ ] E7 字号 A−/A+（面板根字号三档持久化）
 
-- [x] P5 完成（2026-09-07：verify PASS @ 240；3081 实测横幅+接受/思考行 1.75s 捕获/分区折叠/窄屏切换）
+### P18 · 终审发版
 
-### P7 · 伴学生物 DOM 移植（上游 companion/*）
-上游：五形态注册表（astro/ember/frost/ink/moss）、Mascot、朗读避让（整句行盒）、庆祝落点、v0.28 打磨。
-插件落点：面板右下角 SVG/CSS creature；订阅朗读控制器与毕业/答对事件做表情动作；朗读时避让当前句（面板内 DOM；粒子降级 CSS）；形态选择进 settings。
-**刹车：此单项超 4 轮仍无可用形态 → 停下问用户砍/降级。**
+- [ ] judge 全项 ≥8；全量 Playwright 验收矩阵（下节）逐项过；README 截图重拍（明暗两套）；AGENTS.md 更新（新架构/新 vendor/主题机制）；发版 0.21.0 + web-lks 重装验证 + 共享 web profile 依赖行升级（若 3080 空闲）
 
-验收：单测（事件→动作映射）+ 3081 实测（生物随朗读/答对有动作）。
+## Playwright 验收矩阵（终态逐项一条可复核断言）
 
-- [x] P7 完成（2026-09-07：verify PASS @ 241；3081 实测 poke 庆祝+衰减/形态切换/朗读联动；Electron 原生生命系统按设计不移植）
+1. 明/暗主题切换跟随宿主，两主题审计 suspect=0（`scripts/audit-ui.mjs` 退出码 0）
+2. 物理地图：球可拖拽（pointer 事件位移>阈值判定拖拽）、松手回弹、绳链跟随、点击仍跳焦点；FPS≥40
+3. 天气画布渲染（preset 按课程哈希）；点空白→伴学召唤响应
+4. 考试五态链路可走通（开始→作答→提交→星级结算→重考）；answering 中点其他球→离开守卫弹窗
+5. 答对 quiz→庆祝粒子锚定卡片喷发；解锁新课→unlock 粒子锚定球
+6. CanvasStage：模态内滚轮缩放/拖拽平移/适屏钮；mermaid 大图可读
+7. 滚动：上滑脱钩+回底 FAB 出现+红点；停止按钮中断流式（busy 复位）
+8. ContextMeter 显示用量；附件粘贴→工作区落盘→导师可引用；Cmd+K 面板搜索跳转
+9. B6：assistant 长文全文排版（无卡片背景），user 气泡右对齐
+10. 线程切换器列出已开课时线程并可切换；A−/A+ 三档字号持久化
+11. 笔记「回到原文」定位闪烁；代码块复制 ✓ 反馈
+12. 逐消息朗读 n/total + 当前句 karaoke 高亮
 
-### P8 · 终审与发版
-- 对照本 SPEC 逐项 grep/读码核对，无一未解释缺项；上游 `git diff v0.27.0..v0.28.0` 复扫（伴学视觉打磨之外是否有漏）。
-- AGENTS.md / README / backlog 重写；judge-criteria 若导师行为有变则同步。
-- `pnpm run judge` 复跑 PASS；`node scripts/release.mjs 0.15.0`。
+## 技术注记（跨轮次有效）
 
-- [x] P8 完成（2026-09-07）
-  - 终审：上游 v0.27→v0.28 diff 复扫 = 伴学视觉打磨（按设计不移植）+ highlightText/speech-text 微调（v0.3.3 方案仍现行）——无一未解释缺项
-  - judge 复跑：PASS（8 项全 10/10，livetest-output.md 394 行由 livetest-run 重生成）
-  - AGENTS/README 重写（30 工具、新客户端模块、伴学生物移植说明）；verify PASS @ 241
-  - 发版 0.15.0
+- 零依赖客户端包铁律：matter-js 必须 vendor 进 `src/vendor/`（上游 mapPhysics 依赖 matter-js；vendor 其最小构建或源码子集，带 provenance 头）；react 仍是唯一 external。
+- 上游文件本地 CRLF；diff 用 `git diff --no-index --strip-trailing-cr` 或先 dos2unix 临时副本。
+- heredoc 陷阱：`<<'PYEOF'` 会吞反斜杠/引号——CSS/TSX 大改用 Edit/Write 工具。
+- Playwright：domcontentloaded（非 networkidle）；无限动画元素（球/伴学）点击用 `dispatchEvent('click')`；localStorage 持久化用同 context reload；截图不可读（CDN quirk）——以 getComputedStyle/DOM 断言为证据。
+- web-lks 轮换：kill 3081 PID（taskkill //PID x //T //F）→ `corepack pnpm -C <profile> remove dsh-plugin-lookatstudy` → restore file: dep → `corepack pnpm -C <profile-dir> add file:...`（必须 remove+add，plain install 保 stale copy）→ harness 根目录 reboot（`set -a; source .env; set +a; node --import tsx/esm apps/cli/src/bin.ts --profile web-lks --port 3081 --no-open`）→ token 从日志抓。
+- 3080 是 stardeck 共享 web profile 直连——全程禁碰；共享 state（~/.dsh/lookatstudy-plugin/state.json）改动前先看内容。
+- 禁改测试/判据凑达标；每轨测试只增不减（N₀=248）。
+- dsh 宿主 API 现状（2026-08 审计）：42 slots、无 tab 切换 API——P0 探测以此为起点复核 rc.2+ 新增。
 
-## 已知坑（执行时带brain）
-- 事件窗口只对 current 会话开；产物提取与聊天流共用同一订阅。
-- 机制 user/message 白名单（source.kind==='user'）别被产物通道破坏；tool/result 只进产物卡，不进聊天气泡。
-- 上游 canvas 重复保存教训：内容 key 幂等，不用消息 id。
-- file: 依赖是拷贝：每轮实测前 remove→restore→install；3080 是 stardeck 活服务，禁碰。
-- 发版前 verify 必绿；`pnpm run build | grep` 会吞退出码。
-- 新工具走 schema-conformance 门：先证红再信绿。
+### P10a 完成记录（2026-09-07）
+
+- A1-A10 全部落地：upstream-theme.ts A-track 块（token 补全/孤岛覆盖/六个上游动画/toast 上游值/滚动条/prose 链接）、emoji→SVG（bolt/flame/arrow-up/close/maximize 五处）、scripts/audit-ui.mjs 审计门。
+- 审计探针抓到真 bug：UA `button{color:buttontext}`（黑）——修复为 `.lks-ui button{color:inherit;background-color:transparent;border-color:transparent}`（低特异性，组件规则全胜）。
+- 实测：249 tests + verify PASS + audit suspect=0 (exit 0)。
