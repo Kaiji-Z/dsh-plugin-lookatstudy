@@ -236,3 +236,35 @@ export function IconLoaderArc16({ size = 16, className }: IconProps) {
   },
     createElement('circle', { cx: 8, cy: 8, r: 6, stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-dasharray': '28 10' }))
 }
+
+/** IconLinkOutline16 — the URL import tab glyph (upstream: lucide Link) */
+export function IconLinkOutline16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M6.5 9.5 9.5 6.5M4.7 11.3a2.6 2.6 0 0 1 0-3.7l1.6-1.6M11.3 4.7a2.6 2.6 0 0 1 0 3.7l-1.6 1.6M5.2 3.2 4 4.4a3.4 3.4 0 0 0 0 4.8l.8.8M10.8 12.8 12 11.6a3.4 3.4 0 0 0 0-4.8l-.8-.8', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linecap': 'round' }))
+}
+
+/** IconDocOutline16 — the markdown import tab glyph (upstream: lucide FileText) */
+export function IconDocOutline16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M9 1.5H3.5v13h9V5L9 1.5ZM9 1.5V5h3.5M5.5 8h5M5.5 10.5h5M5.5 5.5h2', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
+}
+
+/** IconFolderOutline16 — the folder import tab glyph (upstream: lucide FolderDown) */
+export function IconFolderOutline16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M1.5 3.5v9h13v-7H8l-1.5-2h-5ZM8 8v3M6.4 9.6 8 11l1.6-1.4', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
+}
+
+/** IconBoxOutline16 — the course-pack import tab glyph (upstream: lucide Package) */
+export function IconBoxOutline16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M8 1.5 14 4.5v7L8 14.5 2 11.5v-7L8 1.5ZM2 4.5 8 7.5l6-3M8 7.5v7', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
+}

@@ -638,4 +638,41 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-typing-dot{width:6px;height:6px;border-radius:999px;background:currentColor;animation:lks-blink 1.2s ease-in-out infinite}
 @keyframes lks-spin{to{transform:rotate(360deg)}}
 @keyframes lks-blink{0%,100%{opacity:.25}50%{opacity:1}}
+
+/* ── D7: the import pane — five source tabs + the installer progress screen ── */
+.lks-ui .lks14-importcta{display:flex;align-items:center;gap:7px;width:100%;padding:10px 12px;margin-top:10px;border:1.5px dashed var(--border);border-radius:12px;background:none;color:var(--ink-muted);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer;transition:all .15s}
+.lks-ui .lks14-importcta:hover{color:var(--ink-strong);border-color:var(--brand)}
+.lks-ui .lks14-importcta svg{transition:transform .2s var(--ease-out-back)}
+.lks-ui .lks14-importcta.open svg{transform:rotate(45deg)}
+.lks-ui .lks14-importcta.open{color:var(--brand);border-color:color-mix(in srgb,var(--brand) 50%,transparent)}
+.lks-ui .lks14-importtabs{display:flex;flex-wrap:wrap;gap:4px;padding:4px;margin-top:10px;border-radius:10px;background:rgb(255 255 255/0.05)}
+.lks-ui .lks14-importtab{flex:1;min-width:64px;display:flex;align-items:center;justify-content:center;gap:4px;padding:6px 2px;border:none;border-radius:7px;background:none;color:rgb(255 255 255/0.5);font:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:color .15s}
+.lks-ui .lks14-importtab:hover{color:rgb(255 255 255/0.8)}
+.lks-ui .lks14-importtab.on{background:color-mix(in srgb,var(--brand) 15%,transparent);color:var(--brand)}
+.lks-ui .lks14-importtab:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
+.lks-ui .lks14-importform{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.lks-ui .lks14-importmd{resize:vertical;min-height:76px;font-family:inherit}
+.lks-ui .lks14-importbtn{width:100%}
+.lks-ui .lks14-importfile{display:none}
+.lks-ui .lks14-import-success,.lks-ui .lks14-import-error{padding:8px 10px;margin-top:10px;border-radius:10px;font-size:12px}
+.lks-ui .lks14-import-success{border:1px solid color-mix(in srgb,var(--brand) 30%,transparent);color:var(--brand)}
+.lks-ui .lks14-import-error{border:1px solid color-mix(in srgb,var(--warning) 40%,transparent);color:var(--warning-light)}
+/* the installer progress screen (replaces the form while a job runs) */
+.lks-ui .lks14-importprog{margin-top:10px;padding:14px;border-radius:14px;background:rgb(0 0 0/0.3);border:1px solid color-mix(in srgb,var(--brand) 30%,transparent)}
+.lks-ui .lks14-importprog-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.lks-ui .lks14-importprog-spin{flex:none;width:15px;height:15px;border:2px solid var(--brand);border-top-color:transparent;border-radius:999px;animation:lks-spin 1s linear infinite}
+.lks-ui .lks14-importprog-title{font-size:13px;font-weight:800;color:var(--ink-strong)}
+.lks-ui .lks14-importprog-cancel{margin-left:auto;border:none;background:none;color:rgb(255 255 255/0.5);font:inherit;font-size:11px;cursor:pointer;transition:color .15s}
+.lks-ui .lks14-importprog-cancel:hover{color:var(--warning-light)}
+.lks-ui .lks14-importprog-note{font-size:11px;color:rgb(255 255 255/0.4);margin-bottom:8px}
+.lks-ui .lks14-importprog-src{font-size:11px;color:rgb(255 255 255/0.4);font-family:var(--font-mono,monospace);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
+.lks-ui .lks14-importprog-steps{display:flex;flex-direction:column;gap:6px;max-height:40vh;overflow-y:auto;padding-right:4px}
+.lks-ui .lks14-importprog-step{display:flex;align-items:flex-start;gap:6px;font-size:11px}
+.lks-ui .lks14-importprog-step .lks14-importprog-check{flex:none;color:var(--brand);font-weight:800;line-height:1.3}
+.lks-ui .lks14-importprog-step .lks14-importprog-dots{flex:none;width:10px;height:10px;margin-top:2px;border:2px solid var(--brand);border-top-color:transparent;border-radius:999px;animation:lks-spin 1s linear infinite}
+.lks-ui .lks14-importprog-step.done .lks14-importprog-text{color:rgb(255 255 255/0.4)}
+.lks-ui .lks14-importprog-step.working .lks14-importprog-text{color:rgb(255 255 255/0.9)}
+.lks-ui .lks14-importprog-step.pending .lks14-importprog-text{color:rgb(255 255 255/0.25)}
+.lks-ui .lks14-importprog-step.pending .lks14-importprog-dots{animation:none;border-color:rgb(255 255 255/0.15)}
+.lks-ui .lks14-importprog-elapsed{margin-left:4px;color:rgb(255 255 255/0.35)}
 `

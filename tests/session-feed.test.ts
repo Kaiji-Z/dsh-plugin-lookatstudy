@@ -220,3 +220,30 @@ test('D4: the sediment backlog drops inline-rendered artifacts and orders unseen
     'inline quiz-2 drops out; unseen cmp-1 sorts ahead of seen quiz-1')
   assert.deepEqual(sedimentBacklog([a1], new Set(), []).map(a => a.id), ['quiz-1'])
 })
+
+// ——— D7: the import progress fold + the epub tab's path fold ———
+
+import { importProgressOf, IMPORT_TOOLS } from '../src/client/session-feed.ts'
+import { epubFolderPath } from '../src/client/panel.tsx'
+
+test('D7: importProgressOf folds the import pipeline off the thread\'s tool chips', () => {
+  const mk = (rows: Array<[string, string | undefined]>) => rows.map(([name, state], i) => ({ key: `t${i}`, role: 'tool' as const, text: name, toolState: state as never }))
+  assert.deepEqual(importProgressOf([]), { fetch: { state: 'absent' }, apply: { state: 'absent' } }, 'no import rows → both absent')
+  assert.deepEqual(importProgressOf(mk([['study_lesson', 'done']])), { fetch: { state: 'absent' }, apply: { state: 'absent' } }, 'non-import tools never count')
+  assert.deepEqual(importProgressOf(mk([['study_import_url', 'loading']])), { fetch: { state: 'loading' }, apply: { state: 'absent' } }, 'fetch working')
+  assert.deepEqual(importProgressOf(mk([['study_import_markdown', 'done']])), { fetch: { state: 'done' }, apply: { state: 'absent' } }, 'markdown import: no apply step')
+  assert.deepEqual(importProgressOf(mk([['study_import_github', 'done'], ['study_apply_design', 'loading']])),
+    { fetch: { state: 'done' }, apply: { state: 'loading' } }, 'design phase → apply in flight')
+  assert.deepEqual(importProgressOf(mk([['study_import_github', 'error']])), { fetch: { state: 'error' }, apply: { state: 'absent' } }, 'fetch failure surfaces')
+  // a retry: the LAST row for a name carries the truth
+  assert.deepEqual(importProgressOf(mk([['study_import_folder', 'error'], ['study_import_folder', 'done']])),
+    { fetch: { state: 'done' }, apply: { state: 'absent' } }, 'the last chip wins (retry after error)')
+  for (const name of IMPORT_TOOLS) assert.equal(importProgressOf(mk([[name, 'loading']])).fetch.state, 'loading')
+})
+
+test('D7: epubFolderPath folds an .epub file path to its parent folder (the scanner imports folders)', () => {
+  assert.equal(epubFolderPath('D:/books/我的电子书.epub'), 'D:/books')
+  assert.equal(epubFolderPath('D:\\books\\sub\\book.epub'), 'D:/books/sub', 'windows separators normalize')
+  assert.equal(epubFolderPath('D:/books'), 'D:/books', 'a folder path passes through')
+  assert.equal(epubFolderPath('/book.epub'), '/book.epub', 'root-level file has no parent to fold to — passes through')
+})

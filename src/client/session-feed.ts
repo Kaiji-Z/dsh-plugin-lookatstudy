@@ -222,6 +222,41 @@ export function sedimentBacklog(artifacts: readonly ArtifactLike[], inlineIds: R
 }
 
 /**
+ * D7: the import pipeline's observable steps, folded from the bound thread's
+ * tool rows (the plugin's import runs as a tutor turn — upstream's five-step
+ * job collapses to what the wire can honestly show):
+ *   fetch (清点) — the import tool call, loading → done/error
+ *   design (设计) — the stretch between fetch done and apply (assistant streaming)
+ *   apply (落库) — study_apply_design, loading → done/error
+ *   complete (完成) — the course-count watcher (state poll), not a tool row
+ * Pure; the pane maps these onto its four step rows.
+ */
+export interface ImportToolStep {
+  readonly state: 'absent' | 'loading' | 'done' | 'error'
+}
+
+export function importProgressOf(rows: readonly ChatRow[]): { fetch: ImportToolStep; apply: ImportToolStep } {
+  // a tool row is born 'loading' at its call and re-settled by its result —
+  // the LAST row for a name carries its current truth.
+  const last = (name: string): ImportToolStep => {
+    let state: ImportToolStep['state'] = 'absent'
+    for (const r of rows) {
+      if (r.role === 'tool' && r.text === name) state = r.toolState ?? 'loading'
+    }
+    return { state }
+  }
+  let fetch: ImportToolStep = { state: 'absent' }
+  for (const name of ['study_import_url', 'study_import_github', 'study_import_folder', 'study_import_markdown']) {
+    const s = last(name)
+    if (s.state !== 'absent') fetch = s
+  }
+  return { fetch, apply: last('study_apply_design') }
+}
+
+/** The tool names that begin an import turn (D7 — the tab set's funnel). */
+export const IMPORT_TOOLS: ReadonlySet<string> = new Set(['study_import_url', 'study_import_github', 'study_import_folder', 'study_import_markdown'])
+
+/**
  * Fold one event-window snapshot into ordered chat rows. The transient
  * `text-delta` chunks of the most recent attempt accumulate into a single
  * streaming row (the durable `assistant/message` replaces it on settlement).

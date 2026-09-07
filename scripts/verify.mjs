@@ -220,6 +220,12 @@ gate('bundle', () => {
     [client, 'lks-worldswitch', 'the two-world switcher'],
     [client, 'lks-stream-note', 'the rail streaming notice'],
     [client, 'env-spring', 'the seasonal env filter rules'],
+    // 0.18.0 D7: the import pane tabs + installer progress screen
+    [client, 'importProgressOf', 'the import tool-chip fold'],
+    [client, 'epubFolderPath', 'the epub tab path fold'],
+    [client, 'lks14-importcta', 'the import CTA toggle'],
+    [client, 'lks14-importprog', 'the installer progress screen'],
+    [client, 'import-tab-', 'the five source tabs'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [

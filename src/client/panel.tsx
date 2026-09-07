@@ -19,6 +19,7 @@ import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
   IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16, IconWrenchOutline16,
+  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16,
 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
@@ -27,7 +28,7 @@ import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
 import { renderLessonConceptMap } from './diagrams.ts'
 import { speechSentencesOf } from '../vendor/speech-text.ts'
 import { speakMathInSentence } from '../vendor/math-speech.ts'
-import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog } from './session-feed.ts'
+import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog, importProgressOf } from './session-feed.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { QuizCard, type QuizData } from './quizcard.tsx'
@@ -212,6 +213,8 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   }, [setFocus])
   const onExamSession = useCallback((session: ExamSession): void => { examSessionRef.current = session }, [])
   const [rows, setRows] = useState<ReturnType<typeof feedRows>>([])
+  // D7: the import tool chips folded for the rail's import watchers/progress.
+  const importProgress = useMemo(() => importProgressOf(rows), [rows])
   const [feedAttached, setFeedAttached] = useState(false)
   const [draft, setDraft] = useState('')
   const [narrowPane, setNarrowPane] = useState<'rail' | 'chat' | 'note'>(pickNarrowPane(null))
@@ -462,7 +465,11 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       // C13: tapping map blank space pokes the companion (whistle essence).
       onBlankTap: () => { setCompanionEvent('poke') },
       // D6: the bound thread's turn is live → its ball spins on the map.
-      streamingLessonId: feedGen && lesson !== null ? lesson.lessonId : null }),
+      streamingLessonId: feedGen && lesson !== null ? lesson.lessonId : null,
+      // D7: the import watchers ride the turn state + the import tool chips.
+      turnActive: feedGen,
+      importProgress,
+      stop }),
     createElement('div', { className: 'lks14-righthalf' },
       createElement('div', { className: 'lks14-appheader' },
         createElement('span', { className: 'lks-hdr-title' }, lesson?.courseTitle ?? tr('tab.label')),
@@ -584,7 +591,7 @@ export function setPanelShell(shell: { suppressHandBack(fn: () => void): void } 
 }
 
 /** 左栏:course picker, tree, review box, import. */
-function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, onBlankTap, streamingLessonId }: {
+function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, onBlankTap, streamingLessonId, turnActive, importProgress, stop }: {
   data: StudyData
   activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
@@ -597,6 +604,12 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   onBlankTap: () => void
   /** D6: the lesson whose tutor thread is streaming (spinner ball + rail notice). */
   streamingLessonId: string | null
+  /** D7: the bound thread's turn is live (the import watchers key off it). */
+  turnActive: boolean
+  /** D7: the import tools' chip states folded from the bound thread. */
+  importProgress: { fetch: { state: string }; apply: { state: string } }
+  /** D7: stops the running turn (the import cancel). */
+  stop: () => void
 }): ReactNode {
   const [selectedCourse, setSelectedCourse] = useState('')
   const [query, setQuery] = useState('')
@@ -636,6 +649,35 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   // TDZ trap has bitten here; a stale practice selection on a course without
   // one would strand the rail on an empty view).
   useEffect(() => { setWorld('study') }, [courseId])
+  // D7: the import job watcher — success is the course-count poll (a new id
+  // appears), failure is the turn ending with nothing new; cancel stops the
+  // turn. sawTurn rides the prop transitions (queue latency means the turn
+  // starts a beat AFTER the submit).
+  const [importJob, setImportJob] = useState<ImportJob | null>(null)
+  const [importResult, setImportResult] = useState<{ ok: boolean; msg: string } | null>(null)
+  const sawTurnRef = useRef(false)
+  if (importJob !== null && turnActive) sawTurnRef.current = true
+  const startImport = (label: string, prompt: string): void => {
+    setImportResult(null)
+    sawTurnRef.current = false
+    setImportJob({ label, startedAt: Date.now(), baselineIds: new Set((data?.courses ?? []).map(c => c.courseId)) })
+    send(prompt)
+  }
+  useEffect(() => {
+    if (importJob === null || data === null) return
+    const fresh = data.courses.find(c => !importJob.baselineIds.has(c.courseId))
+    if (fresh !== undefined) {
+      setImportJob(null)
+      setImportResult({ ok: true, msg: tr('import.success') })
+      setSelectedCourse(fresh.courseId)
+      setPanel('map')
+      return
+    }
+    if (sawTurnRef.current && !turnActive) {
+      setImportJob(null)
+      setImportResult({ ok: false, msg: tr('import.error.turn') })
+    }
+  }, [data?.courses, importJob, turnActive])
   const course = data?.courses.find(c => c.courseId === courseId) ?? null
   // C13: blank-tap classification (a >6px move is a drag/scroll, not a whistle).
   const blankDown = useRef<{ x: number; y: number } | null>(null)
@@ -837,7 +879,18 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       className: 'lks-btn ghost lks14-raildemo',
       onClick: () => { send(tr('prompt.import', { url: 'https://github.com/microsoft/AI-For-Beginners' })) },
     }, createElement(IconDownloadOutline16, null), tr('rail.empty.demo')),
-    createElement(ImportRow, { send }),
+    createElement(ImportPanel, {
+      job: importJob,
+      progress: importProgress,
+      turnActive,
+      result: importResult,
+      onStart: startImport,
+      onCancel: () => {
+        stop()
+        setImportJob(null)
+        setImportResult({ ok: false, msg: tr('import.cancelled') })
+      },
+    }),
   )
 
   // Search overlay: pill opens it; Esc/Enter/click-through close or jump.
@@ -960,30 +1013,211 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   )
 }
 
-function ImportRow({ send }: { send: PanelSend }): ReactNode {
+type ImportTab = 'url' | 'md' | 'folder' | 'epub' | 'pack'
+
+/** One import job in flight (D7) — the tutor turn owns the work; this is the pane's watcher state. */
+interface ImportJob {
+  readonly label: string
+  readonly startedAt: number
+  readonly baselineIds: ReadonlySet<string>
+}
+
+/**
+ * D7 (upstream ImportPanel): the five honest source tabs — URL / MD / folder /
+ * EPUB / course-pack (upstream's sixth, audio, is local Whisper transcription
+ * and is deliberately not ported). Every tab funnels into ONE tutor prompt —
+ * the agent pipeline is unchanged. While the job runs, an installer-style
+ * progress screen replaces the form: step rows flip working→done off the
+ * thread's tool chips, the working row carries a live elapsed counter, the
+ * step log auto-scrolls, and cancel stops the turn.
+ */
+function ImportPanel({ job, progress, turnActive, result, onStart, onCancel }: {
+  job: ImportJob | null
+  progress: { fetch: { state: string }; apply: { state: string } }
+  turnActive: boolean
+  result: { ok: boolean; msg: string } | null
+  onStart: (label: string, prompt: string) => void
+  onCancel: () => void
+}): ReactNode {
+  const [tab, setTab] = useState<ImportTab>('url')
+  const [open, setOpen] = useState(false)
   const [url, setUrl] = useState('')
-  return createElement('div', { className: 'lks14-import' },
-    createElement('div', { className: 'lks14-inputrow' },
+  const [mdName, setMdName] = useState('')
+  const [md, setMd] = useState('')
+  const [folder, setFolder] = useState('')
+  const [epub, setEpub] = useState('')
+  const packRef = useRef<HTMLInputElement | null>(null)
+  // the elapsed ticker — one beat per second while a job runs
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (job === null) return
+    const t = setInterval(() => { setTick(x => x + 1) }, 1000)
+    return () => { clearInterval(t) }
+  }, [job === null])
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el !== null) el.scrollTop = el.scrollHeight
+  })
+
+  const tabs: Array<{ k: ImportTab; label: string; icon: (p: { size?: number }) => ReactNode }> = [
+    { k: 'url', label: tr('import.tab.url'), icon: IconLinkOutline16 },
+    { k: 'md', label: tr('import.tab.md'), icon: IconDocOutline16 },
+    { k: 'folder', label: tr('import.tab.folder'), icon: IconFolderOutline16 },
+    { k: 'epub', label: tr('import.tab.epub'), icon: IconBookFill16 },
+    { k: 'pack', label: tr('import.tab.pack'), icon: IconBoxOutline16 },
+  ]
+
+  // The installer screen (upstream: the progress card replaces the form).
+  if (job !== null) {
+    const fetchS = progress.fetch.state
+    const applyS = progress.apply.state
+    const failed = fetchS === 'error' || applyS === 'error'
+    type RowState = 'done' | 'working' | 'pending'
+    const rows: Array<{ label: string; state: RowState }> = [
+      { label: tr('import.step.fetch'), state: fetchS === 'done' || fetchS === 'error' ? 'done' : 'working' },
+      { label: tr('import.step.design'), state: (fetchS === 'done' && (applyS !== 'absent' || !turnActive)) || applyS !== 'absent' ? 'done' : fetchS === 'done' ? 'working' : 'pending' },
+      { label: tr('import.step.apply'), state: applyS === 'done' || applyS === 'error' ? 'done' : applyS === 'loading' ? 'working' : 'pending' },
+      { label: tr('import.step.done'), state: applyS === 'done' ? 'working' : 'pending' },
+    ]
+    const elapsed = Math.floor((Date.now() - job.startedAt) / 1000)
+    return createElement('div', { className: 'lks14-importprog', 'data-testid': 'import-progress' },
+      createElement('div', { className: 'lks14-importprog-head' },
+        createElement('span', { className: 'lks14-importprog-spin', 'aria-hidden': 'true' }),
+        createElement('span', { className: 'lks14-importprog-title' }, tr('import.progress.title')),
+        createElement('button', {
+          className: 'lks14-importprog-cancel',
+          'data-testid': 'import-cancel-btn',
+          onClick: onCancel,
+        }, tr('import.progress.cancel'))),
+      createElement('div', { className: 'lks14-importprog-note' }, tr('import.progress.note')),
+      createElement('div', { className: 'lks14-importprog-src' }, job.label),
+      failed
+        ? createElement('div', { className: 'lks14-import-error', 'data-testid': 'import-error' }, tr('import.error', { msg: '' }))
+        : null,
+      createElement('div', { ref: scrollRef, className: 'lks14-importprog-steps' },
+        rows.length === 0
+          ? createElement('div', { className: 'lks14-importprog-step pending' }, tr('import.progress.starting'))
+          : rows.map((row, i) => createElement('div', {
+            key: i,
+            className: `lks14-importprog-step ${row.state}`,
+            'data-step': String(i + 1),
+            'data-state': row.state,
+          },
+            row.state === 'done'
+              ? createElement('span', { className: 'lks14-importprog-check', 'aria-hidden': 'true' }, '✓')
+              : createElement('span', { className: 'lks14-importprog-dots', 'aria-hidden': 'true' }),
+            createElement('span', { className: 'lks14-importprog-text' }, row.label,
+              row.state === 'working' ? createElement('span', { className: 'lks14-importprog-elapsed' }, tr('import.progress.elapsed', { s: elapsed })) : null))))
+    )
+  }
+
+  const form: ReactNode = tab === 'url'
+    ? createElement('div', { className: 'lks14-importform', 'data-testid': 'import-url-section' },
       createElement('input', {
-        className: 'lks14-search',
-        type: 'url',
-        placeholder: tr('rail.empty.placeholder'),
-        value: url,
+        className: 'lks14-search', type: 'url', placeholder: tr('rail.empty.placeholder'), value: url,
         onChange: (e: { target: { value: string } }) => { setUrl(e.target.value) },
         onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
-          if (e.key === 'Enter' && url.trim() !== '') send(tr('prompt.import', { url: url.trim() }))
+          if (e.key === 'Enter' && url.trim() !== '') onStart(tr('import.tab.url'), tr('prompt.import.url', { url: url.trim() }))
         },
       }),
+      createElement('div', { className: 'lks14-hint' }, tr('import.url.desc')),
       createElement('button', {
-        className: 'lks-btn primary',
-        disabled: url.trim() === '',
-        onClick: () => { send(tr('prompt.import', { url: url.trim() })) },
-      }, tr('rail.empty.button')),
-    ),
-    createElement('div', { className: 'lks14-hint' },
-      tr('rail.empty.hint'), createElement('br'),
-      tr('rail.empty.hint2')),
+        className: 'lks-btn primary lks14-importbtn', disabled: url.trim() === '',
+        onClick: () => { onStart(tr('import.tab.url'), tr('prompt.import.url', { url: url.trim() })) },
+      }, tr('import.btn.url')))
+    : tab === 'md'
+      ? createElement('div', { className: 'lks14-importform' },
+        createElement('input', {
+          className: 'lks14-search', placeholder: tr('import.placeholder.name'), value: mdName,
+          onChange: (e: { target: { value: string } }) => { setMdName(e.target.value) },
+        }),
+        createElement('textarea', {
+          className: 'lks14-search lks14-importmd', rows: 4, placeholder: tr('import.placeholder.md'), value: md,
+          onChange: (e: { target: { value: string } }) => { setMd(e.target.value) },
+        }),
+        createElement('button', {
+          className: 'lks-btn primary lks14-importbtn', disabled: md.trim() === '',
+          onClick: () => { onStart(tr('import.tab.md'), tr('prompt.import.md', { title: mdName.trim() === '' ? '' : `(标题「${mdName.trim()}」)`, md: md.trim() })) },
+        }, tr('import.btn.md')))
+      : tab === 'folder'
+        ? createElement('div', { className: 'lks14-importform' },
+          createElement('input', {
+            className: 'lks14-search', placeholder: tr('import.folder.pathPlaceholder'), value: folder,
+            onChange: (e: { target: { value: string } }) => { setFolder(e.target.value) },
+            onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
+              if (e.key === 'Enter' && folder.trim() !== '') onStart(tr('import.tab.folder'), tr('prompt.import.folder', { path: folder.trim(), title: '' }))
+            },
+          }),
+          createElement('div', { className: 'lks14-hint' }, tr('import.folder.desc')),
+          createElement('button', {
+            className: 'lks-btn primary lks14-importbtn', disabled: folder.trim() === '',
+            onClick: () => { onStart(tr('import.tab.folder'), tr('prompt.import.folder', { path: folder.trim(), title: '' })) },
+          }, tr('import.btn.folder')))
+        : tab === 'epub'
+          ? createElement('div', { className: 'lks14-importform' },
+            createElement('input', {
+              className: 'lks14-search', placeholder: tr('import.epub.pathPlaceholder'), value: epub,
+              onChange: (e: { target: { value: string } }) => { setEpub(e.target.value) },
+            }),
+            createElement('div', { className: 'lks14-hint' }, tr('import.epub.desc')),
+            createElement('button', {
+              className: 'lks-btn primary lks14-importbtn', disabled: epub.trim() === '',
+              onClick: () => {
+                const file = epub.trim().replaceAll('\\', '/').split('/').pop() ?? ''
+                onStart(tr('import.tab.epub'), tr('prompt.import.epub', { path: epubFolderPath(epub.trim()), file, title: '' }))
+              },
+            }, tr('import.btn.epub')))
+          : createElement('div', { className: 'lks14-importform' },
+            createElement('div', { className: 'lks14-hint' }, tr('import.pack.desc')),
+            createElement('input', {
+              ref: packRef, type: 'file', accept: '.md,.markdown,.txt', className: 'lks14-importfile',
+              onChange: (e: { target: HTMLInputElement & { files: FileList | null } }) => {
+                const file = e.target.files?.[0]
+                if (file === undefined || file === null) return
+                void file.text().then(text => {
+                  onStart(tr('import.tab.pack'), tr('prompt.import.md', { title: `(课程包「${file.name}」)`, md: text }))
+                })
+              },
+            }),
+            createElement('button', {
+              className: 'lks-btn primary lks14-importbtn',
+              onClick: () => { packRef.current?.click() },
+            }, tr('import.btn.pack')))
+
+  return createElement('div', { className: 'lks14-import' },
+    result !== null
+      ? createElement('div', { className: result.ok ? 'lks14-import-success' : 'lks14-import-error' }, result.msg)
+      : null,
+    createElement('button', {
+      className: `lks14-importcta${open ? ' open' : ''}`,
+      onClick: () => { setOpen(o => !o) },
+    }, createElement(IconPlusOutline16, { size: 14 }), tr('import.cta')),
+    open
+      ? createElement('div', { className: 'lks14-importtabs', role: 'tablist' },
+        ...tabs.map(t => createElement('button', {
+          key: t.k,
+          className: `lks14-importtab${tab === t.k ? ' on' : ''}`,
+          role: 'tab',
+          'aria-selected': String(tab === t.k),
+          'data-testid': `import-tab-${t.k}`,
+          onClick: () => { setTab(t.k) },
+        }, createElement(t.icon, { size: 13 }), t.label)))
+      : null,
+    open ? form : null,
   )
+}
+
+/**
+ * The EPUB tab's path preprocessing: an .epub file path folds to its parent
+ * folder (the scanner parses EPUBs it finds inside folders); a folder path
+ * passes through untouched. Pure.
+ */
+export function epubFolderPath(path: string): string {
+  if (!/\.epub$/i.test(path)) return path
+  const norm = path.replaceAll('\\', '/')
+  const cut = norm.lastIndexOf('/')
+  return cut <= 0 ? path : norm.slice(0, cut)
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
