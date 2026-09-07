@@ -502,6 +502,17 @@ export const UPSTREAM_CSS = `
 .lks-confirmcard.danger{border-color:rgb(var(--warning-rgb)/0.4)}
 .lks-confirmcard-msg{font-size:12.5px;color:var(--ink);line-height:1.5;margin-bottom:8px}
 .lks-confirmcard-row{display:flex;gap:8px;justify-content:flex-end}
+/* ══════════ P15 (D5): the physics map — sky canvases + physics mode ══════════ */
+.lks-physky{position:absolute;inset:0;pointer-events:none;z-index:0}
+.lks-sky-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block}
+.lks-orb-weather-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;display:block;z-index:20}
+/* physics mode: the rail column owns the backdrop — let the nav-level sky show through */
+.lks-ui .lks14-rail:has(.lks-physky){background:transparent}
+.lks-ui .lks14-rail:has(.lks-physky) .lks14-railbody,.lks-ui .lks14-rail:has(.lks-physky) .lks14-railscroll{background:transparent}
+/* physics owns the transform — the CSS bob must not fight it (per-keyframe transform war) */
+.lks-ui .lks-mapfield.lks-physics .lks-mapnode{animation:none}
+.lks-ui .lks-mapfield.lks-physics .lks-mapnode .lks-bubble{transition:none}
+.lks-ui .lks-mapfield.lks-physics{background:transparent}
 /* ══════════ P14 (D3): CanvasStage + the board tab + canvas modals ══════════ */
 .lks-ui .lks14-stage{position:relative;height:100%;width:100%;overflow:hidden;user-select:none;touch-action:none}
 .lks-ui .lks14-stage.grid{background-image:radial-gradient(circle,rgb(var(--ink-rgb)/0.10) 1px,transparent 1px);background-size:22px 22px}

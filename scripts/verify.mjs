@@ -199,6 +199,15 @@ gate('bundle', () => {
     [client, 'diagram-modal-stage', 'the mermaid modal stage'],
     [client, 'cmap-modal-stage', 'the concept-map modal stage'],
     [client, 'data-node-id', 'focus bubble anchor'],
+    // 0.18.0 P15 (D5): the physics map
+    [client, 'lks-physics', 'the physics mapfield mode class'],
+    [client, 'lks-sky-canvas', 'the weather sky canvas'],
+    [client, 'lks-orb-weather-canvas', 'the orb weather canvas'],
+    [client, 'createSectionIsland', 'the vendored island factory'],
+    [client, 'classifyPointer', 'the drag-vs-click classifier'],
+    [client, 'weatherPhysFor', 'the weather physics table'],
+    [client, 'attachSky', 'the vendored sky painter'],
+    [client, 'attachOrbWeather', 'the vendored orb weather painter'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [

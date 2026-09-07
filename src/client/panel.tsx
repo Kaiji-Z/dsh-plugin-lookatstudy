@@ -42,6 +42,8 @@ import { ConfirmCard } from './confirmcard.tsx'
 import { ExamView, type ExamSession } from './examview.tsx'
 import { CelebrationLayer } from './celebration-layer.tsx'
 import { CanvasStage } from './canvasstage.tsx'
+import { MapSky, courseWeather, makeWeatherChannels, useSectionIsland, type WeatherChannels } from './physics-map.tsx'
+import { usePrefersReducedMotion } from './celebration-layer.tsx'
 import { celebrate, celebrationDiff, type CelebrationSnapshot } from './celebration.ts'
 import { tr } from './locale.ts'
 
@@ -610,10 +612,17 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   // 3s poll confirms it (cleared once the feed's focus matches).
   const [optFocus, setOptFocus] = useState<string | null>(null)
   const railEl = useRef<HTMLDivElement | null>(null)
+  // P15: the physics map — islands + weather canvases (reduced-motion keeps static)
+  const physicsOn = !usePrefersReducedMotion()
+  const scrollEl = useRef<HTMLDivElement | null>(null)
+  const weatherChannels = useRef<WeatherChannels>(makeWeatherChannels())
   // Course resolution lives above every effect that names it in deps (TDZ).
   const courseId = data !== null && data.courses.length > 0
     ? (data.courses.some(c => c.courseId === selectedCourse) ? selectedCourse : data.courses[0]!.courseId)
     : null
+  // P15: the deterministic weather for the course (islands + canvases) —
+  // after courseId's declaration (the TDZ trap has bitten three times here).
+  const physicsWeather = courseWeather(courseId)
   const course = data?.courses.find(c => c.courseId === courseId) ?? null
   // C13: blank-tap classification (a >6px move is a drag/scroll, not a whistle).
   const blankDown = useRef<{ x: number; y: number } | null>(null)
@@ -713,6 +722,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       ? null
       : createElement('div', {
         className: 'lks14-railscroll',
+        ref: scrollEl,
         // C13: pointer-down records the fall point; a click that stayed put and
         // missed every control is a blank tap (the companion whistle).
         onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -734,6 +744,11 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             const open = query.trim() !== '' || effectiveOpen(section.title, sectionDefaultOpen(section), sectionOverrides)
             return [createElement(MapSectionView, {
               key: section.title,
+              physics: physicsOn,
+              physicsWeather,
+              scrollRef: scrollEl,
+              railRef: railEl,
+              channels: weatherChannels.current,
               section: {
                 title: section.title, index: section.index,
                 // C12: the optimistic focus rides alongside the feed's focus.
@@ -859,6 +874,9 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   // Upstream: no course → the import pane is the home pane.
   const effectivePanel = data !== null && data.courses.length === 0 ? 'import' : panel
   return createElement('div', { ref: railEl, className: `lks14-col lks14-rail${courseId !== null ? ` lks-sky-${pickSky(courseId)}` : ''}` },
+    physicsOn && effectivePanel === 'map' && courseId !== null
+      ? createElement(MapSky, { scrollRef: scrollEl, railRef: railEl, courseId, channels: weatherChannels.current })
+      : null,
     topbar,
     createElement('div', { className: 'lks14-railbody' },
       createElement('div', {
