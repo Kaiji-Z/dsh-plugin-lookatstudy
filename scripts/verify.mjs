@@ -184,6 +184,12 @@ gate('bundle', () => {
     [client, 'exam/start', 'exam attempt start route'],
     [client, 'exam/submit', 'exam submit route'],
     [client, 'lookatstudy-exam-generate', 'the tutor bank prompt event'],
+    // 0.18.0 P13 (D2): the celebration layer
+    [client, 'lks14-celfx-canvas', 'the celebration canvas'],
+    [client, 'lks14-celfx-reduced', 'the reduced-motion static layer'],
+    [client, 'seedBurst', 'the pure burst seeder'],
+    [client, 'stepParticle', 'the particle physics step'],
+    [client, 'energy-full', 'the energy-full celebration kind'],
     [client, 'data-node-id', 'focus bubble anchor'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]

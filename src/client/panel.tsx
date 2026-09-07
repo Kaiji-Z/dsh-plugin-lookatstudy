@@ -40,6 +40,8 @@ import { MapSectionView, pickSky } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
 import { ExamView, type ExamSession } from './examview.tsx'
+import { CelebrationLayer } from './celebration-layer.tsx'
+import { celebrate, celebrationDiff, type CelebrationSnapshot } from './celebration.ts'
 import { tr } from './locale.ts'
 
 /** The three souls in pill order (same shape as the study tab's pills). */
@@ -239,6 +241,31 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       setFeedGen(false)
     })().finally(() => { setBusy(false) })
   }
+
+  // P13: the celebration poll-diff — unlock/mastery/streak/energy-full ride the
+  // state-feed transitions (the plugin's equivalent of upstream's
+  // state:changed IPC). The DIFF is pure (celebrationDiff); this side only
+  // anchors unlocks at their on-screen bubbles.
+  const prevCelebrationRef = useRef<CelebrationSnapshot | null>(null)
+  useEffect(() => {
+    if (data === null) return
+    const snapshot: CelebrationSnapshot = {
+      lessons: data.courses.flatMap(c => c.sections.flatMap(s => s.lessons.map(l => ({ id: l.id, status: l.status })))),
+      streak: data.progress?.streak ?? 0,
+      todayXp: data.progress?.todayXp ?? 0,
+      dailyGoal: data.progress?.dailyGoal ?? 0,
+    }
+    for (const ev of celebrationDiff(prevCelebrationRef.current, snapshot)) {
+      if (ev.kind === 'unlock' && ev.lessonId !== undefined) {
+        const el = document.querySelector(`[data-node-id="${CSS.escape(ev.lessonId)}"]`)
+        const r = el !== null ? el.getBoundingClientRect() : null
+        celebrate('unlock', r !== null && r.width > 0 ? { origin: { x: r.left + r.width / 2, y: r.top + 4 } } : undefined)
+      } else {
+        celebrate(ev.kind)
+      }
+    }
+    prevCelebrationRef.current = snapshot
+  }, [data])
 
   const boundId = localBound.current ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null)
 
@@ -462,6 +489,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         onClick: () => { setNarrowPane(pane) },
       }, tr(`pane.${pane}`))),
     ),
+    createElement(CelebrationLayer),
     body,
     // P12 leave guard: upstream's examLeave modal — focus lands on confirm,
     // Esc keeps answering, confirming terminates (unanswered = wrong) then
@@ -1464,6 +1492,10 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
                     recordReview(lesson.lessonId, Number(q) as 1 | 4 | 5)
                       .then(() => {
                         companionEvent(Number(q) >= 4 ? 'celebrate' : 'encourage')
+                        // P13: SRS 自评高光 — 记得/很熟带自评卡锚点;忘了原地柔红闪。
+                        const rateEl = document.querySelector(`[data-lks-rate="${lesson.lessonId}"]`)
+                        const rr = Number(q) >= 4 && rateEl !== null ? rateEl.getBoundingClientRect() : null
+                        celebrate(Number(q) >= 4 ? 'correct' : 'wrong', rr !== null ? { origin: { x: rr.right - 48, y: rr.top + 24 } } : undefined)
                         showStudyToast(Number(q) >= 4 ? tr('review.done.good', { days: 1 }) : tr('review.done.again'), { severity: Number(q) >= 4 ? 'success' : 'warning' })
                         setRateBusy(false)
                       })

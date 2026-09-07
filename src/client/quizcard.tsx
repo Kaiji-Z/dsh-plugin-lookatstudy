@@ -8,10 +8,11 @@
  * @module dsh-plugin-lookatstudy/client/quizcard
  */
 
-import { createElement, useEffect, useState } from 'react'
+import { createElement, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { IconBoltFill16, IconBookFill16, IconCrownFill16, IconRefreshOutline16, IconStarFill16 } from './icons.tsx'
 import { tr } from './locale.ts'
+import { celebrate } from './celebration.ts'
 
 /** Mirror of state.ts MASTERED_THRESHOLD (graduation). */
 export const MASTERED = 0.9
@@ -141,6 +142,7 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
   const [hookSent, setHookSent] = useState(false)
   // C5: the uncommitted selection — submit reveals, never the pick itself.
   const [pending, setPending] = useState<number | null>(null)
+  const rootRef = useRef<HTMLDivElement | null>(null)
 
   // (Re)load when the artifact identity changes (lesson switch).
   useEffect(() => {
@@ -173,11 +175,16 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
     next.answers[cursor] = choice
     setProgress(next)
     saveQuizProgress(lessonId, artifactId, next)
+    // P13: 答题高光时刻 — 答对带题卡锚点(右上),答错原地柔红闪(无锚点)。
+    const correct = choice === questions[cursor]!.answer
+    const el = rootRef.current
+    const r = correct && el !== null ? el.getBoundingClientRect() : null
+    celebrate(correct ? 'correct' : 'wrong', r !== null ? { origin: { x: r.right - 48, y: r.top + 24 } } : undefined)
   }
 
   if (showScore && allAnswered) {
     const actions = getPostQuizActions(score, mastery)
-    return createElement('div', { className: 'lks-qcard', 'data-lks-quiz': artifactId },
+    return createElement('div', { className: 'lks-qcard', 'data-lks-quiz': artifactId, ref: rootRef },
       createElement('div', { className: 'lks-qcard-head' },
         createElement(IconStarFill16, { size: 14 }),
         tr('quiz.score', { correct: score.correct, total: score.total })),
@@ -232,7 +239,7 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
           else setShowScore(true)
         },
       }, cursor + 1 < questions.length ? tr('quiz.next') : tr('quiz.finish'))))
-  return createElement('div', { className: 'lks-qcard', 'data-lks-quiz': artifactId },
+  return createElement('div', { className: 'lks-qcard', 'data-lks-quiz': artifactId, ref: rootRef },
     createElement('div', { className: 'lks-qcard-head' },
       createElement(IconBookFill16, { size: 14 }),
       data.title ?? tr('quiz.card.title'),

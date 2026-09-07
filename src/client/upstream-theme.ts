@@ -502,6 +502,11 @@ export const UPSTREAM_CSS = `
 .lks-confirmcard.danger{border-color:rgb(var(--warning-rgb)/0.4)}
 .lks-confirmcard-msg{font-size:12.5px;color:var(--ink);line-height:1.5;margin-bottom:8px}
 .lks-confirmcard-row{display:flex;gap:8px;justify-content:flex-end}
+/* ══════════ P13 (D2): CelebrationLayer — root particle bursts + reduced static ══════════ */
+.lks14-celfx-canvas{position:fixed;inset:0;pointer-events:none;z-index:2147483100}
+.lks14-celfx-reduced{position:fixed;inset:0;pointer-events:none;z-index:2147483100;display:flex;align-items:center;justify-content:center}
+.lks14-celfx-glyph{font-size:84px;line-height:1;opacity:.45;animation:lks-celfx-fade .2s var(--ease-out-quart)}
+@keyframes lks-celfx-fade{from{opacity:0}to{opacity:.45}}
 /* ══════════ P12 (D1): ExamView five states + leave guard (upstream ExamView.tsx) ══════════ */
 .lks-ui .lks-btn.danger{background:color-mix(in srgb,var(--warning) 82%,#000);color:#fff}
 .lks-ui .lks-btn.danger:hover{filter:brightness(1.1)}

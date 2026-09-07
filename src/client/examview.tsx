@@ -19,6 +19,7 @@ import { buildAttemptShuffle, displayAnswerToOriginal, questionTimeLimitSec, typ
 import type { ExamPerQuestionResult, ExamQuestionView, ExamStatusView, ExamSubmitResult } from './data.ts'
 import { useStudy } from './data.ts'
 import { tr } from './locale.ts'
+import { celebrate } from './celebration.ts'
 import { ConfirmCard } from './confirmcard.tsx'
 import { IconGoalOutline16, IconRefreshOutline16, IconStarFill16, IconThinkOutline16, IconWarningOutline16 } from './icons.tsx'
 
@@ -240,6 +241,7 @@ export function ExamView({ lessonId, sectionTitle, paused, onSessionChange }: {
           const r: ExamSubmitResult = await examSubmit(lessonId, attemptIdRef.current!, false)
           setResult({ correctCount: r.correctCount, totalCount: r.totalCount, stars: r.stars, bestStars: r.bestStars, terminated: r.terminated, perQuestion: r.perQuestion })
           setPhase('result')
+          if (r.stars >= 1) celebrate('exam-pass')
         } catch (e) {
           setErrorMsg(e instanceof Error ? e.message : String(e))
           setPhase('failed')
