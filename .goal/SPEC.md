@@ -89,7 +89,18 @@ P11b：
 
 ### P0 · 宿主能力探测（P16/P17 前置一轮）
 
-- [ ] 探测宿主 API：模型/effort 切换接口、上下文用量（token/事件）、附件注入、全局快捷键注册、主题信号（html 属性/事件）、tab 切换。产出：可行性矩阵写入本节；缺口项按"等价降级+记录"处理
+- [x] 探测宿主 API ✅ 2026-09-07（dsh-v0.1.3-alpha.1 源审 + 3081 live DOM 探测）。**可行性矩阵**（client ctx 面；文件:行 = harness checkout）：
+
+| 能力 | 可用性 | API（file:line） | 降级 |
+|---|---|---|---|
+| 模型/effort 切换 | ✅ 读/列/换全暴露 | `ctx.remote.session.modelCatalog()` + `selectModel({sessionId,provider,model,reasoningEffort})`（api/session-controller/src/index.ts:246-258）；当前值 projection `modelSelection`；catalog 失效事件 llm/adapters-updated 等 | 若部署缺 ui-model-selection 包则 `ctx.modelDirectories` 不存在——直接用 remote 对（无依赖底线） |
+| 上下文用量 | ✅ 只读（无预算写 API） | projection `tokenUsage`（totals+last turn/step）与 `contextPressure`（contextWindow/pressure/projected/surface tokens+compaction claim）（llm/token-meter/src/usage-projection.ts:120-221）；宿主自家 StatsLine 同一读法（ui-chat/.../StatsLine.tsx:165） | `/compact` 走 `session.command('/compact')` |
+| 附件注入 | ✅ 上传+挂下一prompt+读回 | `ctx.fileUpload.upload(sessionId, Blob, name?)`→receipt（client/file-upload/.../contract.ts:15-35）；`session.prompt([{type:'file',receiptId},{type:'image',mediaType,data},{type:'text'}])`（api/session-controller/.../types.ts:70-90）；`readAttachment(id)` | 可见 composer 附件栏的 addFiles 是私有 inject 面——插件自持 prompt parts 即可 |
+| 全局快捷键 | ❌ 无注册服务 | 全仓 grep 仅组件内 handler（composer keymap/Lightbox Esc） | **等价降级**：自有 DOM `window.addEventListener('keydown')`（面板入口已持 shell 注入点） |
+| 主题信号 | ✅ 完整 client API + DOM | `ctx.theme`（getTheme/setTheme/setFontSize/register/overrideTokens + **theme/change 事件**）（client/ui-theme/src/client/index.ts:111-359）；DOM：`body[data-ds-dark-theme]` + `html{color-scheme}` + `--dsw-alias-*` inline（ui-layout/.../theme-presenter.ts:14-56）；13 个 dsw 别名 + 明暗全谱（ui-theme/src/styles/design-platform.css，暗色挂 body[data-ds-dark-theme]）；live 探测确认当前 profile=light（无 data-theme 属性，color-scheme 内联） | 不用服务则 MutationObserver body 属性（无事件）；P16 直接用 ctx.theme |
+| tab/面板切换 | ⚠️ 部分 | `sessions.open/clear/openSubagent`（api/session-controller/.../contract/sessions.ts:44-55）；`ctx.layout.toggleSidebar/openDetails/closeDetails`（client/ui-layout/.../service.ts:23-31）；中央 view 列表可注册（conversation.view slot）但**切换**走 slot inject 面（openView），非 ctx | **等价降级**：线程切换用 sessions.open（面板本就自持 stage+suppressHandBack 导航）；无需中央 tab API |
+
+  ClientContext 顶层成员（ Cordis 声明合并并集）：connection / remote(session·llm·settings·commands·agentPresets·goals·dynamic·pluginInventory·messageFeedback·fileUploads·sessionReferences·subagents·workspace) / sessions / workspaces / fileUpload / locale / **theme** / slots / conversation / commandUi / layout / modelDirectories / uiSession / settingsSchema / settingsScope / inputTriggers 等（各包 src/client 声明）。缺口项仅快捷键一项，按上表降级处理，无需用户拍板。
 
 ### P16 · 明暗双主题
 
