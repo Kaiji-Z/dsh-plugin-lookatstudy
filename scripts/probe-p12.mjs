@@ -45,12 +45,13 @@ await page.waitForTimeout(3500) // poll picks the focus up
 // settlement page, upstream: 切回节点直接落结算) or a mid-flight generation
 // from the previous probe — wait for either settled stage
 await page.waitForSelector('[data-testid^="exam-"]', { timeout: 15000 })
+// D6 note: the rail's world tabs also carry data-testids — scope to the exam view.
 for (let i = 0; i < 460; i++) {
-  const st = await page.evaluate(() => document.querySelector('[data-testid]')?.getAttribute('data-testid') ?? '')
+  const st = await page.evaluate(() => document.querySelector('[data-testid^="exam-"]')?.getAttribute('data-testid') ?? '')
   if (st === 'exam-ready' || st === 'exam-result') break
   await page.waitForTimeout(1500)
 }
-const stage1 = await page.evaluate(() => document.querySelector('[data-testid]')?.getAttribute('data-testid') ?? '')
+const stage1 = await page.evaluate(() => document.querySelector('[data-testid^="exam-"]')?.getAttribute('data-testid') ?? '')
 const ready = stage1 === 'exam-ready' ? 1 : 0
 const meta = ready === 1 ? ((await page.locator('.lks14-exam-meta').textContent()) ?? '') : stage1
 probe('the exam view mounts to a settled stage (ready / settlement / still generating)',
@@ -108,6 +109,9 @@ probe('the leave guard intercepts navigation mid-exam; Esc keeps answering',
 // assert the flow, grading numbers come from the state) ———
 let advanced = 0
 for (let q = 0; q < 5; q++) {
+  // defensive: an attempt that settles early (shorter bank) must break, not time out
+  const stageNow = await page.evaluate(() => document.querySelector('[data-testid^="exam-"]')?.getAttribute('data-testid') ?? '')
+  if (stageNow !== 'exam-answering') break
   await page.locator('.lks14-exam-opt').nth(0).dispatchEvent('click')
   await page.waitForTimeout(150)
   const btn = page.locator('[data-testid="exam-next-btn"]')
@@ -182,7 +186,7 @@ let promptSent = false
 let stillGenerating = false
 for (let i = 0; i < 40; i++) {
   await page.waitForTimeout(1500)
-  const stage = await page.evaluate(() => document.querySelector('[data-testid]')?.getAttribute('data-testid') ?? '')
+  const stage = await page.evaluate(() => document.querySelector('[data-testid^="exam-"]')?.getAttribute('data-testid') ?? '')
   if (stage === 'exam-ready' || stage === 'exam-result') modelReady = true
   if (stage === 'exam-generating') stillGenerating = true
   promptSent = await page.evaluate(() => {

@@ -242,12 +242,15 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   // navigation routes through guardedSetFocus while answering is active.
   const examSessionRef = useRef<ExamSession>({ active: false, terminate: null })
   const [examLeave, setExamLeave] = useState<{ pending: (() => void) | null } | null>(null)
-  const guardedSetFocus = useCallback((id: string): void => {
+  // returns Promise<void> to honor CourseRail's prop contract — the rail's
+  // search/review rows call .catch on the result, and a void return made every
+  // jump throw `undefined .catch` after the navigation side effect fired.
+  const guardedSetFocus = useCallback((id: string): Promise<void> => {
     if (examSessionRef.current.active) {
       setExamLeave({ pending: () => { void setFocus(id) } })
-      return
+      return Promise.resolve()
     }
-    void setFocus(id)
+    return setFocus(id)
   }, [setFocus])
   const onExamSession = useCallback((session: ExamSession): void => { examSessionRef.current = session }, [])
   const [rows, setRows] = useState<ReturnType<typeof feedRows>>([])

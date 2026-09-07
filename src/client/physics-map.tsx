@@ -170,7 +170,10 @@ export function useSectionIsland(opts: {
     let nextKnot: Vec2 | undefined
     const lastLesson = opts.lessons[opts.lessons.length - 1]
     if (lastLesson !== undefined && lastLesson.kind === 'exam') {
-      const nextSign = container.closest('section')?.nextElementSibling?.querySelector('.lks-signpost')
+      // `?? null`: the ?. chain yields undefined (no next sibling in DOM) and the
+      // null check alone let undefined through — typing in search force-opens every
+      // section, so the course-final exam section has no nextElementSibling to rope to.
+      const nextSign = container.closest('section')?.nextElementSibling?.querySelector('.lks-signpost') ?? null
       if (nextSign !== null) {
         nextKnot = {
           x: knotX(`${opts.sectionKey}:next`, opts.containerW),
