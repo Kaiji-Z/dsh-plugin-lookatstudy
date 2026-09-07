@@ -4,7 +4,7 @@
 插件基线：0.16.0 已上线（面板 + 上游皮肤第一层 + 静态气球地图；248 测试绿，verify PASS）。
 执行环境：web-lks profile @ 3081（kill→remove→restore file: dep→corepack install→reboot with env；token 从启动日志抓）。
 审计基座：六路子智能体扫描报告已并入本 SPEC（组件层/CSS 层/DOM 孤岛普查/布局骨架/token+动画/交互逻辑 48 项）；DOM 审计探针 `probe-audit.mjs` 语义（明暗两主题 suspect=0）是本目标的机器验收面。
-**执行顺序：P10a → P10b →(发版 0.17.0)→ P11a → P11b →(发版 0.18.0)→ P12 → P13 →(发版 0.19.0)→ P14 → P15 →(发版 0.20.0)→ P0 探测 → P16 → P17 →(发版 0.21.0)→ P18 终审**。每轮只做一个 P 项或一个实测修复批次；每项完成勾选。
+**执行顺序（2026-09-07 修订：取消中间发版——0.17.0 已上线后，剩余全部完成才一次性终态发版 0.18.0）**：P11a → P11b → P12 → P13 → P14 → P15 → P0 探测 → P16 → P17 →(一次性发版 0.18.0)→ P18 终审收尾。每轮只做一个 P 项或一个实测修复批次；每项完成勾选；中途任何时刻不运行 release.mjs。
 
 ## 基线（开工实测留档）
 
@@ -19,7 +19,7 @@
 5. **宿主分工修订**：宿主只负责后端模型（= 上游 BYOK 的等价物）。原"归宿主"清单（ContextMeter、v0.27 历史预算裁剪、composer 附件、CommandPalette、exam-v2 后台题库、线程切换 UI、模型/effort 切换面）全部改为**插件内置替换宿主能力**。
 6. **宿主 API 缺口策略**：等价降级（用插件侧可得数据做等价实现，如 ContextMeter 用会话事件估算）+ SPEC 缺口清单记录，不阻塞不追问。
 7. **语音听写不移植**（VoicePanel/按住说话——本地 ASR 模型，明确排除）。
-8. 预算 60 轮；分轨发版；judge 全项 ≥8；终态 1:1。
+8. 预算 60 轮；【修订】不做中间发版——0.17.0 之后全部完成，终态一次发版 0.18.0；judge 全项 ≥8；终态 1:1。
 
 ## 修订后排除清单
 
@@ -58,16 +58,16 @@
 ### C 轨 · 交互逻辑（P11a 快赢 + P11b 闭环）
 
 P11a：
-- [ ] C1 滚动 sticky-follow（80px 贴底容差，上滑脱钩）+ 回底 FAB + 流式红点
-- [ ] C2 停止生成按钮（send↔stop 状态机）+ Esc 中止流式（host session face abort/interrupt 语义，缺则降级：停止后续轮询标记）
-- [ ] C3 焦点球 scrollIntoView（视口外 ±60px 平滑居中）
-- [ ] C4 代码块复制按钮（语言标签 + hover 复制 + 1.5s ✓，enhance 后注入头条）
-- [ ] C5 quiz 提交步进（先选后提交，保留犹豫窗口；本地持久化随步进改）
-- [ ] C7 窄屏选球后自动切 chat 栏
-- [ ] C8 proposal 状态闭环（决策后 applied 金勾 / rejected 徽章只读卡）
-- [ ] C9 删课 toast；复习「随机抽一个 due」交错按钮
-- [ ] C12 点球乐观聚焦（本地先置 focus 再等快照）；armed 确认 Enter=确认；coarse 指针 settle 600ms 分档；触屏水平滑切栏（上游 swipeTarget 阈值语义）
-- [ ] C13 点空白吹哨→companion poke 事件（物理版并入 P15）
+- [x] C1 滚动 sticky-follow（80px 贴底容差，上滑脱钩）+ 回底 FAB + 流式红点
+- [x] C2 停止生成按钮（send↔stop 状态机）+ Esc 中止流式（host session face abort/interrupt 语义，缺则降级：停止后续轮询标记）
+- [x] C3 焦点球 scrollIntoView（视口外 ±60px 平滑居中）
+- [x] C4 代码块复制按钮（语言标签 + hover 复制 + 1.5s ✓，enhance 后注入头条）
+- [x] C5 quiz 提交步进（先选后提交，保留犹豫窗口；本地持久化随步进改）
+- [x] C7 窄屏选球后自动切 chat 栏
+- [x] C8 proposal 状态闭环（决策后 applied 金勾 / rejected 徽章只读卡）
+- [x] C9 删课 toast；复习「随机抽一个 due」交错按钮
+- [x] C12 点球乐观聚焦（本地先置 focus 再等快照）；armed 确认 Enter=确认；coarse 指针 settle 600ms 分档；触屏水平滑切栏（上游 swipeTarget 阈值语义）
+- [x] C13 点空白吹哨→companion poke 事件（物理版并入 P15）
 
 P11b：
 - [ ] C6 笔记溯源闭环：「回到原文」定位+闪烁；备注编辑；pin；三区折叠+新笔记自动展开
@@ -146,3 +146,10 @@ P11b：
 - B1-B8 全部落地：rail 300px + 全高天幕 + 悬浮 tab 胶囊（地图/导入横滑 translateX）+ 玻璃标题卡（标题/掌握条+%/搜索 pill/复习 pill+due 数/删课）；三条 colhead 全删；搜索/复习改全栏 overlay；宽度模型 chat `clamp(480px,45%,800px)`（行相对百分比——vw 基准在宿主容器内失真，实测 row 980 时 vw 版互踩最小宽）+ note flex 吃余量 min-440；模式药丸入 composer 首行（风格：+图标）；lesson 细行替代导师列头；notebody 960px 居中；assistant 全文无卡（B6 按上游）；starters 门控 rows>0 + 空态卡+3D CTA；readbar sticky。
 - 实测：250 tests + verify PASS + audit suspect=0 + 结构探针（colheads=0/rail 300/chat 480/note 500/tab 滑动/overlay 开合全过）。
 - 遗留到后续轨：空态摘要卡内容增强（上游含课程摘要）并入 C 轨；readbar 圆钮化并入 P11b。
+
+### P11a 完成记录（2026-09-07）
+
+- C1 滚动跟随（isStuck 80px 容差 + 自己发言强制贴底）+ 回底 FAB（流式红点脉冲）；C2 停止生成（宿主 session face 有 cancel() —— faces.ts 补结构类型，真中断非降级）+ busy 时 Esc 中止；C3 焦点球 scrollIntoView（data-node-id 锚 + ±60px 规则）；C4 代码块头（语言标签大写 + 复制 ✓ 1.5s，enhanceCode 注入）；C5 quiz 先选后提交（optionTone 纯函数：提交前不泄对错）；C7 窄屏跳转切 chat 栏；C8 proposal 决策徽章（applied 金/declined 弱化，重提议自动重臂）；C9 删课 toast + Enter 确认 + 复习 overlay 随机抽一课；C12 乐观聚焦 + coarse settle 600/250 分档 + 触屏滑动切栏（swipePane）；C13 点空白吹哨→companion poke。
+- 实测：253 tests + verify PASS + audit suspect=0；探针证实：搜索跳转→选中球+锚点、随机复习→跳转关闭、shiki×2+代码头 PYTHON+katex×3（种子课加了 python 围栏）。
+- 本轮踩坑：①TDZ——effect 依赖数组引用了声明在后的 const（courseId），渲染期即炸，已上移；②活体服务器的内存态会遮蔽重播种的 state.json（改文件后必须重启）；③seed 脚本模板字面量里写 ``` 围栏会终结模板（AGENTS 已有记载），改 ${FENCE} 构造；④enhance 管线"全静默失败"实为轮换/启动竞态的脏状态，干净轮换后一切正常。
+- 停止按钮的完整模型回合实测并入 P11b/P12 的 live 会话轮（send→streaming→stop 全链）。

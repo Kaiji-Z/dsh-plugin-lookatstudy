@@ -18,6 +18,10 @@ export interface SessionPromptFace {
   prompt(parts: readonly { readonly type: 'text'; readonly text: string }[], mode: 'queue' | 'steer'): Promise<
     { ok: true } | { ok: false; error: { readonly code: string; readonly message: string } }
   >
+  /** Cancel the running turn (C2 stop button) — present on host faces since rc.2. */
+  cancel?(): Promise<
+    { ok: true } | { ok: false; error: { readonly code: string; readonly message: string } }
+  >
 }
 
 /** The injected client root: cordis context plus the services the manifest pulls in. */

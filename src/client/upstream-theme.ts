@@ -431,4 +431,34 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-notebody{margin:0 auto;max-width:960px;width:100%;padding:12px 20px 24px;box-sizing:border-box}
 .lks-ui .lks14-viewtabs{background:rgb(var(--ink-rgb)/0.08);border-radius:999px;padding:3px;align-self:flex-start}
 .lks-ui .lks14-readbar{position:sticky;top:0;z-index:20;background:var(--surface-2);border-radius:10px}
+
+/* ══════════ C-track (P11a): interaction chrome ══════════ */
+/* C1: the scroll-to-bottom FAB (red pulse while streaming) */
+.lks-ui .lks14-chat{position:relative}
+.lks-ui .lks14-scrollfab{position:absolute;right:16px;bottom:118px;z-index:25;width:36px;height:36px;border-radius:999px;
+  background:var(--surface-0);color:var(--ink);border:1px solid var(--border);
+  box-shadow:0 4px 12px -2px rgb(var(--shadow-rgb)/0.14),0 1px 3px -1px rgb(var(--shadow-rgb)/0.08);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}
+.lks-ui .lks14-scrollfab:hover{background:var(--surface-3)}
+.lks-ui .lks14-scrollfab.streaming::after{content:'';position:absolute;top:2px;right:2px;width:8px;height:8px;border-radius:999px;background:var(--warning);animation:lks-fab-pulse 1.2s ease-in-out infinite}
+@keyframes lks-fab-pulse{0%,100%{opacity:.4}50%{opacity:1}}
+/* C2: the stop variant of the 3D send button */
+.lks-ui .lks-btn-send.stop{background:var(--warning);box-shadow:0 3px 0 0 var(--warning-dark)}
+.lks-ui .lks-btn-send.stop:active{transform:translateY(2px);box-shadow:0 1px 0 0 var(--warning-dark)}
+/* C5: the pre-submit pick highlight (never leaks correctness) */
+.lks-ui .lks-qcard-opt.picked{border-color:var(--accent);background:rgb(var(--accent-rgb)/0.1)}
+/* C8: decided proposal badges */
+.lks-ui .lks-propbanner.decided.accepted{background:rgb(var(--brand-rgb)/0.08);border-color:rgb(var(--brand-rgb)/0.35)}
+.lks-ui .lks-propbanner.decided.accepted svg{color:var(--brand)}
+.lks-ui .lks-propbanner.decided.declined{opacity:.65}
+/* C4: the code-block header (lang label + copy) */
+.lks-ui .lks-codehead{display:flex;align-items:center;justify-content:space-between;background:rgb(var(--surface-0-rgb)/0.6);
+  border:1px solid var(--border);border-bottom:none;border-radius:10px 10px 0 0;padding:4px 10px}
+.lks-ui .lks-codehead-lang{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--ink-faint)}
+.lks-ui .lks-codehead-copy{background:none;border:none;color:var(--ink-faint);cursor:pointer;font-size:12px;padding:0 2px}
+.lks-ui .lks-codehead-copy:hover{color:var(--ink)}
+.lks-ui .lks-codehead-copy.done{color:var(--brand)}
+.lks-ui .lks-codehead + .lks-shiki pre{border-radius:0 0 10px 10px;margin:0}
+/* C9: the review action row */
+.lks-ui .lks14-reviewrow{display:flex;gap:8px;align-items:center}
 `

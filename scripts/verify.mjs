@@ -68,7 +68,7 @@ gate('bundle', () => {
     [client, 'aria-disabled', 'lesson rows are real buttons (keyboard reach)'],
     [client, 'sectionDefaultOpen', 'rail sections collapse off the frontier'],
     [client, 'aria-expanded', 'section heads announce their collapse state'],
-    [client, 'M2.871 13.1286', 'busy spinner icon (ic_ds_loading glyph)'],
+    [client, 'lks-btn-send stop', 'busy = the 3D stop twin (spinner retired from send per upstream; returns with exam-generating in P12)'],
     [client, 'lks-spin', 'spinner animation class'],
     [client, 'business-tertiary', 'soul-pill active tint stays positive'],
     // read-aloud dual-track (0.13.0, restored through the panel)
@@ -157,6 +157,15 @@ gate('bundle', () => {
     [client, 'lks14-emptycard', 'the empty-state card with 3D CTA'],
     [client, 'lks14-soulrow', 'mode pills ride the composer capsule'],
     [client, 'lks14-railcourse', 'course rows in the import pane'],
+    // 0.18.0 P11a (C-track quick wins)
+    [client, 'lks14-scrollfab', 'the scroll-to-bottom FAB'],
+    [client, 'lks-btn-send stop', 'the stop twin of send'],
+    [client, 'isStuck', 'sticky-follow fold'],
+    [client, 'swipePane', 'touch pane swipe'],
+    [client, 'pickRandomDue', 'interleaved random review'],
+    [client, 'optionTone', 'select-then-submit quiz tone'],
+    [client, 'attachCodeHeader', 'code block lang+copy header'],
+    [client, 'data-node-id', 'focus bubble anchor'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [

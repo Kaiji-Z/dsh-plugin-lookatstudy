@@ -209,6 +209,54 @@ test('the B-track skeleton: floating rail chrome, swapped widths, de-carded assi
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-notebody\{margin:0 auto;max-width:960px/, 'notebook content centers at 960px')
 })
 
+test('the C-track interaction folds: sticky-follow, swipe, settle tiers, random due (P11a)', async () => {
+  const views = await import('../src/client/views.tsx')
+  // sticky-follow: 80px tolerance, chase only near the bottom (distance = h - top - ch)
+  assert.equal(views.isStuck(100, 1000, 900), true, 'flush at the bottom = stuck')
+  assert.equal(views.isStuck(20, 1000, 900), true, '80px away is still stuck (tolerance edge)')
+  assert.equal(views.isStuck(5, 1000, 900), false, '95px away = detached (just over tolerance)')
+  assert.equal(views.isStuck(0, 1000, 900), false, '100px away = detached')
+  // swipe: dominance rule + neighbor walk + edge clamping
+  assert.equal(views.swipePane('rail', -80, 10), 'chat')
+  assert.equal(views.swipePane('note', 80, 10), 'chat')
+  assert.equal(views.swipePane('chat', 80, 10), 'rail')
+  assert.equal(views.swipePane('chat', -80, 10), 'note')
+  assert.equal(views.swipePane('rail', 80, 10), null, 'swiping back past the first pane clamps')
+  assert.equal(views.swipePane('chat', -40, 0), null, 'under 50px is not a flick')
+  assert.equal(views.swipePane('chat', -80, 50), null, 'vertical-dominant movement is scrolling')
+  // settle tiers
+  assert.equal(views.settleMs(true), 600)
+  assert.equal(views.settleMs(false), 250)
+  // random due: only members of the list, null on empty
+  const list = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+  for (let i = 0; i < 20; i++) assert.ok(list.includes(views.pickRandomDue(list)!))
+  assert.equal(views.pickRandomDue([]), null)
+})
+
+test('quiz optionTone never leaks correctness before the submit (C5)', async () => {
+  const { optionTone } = await import('../src/client/quizcard.tsx')
+  // unchosen: pick highlight only — the CORRECT option must look identical to wrong ones
+  assert.equal(optionTone(-1, 1, 0, true), '')
+  assert.equal(optionTone(-1, 1, 1, true), ' picked')
+  assert.equal(optionTone(-1, 1, 1, false), ' picked', 'picked tone is blind to correctness')
+  assert.equal(optionTone(-1, null, 0, true), '')
+  // committed: the judged pair
+  assert.equal(optionTone(1, null, 1, true), ' right')
+  assert.equal(optionTone(1, null, 1, false), ' wrong')
+  assert.equal(optionTone(1, null, 0, true), ' right dim')
+  assert.equal(optionTone(1, null, 2, false), '')
+})
+
+test('the C-track chrome freezes: FAB, stop button, code header, decided badges (P11a)', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-scrollfab\{[^}]*position:absolute/, 'the scroll-to-bottom FAB floats over the stream')
+  assert.match(UPSTREAM_CSS, /@keyframes lks-fab-pulse/, 'the FAB pulses red while streaming')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-btn-send\.stop\{[^}]*background:var\(--warning\)/, 'stop is the warning-red 3D twin of send')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-qcard-opt\.picked\{[^}]*border-color:var\(--accent\)/, 'the pre-submit pick highlight')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-codehead\{/, 'code blocks carry the lang+copy header')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-propbanner\.decided\.accepted/, 'accepted proposals close the loop')
+})
+
 test('the lookatstudy locale dictionaries keep zh/en parity and translate with fallback', async () => {
   const { ZH, EN, makeT } = await import('../src/client/locale.ts')
   const zhKeys = Object.keys(ZH).sort()

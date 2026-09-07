@@ -134,6 +134,34 @@ export async function enhanceMath(container: HTMLElement): Promise<number> {
   return replaced
 }
 
+/**
+ * C4: the code-block header — uppercase lang label + a copy button with a 1.5s
+ * ✓ (upstream CodeBlock). Pure DOM, idempotent per wrap.
+ */
+export function attachCodeHeader(wrap: HTMLElement, lang: string): void {
+  if (wrap.parentElement?.querySelector('.lks-codehead') !== null) return
+  const head = document.createElement('div')
+  head.className = 'lks-codehead'
+  const label = document.createElement('span')
+  label.className = 'lks-codehead-lang'
+  label.textContent = lang.toUpperCase()
+  const copy = document.createElement('button')
+  copy.className = 'lks-codehead-copy'
+  copy.type = 'button'
+  copy.textContent = '⧉'
+  copy.addEventListener('click', () => {
+    const code = wrap.querySelector('pre')
+    const text = code?.textContent ?? ''
+    void navigator.clipboard?.writeText(text).then(() => {
+      copy.textContent = '✓'
+      copy.classList.add('done')
+      setTimeout(() => { copy.textContent = '⧉'; copy.classList.remove('done') }, 1500)
+    }).catch(() => { /* clipboard unavailable */ })
+  })
+  head.append(label, copy)
+  wrap.parentElement?.insertBefore(head, wrap)
+}
+
 /** shiki-highlight every fenced code block; unknown langs and failures keep the plain <pre>. */
 export async function enhanceCode(container: HTMLElement): Promise<number> {
   let shiki: ShikiLike
@@ -158,6 +186,7 @@ export async function enhanceCode(container: HTMLElement): Promise<number> {
       wrap.className = 'lks-shiki'
       wrap.innerHTML = html
       pre.replaceWith(wrap)
+      attachCodeHeader(wrap, lang)
       replaced++
     } catch { code.dataset.lksEnhanced = '1' /* don't retry a failing lang */ }
   }

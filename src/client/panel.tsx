@@ -14,7 +14,7 @@
  */
 
 import { createElement, useEffect, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode } from 'react'
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
@@ -35,7 +35,7 @@ import { ArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } fr
 import { showStudyToast } from './toast.ts'
 import { Companion, useCompanionMood } from './companion.tsx'
 import { applyHighlights, getTextModel, locateInModel } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue } from './views.tsx'
 import { MapSectionView, pickSky } from './maprail.tsx'
 import { tr } from './locale.ts'
 
@@ -59,6 +59,12 @@ function toastIcon(severity: ToastSeverity): ReactNode {
   if (severity === 'error') return createElement(IconWarningOutline16, { size: 14, className: 'lks-toast-glyph err' })
   if (severity === 'info') return createElement(IconGlobeOutline14, { size: 13, className: 'lks-toast-glyph info' })
   return null
+}
+
+/** C8: the most recent decided proposal's badge payload (render order preserved). */
+function decidedBadgeOf(decided: Record<string, { kind: 'accepted' | 'declined'; title: string }>): { kind: 'accepted' | 'declined'; title: string } | null {
+  const entries = Object.values(decided)
+  return entries.length > 0 ? entries[entries.length - 1]! : null
 }
 
 function examOpen(lessons: ReadonlyArray<{ kind: string; masteryPct: number | null }>): boolean {
@@ -134,6 +140,15 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const lesson = data?.lesson ?? null
   const localBound = useRef<string | null>(null)
   const streamEl = useRef<HTMLDivElement | null>(null)
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
+  // C2: the live session face (kept by send) so the stop button can cancel the
+  // running host turn; a fresh load has nothing to stop.
+  const activeFace = useRef<SessionPromptFace | null>(null)
+  const stop = (): void => {
+    void (async () => {
+      try { await activeFace.current?.cancel?.() } catch { /* already settled */ }
+    })().finally(() => { setBusy(false) })
+  }
 
   const boundId = localBound.current ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null)
 
@@ -265,6 +280,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         const actx = ctx.sessions.scope(sessionId)
         const face: SessionPromptFace | undefined = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
         if (face === undefined) throw new Error('lesson session is not addressable yet')
+        activeFace.current = face
         const result = await face.prompt([{ type: 'text', text }], 'queue')
         if (!result.ok) throw new Error(`prompt rejected: ${result.error.code}: ${result.error.message}`)
         setDraft('')
@@ -282,8 +298,28 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   // The upstream v0.6 ladder: rail full-height on surface-rail; the right half
   // = floating app-header + the chat/notebook row (chat surface-1, notebook
   // surface-2) — depth by color step, no borders.
-  const body: ReactNode = createElement('div', { className: 'lks14-body', 'data-pane': narrowPane },
-    createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, send }),
+  const body: ReactNode = createElement('div', {
+    className: 'lks14-body',
+    'data-pane': narrowPane,
+    // C12: horizontal flick switches the narrow pane (upstream T3 swipe).
+    onTouchStart: (e: ReactTouchEvent<HTMLDivElement>) => {
+      const t = e.touches[0]
+      touchStart.current = t === undefined ? null : { x: t.clientX, y: t.clientY }
+    },
+    onTouchEnd: (e: ReactTouchEvent<HTMLDivElement>) => {
+      const s = touchStart.current
+      touchStart.current = null
+      const t = e.changedTouches[0]
+      if (s === null || t === undefined) return
+      const next = swipePane(narrowPane, t.clientX - s.x, t.clientY - s.y)
+      if (next !== null) setNarrowPane(next)
+    },
+  },
+    createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, send,
+      // C7: a bubble jump on narrow layout lands the learner on the chat pane.
+      onJumped: () => { setNarrowPane('chat') },
+      // C13: tapping map blank space pokes the companion (whistle essence).
+      onBlankTap: () => { setCompanionEvent('poke') } }),
     createElement('div', { className: 'lks14-righthalf' },
       createElement('div', { className: 'lks14-appheader' },
         createElement('span', { className: 'lks-hdr-title' }, lesson?.courseTitle ?? tr('tab.label')),
@@ -296,7 +332,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         createElement('span', { className: 'lks-hdr-stat', title: tr('header.level') }, `Lv${String(progress?.level ?? 1)}`),
       ),
       createElement('div', { className: 'lks14-row' },
-        createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, setMode, narrowPane, companionEvent: setCompanionEvent }),
+        createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent: setCompanionEvent }),
         createElement(NotebookPane, { data, deleteNote, send, companionEvent: setCompanionEvent }),
       ),
     ),
@@ -362,13 +398,17 @@ export function setPanelShell(shell: { suppressHandBack(fn: () => void): void } 
 }
 
 /** 左栏:course picker, tree, review box, import. */
-function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send }: {
+function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, onBlankTap }: {
   data: StudyData
   activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
   searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>
   deleteCourse: (courseId: string) => Promise<void>
   send: PanelSend
+  /** C7: fired after a bubble jump (narrow layout switches to the chat pane). */
+  onJumped: () => void
+  /** C13: a tap on map blank space (companion poke). */
+  onBlankTap: () => void
 }): ReactNode {
   const [selectedCourse, setSelectedCourse] = useState('')
   const [query, setQuery] = useState('')
@@ -384,18 +424,55 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   const [panel, setPanel] = useState<'map' | 'import'>('map')
   const [searchOpen, setSearchOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
+  // C12: the optimistic focus — the clicked bubble shows selected before the
+  // 3s poll confirms it (cleared once the feed's focus matches).
+  const [optFocus, setOptFocus] = useState<string | null>(null)
+  const railEl = useRef<HTMLDivElement | null>(null)
+  // Course resolution lives above every effect that names it in deps (TDZ).
+  const courseId = data !== null && data.courses.length > 0
+    ? (data.courses.some(c => c.courseId === selectedCourse) ? selectedCourse : data.courses[0]!.courseId)
+    : null
+  const course = data?.courses.find(c => c.courseId === courseId) ?? null
+  // C13: blank-tap classification (a >6px move is a drag/scroll, not a whistle).
+  const blankDown = useRef<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    if (optFocus !== null && data?.focusLessonId === optFocus) setOptFocus(null)
+  }, [data?.focusLessonId, optFocus])
+  // C3: the focused bubble scrolls into view when a jump (search/review/due)
+  // lands outside the viewport (upstream's ±60px rule).
+  useEffect(() => {
+    const id = data?.focusLessonId
+    if (id === null || id === undefined || railEl.current === null) return
+    const el = railEl.current.querySelector(`[data-node-id="${CSS.escape(id)}"]`)
+    if (el === null) return
+    const cRect = railEl.current.getBoundingClientRect()
+    const eRect = el.getBoundingClientRect()
+    if (eRect.top < cRect.top + 60 || eRect.bottom > cRect.bottom - 60) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [data?.focusLessonId])
   const reportError = (err: unknown): void => { setError(err instanceof Error ? err.message : String(err)) }
   useEffect(() => {
     if (!confirmDelete) return
     const disarm = (): void => { setConfirmDelete(false) }
-    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') disarm() }
+    // C12: Enter confirms the armed deletion, Escape disarms it.
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') disarm()
+      if (e.key === 'Enter' && courseId !== null) {
+        setConfirmDelete(false)
+        deleteCourse(courseId).then(() => {
+          setSelectedCourse('')
+          showStudyToast(tr('rail.deleted'), { severity: 'success' })
+        }, reportError)
+      }
+    }
     window.addEventListener('click', disarm)
     window.addEventListener('keydown', onKey)
     return () => {
       window.removeEventListener('click', disarm)
       window.removeEventListener('keydown', onKey)
     }
-  }, [confirmDelete])
+  }, [confirmDelete, courseId, deleteCourse])
 
   // Live search: title hits from the loaded tree + debounced full-text hits
   // merge into the results panel (upstream CourseSearchPanel semantics).
@@ -415,11 +492,6 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
     }, 250)
     return () => { cancelled = true; clearTimeout(timer) }
   }, [query, selectedCourse, data, searchLessons])
-
-  const courseId = data !== null && data.courses.length > 0
-    ? (data.courses.some(c => c.courseId === selectedCourse) ? selectedCourse : data.courses[0]!.courseId)
-    : null
-  const course = data?.courses.find(c => c.courseId === courseId) ?? null
 
   // The floating topbar: tab capsule + (map pane) the glass title card.
   const topbar: ReactNode = data === null ? null : createElement('div', { className: 'lks14-railtop' },
@@ -447,7 +519,10 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
               e.stopPropagation()
               if (!confirmDelete) { setConfirmDelete(true); return }
               setConfirmDelete(false)
-              deleteCourse(courseId ?? '').then(() => { setSelectedCourse('') }, reportError)
+              deleteCourse(courseId ?? '').then(() => {
+                setSelectedCourse('')
+                showStudyToast(tr('rail.deleted'), { severity: 'success' })
+              }, reportError)
             },
           }, confirmDelete ? tr('rail.delete.confirm') : createElement(IconTrashOutline16, { size: 14 })),
         ),
@@ -480,7 +555,21 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
     ? createElement('div', { className: 'lks14-empty' }, tr('loading'))
     : course === null
       ? null
-      : createElement('div', { className: 'lks14-railscroll' },
+      : createElement('div', {
+        className: 'lks14-railscroll',
+        // C13: pointer-down records the fall point; a click that stayed put and
+        // missed every control is a blank tap (the companion whistle).
+        onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => {
+          blankDown.current = { x: e.clientX, y: e.clientY }
+        },
+        onClick: (e: ReactMouseEvent<HTMLDivElement>) => {
+          const d = blankDown.current
+          blankDown.current = null
+          if (d === null || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return
+          if ((e.target as HTMLElement).closest('button, a, input, textarea, select') !== null) return
+          onBlankTap()
+        },
+      },
         createElement('div', { className: 'lks-mapsec-list' },
           ...course.sections.flatMap(section => {
             const examAllowed = examOpen(section.lessons)
@@ -489,13 +578,21 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             const open = query.trim() !== '' || effectiveOpen(section.title, sectionDefaultOpen(section), sectionOverrides)
             return [createElement(MapSectionView, {
               key: section.title,
-              section: { title: section.title, index: section.index, lessons },
+              section: {
+                title: section.title, index: section.index,
+                // C12: the optimistic focus rides alongside the feed's focus.
+                lessons: lessons.map(l => ({ ...l, focus: l.focus || l.id === optFocus })),
+              },
               examAllowed,
               open,
               onToggle: () => { toggleSection(section.title, !open) },
               // Upstream alignment: tapping a bubble only FOCUSES the lesson —
               // the state-side attempt runs host-side, zero LLM traffic.
-              onJump: (id: string) => { void setFocus(id).catch(reportError) },
+              onJump: (id: string) => {
+                setOptFocus(id)
+                onJumped()
+                void setFocus(id).catch(() => { setOptFocus(null) })
+              },
             })]
           })))
 
@@ -586,16 +683,26 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
         createElement('span', null, d.lessonTitle),
         d.overdueDays > 0 ? createElement('span', { className: 'lks14-over' }, tr('rail.due.over', { days: d.overdueDays })) : null)),
       data.dueCount > 0
-        ? createElement('button', {
-          className: 'lks-btn primary',
-          onClick: () => { setReviewOpen(false); send(tr('prompt.review')) },
-        }, tr('rail.due.start'))
+        ? createElement('div', { className: 'lks14-reviewrow' },
+          createElement('button', {
+            className: 'lks-btn ghost',
+            title: tr('review.random.hint'),
+            onClick: () => {
+              const pick = pickRandomDue(data.due)
+              setReviewOpen(false)
+              if (pick !== null) void setFocus(pick.lessonId).catch(reportError)
+            },
+          }, createElement(IconRefreshOutline16, { size: 13 }), tr('review.random')),
+          createElement('button', {
+            className: 'lks-btn primary',
+            onClick: () => { setReviewOpen(false); send(tr('prompt.review')) },
+          }, tr('rail.due.start')))
         : createElement('div', { className: 'lks14-empty' }, tr('rail.due.none')))
     : null
 
   // Upstream: no course → the import pane is the home pane.
   const effectivePanel = data !== null && data.courses.length === 0 ? 'import' : panel
-  return createElement('div', { className: `lks14-col lks14-rail${courseId !== null ? ` lks-sky-${pickSky(courseId)}` : ''}` },
+  return createElement('div', { ref: railEl, className: `lks14-col lks14-rail${courseId !== null ? ` lks-sky-${pickSky(courseId)}` : ''}` },
     topbar,
     createElement('div', { className: 'lks14-railbody' },
       createElement('div', {
@@ -639,7 +746,7 @@ function ImportRow({ send }: { send: PanelSend }): ReactNode {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, setMode, narrowPane, companionEvent }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent }: {
   data: StudyData
   lesson: StudyData['lesson']
   rows: ReturnType<typeof feedRows>
@@ -650,16 +757,38 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   draft: string
   setDraft: (text: string) => void
   send: PanelSend
+  stop: () => void
   setMode: (mode: 'direct' | 'guide' | 'practice') => Promise<void>
   narrowPane: 'rail' | 'chat' | 'note'
   companionEvent: (event: 'talk-start' | 'talk-end' | 'celebrate' | 'encourage' | 'decay' | 'poke') => void
 }): ReactNode {
+  // C1 sticky-follow: follow new rows only while the reader sits at the bottom
+  // (80px tolerance); scrolling up detaches, the FAB comes back.
+  const stuck = useRef(true)
+  const [showFab, setShowFab] = useState(false)
+  const onStreamScroll = (): void => {
+    const el = streamEl.current
+    if (el === null) return
+    stuck.current = isStuck(el.scrollTop, el.scrollHeight, el.clientHeight)
+    setShowFab(!stuck.current && el.scrollHeight > el.clientHeight + 100)
+  }
+  const lastIsUser = rows.length > 0 && rows[rows.length - 1]!.role === 'user'
   const streamEl = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
+    // C1: chase the tail only while stuck, or when the learner just sent (the
+    // upstream rule — your own message always pulls the view down).
+    if (!stuck.current && !lastIsUser) return
     const el = streamEl.current
     if (el !== null) el.scrollTop = el.scrollHeight
-  }, [rows.length])
+  }, [rows.length, lastIsUser])
   const dormant = data?.active !== true
+  // C2: Esc aborts the running turn (upstream's global escape).
+  useEffect(() => {
+    if (!busy) return
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') stop() }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [busy, stop])
   const lastAssistant = rows.reduce((acc, row, i) => row.role === 'assistant' ? i : acc, -1)
   const [error, setError] = useState<string | null>(null)
   const fire = (action: Promise<void>): void => {
@@ -673,6 +802,19 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     }
   }
   const proposal = data?.pendingProposals[0] ?? null
+  // C8: a decided proposal keeps a read-only badge until the poll drops it —
+  // the decision gets its visible closure instead of a silent disappearance.
+  const [decided, setDecided] = useState<Record<string, { kind: 'accepted' | 'declined'; title: string }>>({})
+  useEffect(() => {
+    if (proposal === null) return
+    setDecided(cur => {
+      if (cur[proposal.id] === undefined) return cur
+      const next = { ...cur }
+      delete next[proposal.id]
+      return next
+    })
+  }, [proposal?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  const decidedBadge = proposal === null ? decidedBadgeOf(decided) : null
   return createElement('div', { className: 'lks14-col lks14-chat' },
     proposal !== null
       ? createElement('div', { className: 'lks-propbanner' },
@@ -682,14 +824,19 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           createElement('button', {
             className: 'lks-btn primary',
             style: { padding: '4px 12px', fontSize: '12.5px' },
-            onClick: () => { send(tr('proposal.accept.msg', { lesson: proposal.lessonTitle })) },
+            onClick: () => { setDecided(cur => ({ ...cur, [proposal.id]: { kind: 'accepted', title: proposal.lessonTitle } })); send(tr('proposal.accept.msg', { lesson: proposal.lessonTitle })) },
           }, tr('proposal.accept')),
           createElement('button', {
             className: 'lks-btn ghost',
             style: { padding: '4px 12px', fontSize: '12.5px' },
-            onClick: () => { send(tr('proposal.decline.msg', { lesson: proposal.lessonTitle })) },
+            onClick: () => { setDecided(cur => ({ ...cur, [proposal.id]: { kind: 'declined', title: proposal.lessonTitle } })); send(tr('proposal.decline.msg', { lesson: proposal.lessonTitle })) },
           }, tr('proposal.decline')))
-      : null,
+      : decidedBadge !== null
+        ? createElement('div', { className: `lks-propbanner decided ${decidedBadge.kind}` },
+            decidedBadge.kind === 'accepted' ? createElement(IconCrownFill16, { size: 14 }) : createElement(IconBookFill16, { size: 14 }),
+            createElement('span', { className: 'lks-propbanner-why' },
+              tr(decidedBadge.kind === 'accepted' ? 'proposal.applied' : 'proposal.rejected', { lesson: decidedBadge.title })))
+        : null,
     // B4: upstream has no per-column header — a thin current-lesson row instead
     // (ThreadSwitcher empty-state style); the mode pills live in the composer.
     lesson !== null || !dormant
@@ -698,6 +845,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
       : null,
     createElement('div', {
       className: 'lks14-stream',
+      onScroll: onStreamScroll,
       ref: streamEl,
       'data-lks-feed': rows.length > 0 ? `rows:${String(rows.length)}` : bound ? (feedAttached ? 'attached-empty' : 'waiting') : 'no-thread',
     },
@@ -766,13 +914,35 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           onChange: (e: { target: { value: string } }) => { setDraft(e.target.value) },
           onKeyDown: onComposerKey,
         }),
-        createElement('button', {
-          className: 'lks-btn-send',
-          'aria-label': tr('composer.send'),
-          disabled: busy || dormant || draft.trim() === '',
-          onClick: () => { send(draft) },
-        }, busy ? createElement(IconLoadingOutline16, { size: 16, className: 'lks-spin' }) : createElement(IconArrowUpFill16, { size: 18 })),
+        // C2: send ↔ stop (upstream's 3D pair — stop cancels the host turn).
+        busy
+          ? createElement('button', {
+            className: 'lks-btn-send stop',
+            'aria-label': tr('chat.stop'),
+            title: tr('chat.stop'),
+            onClick: stop,
+          }, createElement(IconCloseFill16, { size: 14 }))
+          : createElement('button', {
+            className: 'lks-btn-send',
+            'aria-label': tr('composer.send'),
+            disabled: dormant || draft.trim() === '',
+            onClick: () => { send(draft) },
+          }, createElement(IconArrowUpFill16, { size: 18 })),
       ),
+    // C1: the scroll-to-bottom FAB (red pulse while the tutor streams).
+    showFab
+      ? createElement('button', {
+        className: `lks14-scrollfab${busy ? ' streaming' : ''}`,
+        'aria-label': tr('scroll.bottom'),
+        title: tr('scroll.bottom'),
+        onClick: () => {
+          const el = streamEl.current
+          stuck.current = true
+          setShowFab(false)
+          if (el !== null) el.scrollTop = el.scrollHeight
+        },
+      }, '▾')
+      : null,
     sendError !== null || error !== null
       ? createElement('div', { className: 'lks-propcard-err' }, sendError ?? error)
       : null,
@@ -856,7 +1026,8 @@ function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyD
   }
 
   useEffect(() => {
-    const SETTLE = 250
+    // C12: coarse pointers need a longer quiet window before the popover lands.
+    const SETTLE = settleMs(typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
     let settleTimer: ReturnType<typeof setTimeout> | null = null
     let hideTimer: ReturnType<typeof setTimeout> | null = null
     let gesture = false

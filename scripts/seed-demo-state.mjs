@@ -10,6 +10,7 @@ const statePath = process.argv[2]
 if (statePath === undefined) throw new Error('usage: seed-demo-state.mjs <statePath>')
 rmSync(statePath, { force: true })
 
+const FENCE = '`'.repeat(3)
 const MARKDOWN = `# 深度学习入门
 
 ## 神经网络基础
@@ -21,6 +22,14 @@ const MARKDOWN = `# 深度学习入门
 前半步是线性变换:
 
 $$z = Wx + b$$
+
+用 Python 写出来就是一行矩阵乘法:
+
+${FENCE}python
+import numpy as np
+z = W @ x + b   # 线性部分:一次矩阵乘法加一个偏置
+a = relu(z)     # 非线性激活:没有它,再深的网络也只是一次线性变换
+${FENCE}
 
 其中 $W \\in \\mathbb{R}^{m \\times n}$ 是该层的权重矩阵,$b$ 是偏置向量。如果省掉非线性,
 多层线性变换的复合仍是一个线性变换 —— 深度网络的表达力将不复存在,所以激活函数不可省。

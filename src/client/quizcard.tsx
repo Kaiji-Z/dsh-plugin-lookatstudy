@@ -98,6 +98,19 @@ export function quizScore(data: QuizData, answers: readonly number[]): { correct
   return { correct, total }
 }
 
+/**
+ * C5 option tone under select-then-submit: before the commit the tone NEVER
+ * leaks correctness (only the pick highlight); after it, the judged pair
+ * (right/wrong/dim) shows. Pure.
+ */
+export function optionTone(chosen: number, pending: number | null, i: number, isRight: boolean): string {
+  if (chosen >= 0) {
+    const picked = chosen === i
+    return picked ? (isRight ? ' right' : ' wrong') : isRight ? ' right dim' : ''
+  }
+  return pending === i ? ' picked' : ''
+}
+
 const ACTION_ICONS: Record<PostQuizActionId, (props: { size?: number }) => ReactNode> = {
   'explain-wrong': IconBookFill16,
   'retry': IconRefreshOutline16,
@@ -126,6 +139,8 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
   const [cursor, setCursor] = useState(0)
   const [showScore, setShowScore] = useState(false)
   const [hookSent, setHookSent] = useState(false)
+  // C5: the uncommitted selection — submit reveals, never the pick itself.
+  const [pending, setPending] = useState<number | null>(null)
 
   // (Re)load when the artifact identity changes (lesson switch).
   useEffect(() => {
@@ -135,6 +150,7 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
     const firstUnanswered = next.answers.findIndex(a => a < 0)
     setCursor(firstUnanswered === -1 ? questions.length - 1 : firstUnanswered)
     setHookSent(false)
+    setPending(null)
   }, [lessonId, artifactId, questions.length])
 
   const allAnswered = progress.answers.every(a => a >= 0)
@@ -189,22 +205,29 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
   const q = questions[cursor]!
   const chosen = progress.answers[cursor] ?? -1
   const options = q.options.map((opt, i) => {
-    const picked = chosen === i
-    const isRight = i === q.answer
-    const tone = chosen < 0 ? '' : picked ? (isRight ? ' right' : ' wrong') : isRight ? ' right dim' : ''
+    const tone = optionTone(chosen, pending, i, i === q.answer)
     return createElement('button', {
       key: i,
       className: `lks-qcard-opt${tone}`,
       disabled: chosen >= 0,
-      onClick: () => { answer(i) },
+      onClick: () => { setPending(i) },
     }, opt)
   })
-  const explanation = chosen < 0 ? null : createElement('div', { className: 'lks-qcard-expl' },
+  // C5: the submit row — selecting arms it, submitting commits + reveals.
+  const submitRow = chosen < 0 && pending !== null
+    ? createElement('div', { style: { marginTop: '6px' } },
+      createElement('button', {
+        className: 'lks-qcard-next',
+        onClick: () => { answer(pending); setPending(null) },
+      }, tr('quiz.submit')))
+    : null
+  const explanation = chosen < 0 ? submitRow : createElement('div', { className: 'lks-qcard-expl' },
     `${chosen === q.answer ? tr('quiz.right') : tr('quiz.wrong')} — ${q.explanation}`,
     createElement('div', { style: { marginTop: '6px' } },
       createElement('button', {
         className: 'lks-qcard-next',
         onClick: () => {
+          setPending(null)
           if (cursor + 1 < questions.length) setCursor(cursor + 1)
           else setShowScore(true)
         },

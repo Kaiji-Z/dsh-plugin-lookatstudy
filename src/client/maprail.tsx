@@ -112,6 +112,7 @@ export function MapSectionView({ section, examAllowed, open, onToggle, onJump }:
           return createElement('div', {
             key: lesson.id,
             className: 'lks-mapnode',
+            'data-node-id': lesson.id,
             style: {
               left: `${String(node.x - 55)}px`,
               top: `${String(node.y - NODE_BOX_H / 2 + 10)}px`,

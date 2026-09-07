@@ -141,3 +141,43 @@ export function pickNarrowPane(stored: string | null): 'rail' | 'chat' | 'note' 
 export function sectionDefaultOpen(section: { lessons: ReadonlyArray<{ kind: string; status: string; focus: boolean }> }): boolean {
   return section.lessons.some(l => l.focus || (l.kind !== 'exam' && l.status !== 'mastered' && l.status !== 'locked'))
 }
+
+/**
+ * C1 sticky-follow: the stream follows new rows only while the reader is
+ * within `tolerance` of the bottom (upstream's 80px rule — scroll up and the
+ * feed stops chasing you). Pure.
+ */
+export function isStuck(scrollTop: number, scrollHeight: number, clientHeight: number, tolerance = 80): boolean {
+  return scrollHeight - scrollTop - clientHeight <= tolerance
+}
+
+/**
+ * C12 touch pane swipe: a horizontal flick (>50px, dominance >2x) switches the
+ * narrow pane neighbor; anything else is not a pane gesture. Pure
+ * (upstream swipeTarget semantics).
+ */
+export function swipePane(pane: 'rail' | 'chat' | 'note', dx: number, dy: number): 'rail' | 'chat' | 'note' | null {
+  if (Math.abs(dx) < 50 || Math.abs(dx) <= 2 * Math.abs(dy)) return null
+  const order: ReadonlyArray<'rail' | 'chat' | 'note'> = ['rail', 'chat', 'note']
+  const idx = order.indexOf(pane)
+  if (idx < 0) return null
+  const next = dx < 0 ? idx + 1 : idx - 1
+  return next >= 0 && next < order.length ? order[next]! : null
+}
+
+/**
+ * C12 selection-popover settle: coarse pointers need a longer quiet window
+ * (upstream's 600/250 two-tier). Pure.
+ */
+export function settleMs(coarse: boolean): number {
+  return coarse ? 600 : 250
+}
+
+/**
+ * C9 interleaved review: pick one due lesson at random (Math.random; empty in,
+ * null out). Pure.
+ */
+export function pickRandomDue<T>(items: readonly T[]): T | null {
+  if (items.length === 0) return null
+  return items[Math.floor(Math.random() * items.length)] ?? null
+}
