@@ -268,3 +268,12 @@ export function IconBoxOutline16({ size = 16, className }: IconProps) {
   },
     createElement('path', { d: 'M8 1.5 14 4.5v7L8 14.5 2 11.5v-7L8 1.5ZM2 4.5 8 7.5l6-3M8 7.5v7', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
 }
+
+/** IconSoundOutline16 — plugin-original read-aloud glyph (speaker cone + two waves) */
+export function IconSoundOutline16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M8.5 1.7C8.5 1.26 7.99 1.03 7.66 1.31L4.14 4.25H1.9C1.4 4.25 1 4.65 1 5.15V10.85C1 11.35 1.4 11.75 1.9 11.75H4.14L7.66 14.69C7.99 14.97 8.5 14.74 8.5 14.3V1.7ZM6.9 5.98V10.02L4.86 11.75H2.5V4.25H4.86L6.9 5.98Z', fill: 'currentColor' }),
+    createElement('path', { d: 'M10.9 5.02C11.95 5.79 12.6 6.86 12.6 8C12.6 9.14 11.95 10.21 10.9 10.98C10.57 11.22 10.5 11.68 10.74 12.01C10.98 12.34 11.44 12.41 11.77 12.17C13.19 11.14 14.1 9.65 14.1 8C14.1 6.35 13.19 4.86 11.77 3.83C11.44 3.59 10.98 3.66 10.74 3.99C10.5 4.32 10.57 4.78 10.9 5.02Z', fill: 'currentColor' }))
+}

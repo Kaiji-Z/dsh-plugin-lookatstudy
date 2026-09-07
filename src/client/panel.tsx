@@ -19,8 +19,7 @@ import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
   IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16, IconWrenchOutline16,
-  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16,
-} from './icons.tsx'
+  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
@@ -39,7 +38,7 @@ import { ArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } fr
 import { showStudyToast } from './toast.ts'
 import { Companion, useCompanionMood } from './companion.tsx'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError } from './views.tsx'
 import { ListSectionView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
@@ -163,11 +162,14 @@ function chatRow(row: { key: string; role: string; text: string; toolState?: 'lo
       body,
       createElement('div', { className: 'lks14-msgaudio' },
         createElement('button', {
-          className: 'lks-btn ghost',
+          className: 'lks-btn ghost lks-audio-toggle',
           style: { padding: '2px 8px', fontSize: '11.5px', flex: 'none' },
           title: audio.playing ? tr('read.stop') : tr('msg.speak'),
+          'aria-label': audio.playing ? tr('read.stop') : tr('msg.speak'),
           onClick: () => { if (audio.playing) audio.onStop(); else audio.onPlay(row.key) },
-        }, audio.playing ? tr('read.stop') : tr('msg.speak')),
+        },
+          createElement(IconSoundOutline16, { size: 13 }),
+          createElement('span', { className: 'lks-audio-label' }, audio.playing ? tr('read.stop') : tr('msg.speak'))),
         audio.playing ? createElement('span', { className: 'lks14-msgaudio-n' }, String(audio.index + 1) + '/' + String(audio.total)) : null))
   }
   const options = interactive === undefined || row.role === 'streaming' ? [] : quizOptions(row.text)
@@ -521,10 +523,10 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         if (face === undefined) throw new Error('lesson session is not addressable yet')
         activeFace.current = face
         const result = await face.prompt([{ type: 'text', text }], 'queue')
-        if (!result.ok) throw new Error(`prompt rejected: ${result.error.code}: ${result.error.message}`)
+        if (!result.ok) throw new Error(`prompt rejected: ${result.error.code}: ${result.error.message}`) // raw stays console-only (friendlyError maps the DOM text)
         setDraft('')
       } catch (err) {
-        setSendError(err instanceof Error ? err.message : String(err))
+        setSendError(friendlyError(err, 'send'))
       } finally {
         setBusy(false)
       }
@@ -977,7 +979,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
   }, [data?.focusLessonId])
-  const reportError = (err: unknown): void => { setError(err instanceof Error ? err.message : String(err)) }
+  const reportError = (err: unknown): void => { setError(friendlyError(err, 'action')) }
   // Live search: title hits from the loaded tree + debounced full-text hits
   // merge into the results panel (upstream CourseSearchPanel semantics).
   useEffect(() => {
@@ -1673,7 +1675,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   const lastAssistant = rowsView.reduce((acc, row, i) => row.role === 'assistant' ? i : acc, -1)
   const [error, setError] = useState<string | null>(null)
   const fire = (action: Promise<void>): void => {
-    action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
+    action.then(() => { setError(null) }, (err: unknown) => { setError(friendlyError(err, 'action')) })
   }
   const starters = lesson?.starters ?? []
   // E3: the attachment intake — one file at a time lands verbatim in the study
@@ -1941,7 +1943,7 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
   const diagRef = useRef<HTMLDivElement | null>(null)
 
   const fire = (action: Promise<void>): void => {
-    action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
+    action.then(() => { setError(null) }, (err: unknown) => { setError(friendlyError(err, 'action')) })
   }
 
   // P12: exam nodes swap the notebook for the ExamView answering surface
@@ -2181,8 +2183,7 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
         ? createElement('div', { className: 'lks14-lessonhead' },
           createElement('h2', null, lesson.title),
           createElement('div', { className: 'lks14-meta' },
-            `${lesson.courseTitle} · ${statusTitle('study', lesson.status)}`
-            + (lesson.masteryPct === null ? '' : ` · ${tr('bb.mastery', { pct: lesson.masteryPct })}`)),
+            `${lesson.courseTitle} · ${statusTitle('study', lesson.status)}`),
         )
         : null,
       tab === 'teach'

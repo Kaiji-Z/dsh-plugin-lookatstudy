@@ -205,3 +205,13 @@ export function humanizeSectionTitle(raw: string): string {
     .trim()
   return t === '' ? raw.trim() : t
 }
+
+/**
+ * Panel-facing error text (0.19 critique round): raw err.message (host RPC
+ * internals like "prompt rejected: …") never renders in the DOM — the user
+ * gets one honest locale line, the raw error goes to the console.
+ */
+export function friendlyError(err: unknown, kind: 'send' | 'action' = 'action', t = tr): string {
+  console.error('[lookatstudy]', err)
+  return t(kind === 'send' ? 'error.send' : 'error.action')
+}

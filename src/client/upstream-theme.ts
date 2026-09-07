@@ -719,6 +719,10 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-masteryhair.gold i{background:var(--gold)}
 .lks-ui .lks-worldswitch{display:flex;flex:1;min-width:0;gap:3px;padding:2px;border-radius:8px;background:rgb(0 0 0/0.3);margin-top:0}
 .lks-ui .lks-worldtab{flex:1;display:flex;align-items:center;justify-content:center;gap:4px;padding:3px 0;border:none;border-radius:6px;background:none;color:rgb(255 255 255/0.5);font:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:color .15s;min-width:0;overflow:hidden}
+/* ── read-aloud toggle rests as an icon; the verb appears on hover/focus ── */
+.lks-ui .lks-audio-toggle{display:inline-flex;align-items:center;gap:4px}
+.lks-ui .lks-audio-toggle .lks-audio-label{display:none}
+.lks-ui .lks14-msgwrap:hover .lks-audio-toggle .lks-audio-label,.lks-ui .lks-audio-toggle:focus-visible .lks-audio-label{display:inline}
 /* ── light-mode chrome sweep: the rail-head glass family hardcoded dark for
    the map era; the list rail follows the theme, so the chrome reads
    ink-on-surface here too ── */

@@ -221,6 +221,15 @@ test('the B-track skeleton: floating rail chrome, swapped widths, de-carded assi
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-notebody\{margin:0 auto;max-width:960px/, 'notebook content centers at 960px')
 })
 
+test('friendlyError maps raw host errors to locale lines; the raw text stays console-only (0.19)', async () => {
+  const { friendlyError } = await import('../src/client/views.tsx')
+  const raw = new Error('prompt rejected: E_BUSY: the host is thinking')
+  const send = friendlyError(raw, 'send')
+  assert.ok(!send.includes('prompt rejected') && !send.includes('E_BUSY'), 'no raw internals in the DOM text')
+  const action = friendlyError(raw, 'action')
+  assert.notEqual(send, action, 'send vs action carry distinct lines')
+})
+
 test('humanizeSectionTitle strips episode slugs for display only (0.19)', async () => {
   const { humanizeSectionTitle } = await import('../src/client/views.tsx')
   assert.equal(humanizeSectionTitle('0-course-setup'), 'course setup')
@@ -306,6 +315,7 @@ test('the P11b chrome freezes: reasoning fold, tool chips, karaoke marks, toolti
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-toolchip\.error\{[^}]*color:var\(--warning-light\)/, 'error chips read warning')
   assert.match(UPSTREAM_CSS, /\.lks-ui mark\.lks-reading\{[^}]*rgb\(var\(--accent-rgb\)\/0\.25\)/, 'the karaoke sentence highlight')
   assert.match(UPSTREAM_CSS, /@keyframes lks-flash-fade/, 'the note-locate flash fades out')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-audio-toggle \.lks-audio-label\{display:none\}/, 'the read-aloud toggle rests as an icon (0.19)')
   assert.match(UPSTREAM_CSS, /\.lks-tip\{[^}]*position:fixed/, 'GlobalTooltip rides above everything')
   assert.match(UPSTREAM_CSS, /\.lks-confirmcard\.danger/, 'ConfirmCard carries the danger variant')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-note\.pinned\{[^}]*rgb\(var\(--gold-rgb\)\//, 'pinned notes tint gold')
