@@ -118,7 +118,7 @@ P11b：
 
 ### P18 · 终审发版
 
-- [ ] judge 全项 ≥8；全量 Playwright 验收矩阵（下节）逐项过；README 截图重拍（明暗两套）；AGENTS.md 更新（新架构/新 vendor/主题机制）；发版 0.21.0 + web-lks 重装验证 + 共享 web profile 依赖行升级（若 3080 空闲）
+- [x] 终审全绿 ✅：judge 8 项全 10/10（`pnpm run judge` PASS）；验收矩阵 12 项逐条实测 —— ①双主题 audit suspect=0/0（exit 0/0）+ 暗色跟随 5/5 压测（期间修了主题 boot 竞态：600ms settle 重读 + 面板 sync-on-mount）②物理地图 drag/回弹/绳链/FPS 59.7（probe-p15 6/6）③天气画布+空白呼哨召唤（probe-matrix 8/8）④考试五态+离开守卫（probe-p12 10/10——修了 nextSign ?. 链 undefined 崩溃与 guardedSetFocus Promise 契约）⑤quiz/unlock 粒子（probe-p13 3/3）⑥CanvasStage 缩放（probe-p14 6/6）⑦滚动 FAB+stop（matrix——期间修了面板根 flex 高度链：C1 全套此前静默失效）⑧ContextMeter/附件落盘→导师引用/Cmd+K（probe-p17 8/8 + matrix）⑨B6 排版（matrix）⑩线程切换+字号（p17）⑪笔记回到原文+代码复制（probe-d8 4/4 + matrix）⑫朗读 n/total+karaoke（matrix）；README 明暗两套截图重拍（像素均值 32/200 验证非同图）+ AGENTS.md 更新（physics vendor、新 client 模块、高度链陷阱）。发版 0.18.0（草稿 0.21.0 系笔误，/goal 以 0.18.0 为准）+ web-lks 重装验证。
 
 ## Playwright 验收矩阵（终态逐项一条可复核断言）
 
