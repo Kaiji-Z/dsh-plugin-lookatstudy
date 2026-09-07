@@ -3,9 +3,14 @@
  * every HTML character first, then renders a pragmatic GFM subset (headings,
  * fenced code, inline code, bold/italic, links, lists, blockquotes, tables,
  * hr, paragraphs). Lesson bodies are imported teaching material, so raw HTML
- * never passes through.
+ * never passes through. Fenced code rides the shared CodeBlock card (D8:
+ * language chip + copy header — the same structure in the chat stream, the
+ * lesson prose, and notebook notes; the copy itself is the client's
+ * delegated handler).
  * @module dsh-plugin-lookatstudy/markdown
  */
+
+import { tr } from './client/locale.ts'
 
 /** Escape all HTML-significant characters. */
 function escapeHtml(text: string): string {
@@ -76,7 +81,10 @@ export function renderMarkdown(md: string): string {
   while (i < lines.length) {
     const line = lines[i]!
 
-    // Fenced code block
+    // Fenced code block — the shared CodeBlock card (D8): language chip +
+    // copy header over the plain pre. The label rides the pipeline's locale
+    // (zh host-side default, the bound locale client-side); the delegated
+    // click handler re-localizes on every copy.
     const fence = /^```(\w*)\s*$/.exec(line.trim())
     if (fence) {
       flushParagraph(paragraph)
@@ -89,7 +97,12 @@ export function renderMarkdown(md: string): string {
         i++
       }
       i++ // closing fence
-      out.push(`<pre><code${lang === '' ? '' : ` class="lang-${lang}"`}>${code.join('\n')}</code></pre>`)
+      out.push(
+        `<div class="lks-codeblock" data-testid="md-codeblock">`
+        + `<div class="lks-codeblock-head"><span class="lks-codeblock-lang">${lang === '' ? 'code' : lang}</span>`
+        + `<button type="button" class="lks-codeblock-copy" data-testid="md-copy" aria-label="${tr('chat.copy')}">${tr('chat.copy')}</button></div>`
+        + `<pre><code${lang === '' ? '' : ` class="lang-${lang}"`}>${code.join('\n')}</code></pre>`
+        + `</div>`)
       continue
     }
 

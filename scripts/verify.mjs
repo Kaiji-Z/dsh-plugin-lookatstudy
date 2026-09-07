@@ -226,6 +226,13 @@ gate('bundle', () => {
     [client, 'lks14-importcta', 'the import CTA toggle'],
     [client, 'lks14-importprog', 'the installer progress screen'],
     [client, 'import-tab-', 'the five source tabs'],
+    // 0.18.0 D8: the shared CodeBlock + the danger-zone boundaries
+    [client, 'lks-codeblock', 'the shared code block card'],
+    [client, 'wireCodeBlockCopy', 'the delegated copy wire'],
+    [client, 'lks-renderfail', 'the boundary fallback surfaces'],
+    [client, 'ContentBoundary', 'the content-zone boundary wrapper'],
+    [client, 'md-codeblock', 'the codeblock testid'],
+    [host, 'lks-codeblock', 'the pipeline emits the card host-side too'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [

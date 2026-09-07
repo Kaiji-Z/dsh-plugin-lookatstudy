@@ -29,6 +29,8 @@ import { renderLessonConceptMap } from './diagrams.ts'
 import { speechSentencesOf } from '../vendor/speech-text.ts'
 import { speakMathInSentence } from '../vendor/math-speech.ts'
 import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog, importProgressOf } from './session-feed.ts'
+import { ErrorBoundary, ContentBoundary } from './error-boundary.tsx'
+import { wireCodeBlockCopy } from './codeblock.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { QuizCard, type QuizData } from './quizcard.tsx'
@@ -149,12 +151,14 @@ function chatRow(row: { key: string; role: string; text: string; toolState?: 'lo
       createElement('span', null, row.text))
   }
   const cls = row.role === 'streaming' ? 'lks14-msg lks14-msg-assistant streaming' : 'lks14-msg lks14-msg-assistant'
-  const body = createElement('div', {
-    key: row.key,
-    className: cls,
-    'data-row-key': row.key,
-    dangerouslySetInnerHTML: { __html: renderMarkdown(row.text) },
-  })
+  // D8: every markdown surface renders through a boundary — a poisoned row
+  // degrades to the inline warning + retry, never unmounts the pane.
+  const body = createElement(ErrorBoundary, { key: `b-${row.key}` },
+    createElement('div', {
+      className: cls,
+      'data-row-key': row.key,
+      dangerouslySetInnerHTML: { __html: renderMarkdown(row.text) },
+    }))
   if (audio !== undefined && row.role === 'assistant') {
     return createElement('div', { key: row.key, className: 'lks14-msgwrap' },
       body,
@@ -193,6 +197,9 @@ type StudyData = ReturnType<typeof useStudy>['data']
 
 function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession } = useStudy()
+  // D8: the shared CodeBlock's delegated copy wire — one listener for every
+  // zone the markdown pipeline feeds (chat, prose, notes).
+  useEffect(() => { wireCodeBlockCopy() }, [])
   const [sendError, setSendError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // C2: the host prompt resolves at queue time, so the real generation signal
@@ -1882,7 +1889,10 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
             read !== null && read.degraded ? createElement('span', { className: 'lks-readbar-notice' }, tr('read.engine.system')) : null,
           ),
           createElement('div', { className: 'lks14-prosewrap' },
-            createElement('div', { className: 'lks14-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: lesson.html } }),
+            createElement(ContentBoundary, {
+              content: lesson.markdown ?? '',
+              boundaryKey: `prose-${lesson.lessonId}`,
+            }, createElement('div', { className: 'lks14-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: lesson.html } })),
             quoteBtn !== null
               ? createElement('div', {
                   className: 'lks-quote-btn',
@@ -2032,7 +2042,10 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
                             disabled: editDraft.trim() === '',
                             onClick: () => { setEditingNote(null); fire(editNote(lesson.lessonId, n.id, editDraft)) },
                           }, tr('note.save'))))
-                      : createElement('div', { className: 'lks-note-text', dangerouslySetInnerHTML: { __html: renderMarkdown(n.text) } }),
+                      : createElement(ContentBoundary, {
+                        content: n.text,
+                        boundaryKey: `note-${n.id}`,
+                      }, createElement('div', { className: 'lks-note-text', dangerouslySetInnerHTML: { __html: renderMarkdown(n.text) } })),
                     n.quote !== null ? createElement('div', { className: 'lks-note-q' }, `'${n.quote}'`) : null,
                   )) : []),
                 )

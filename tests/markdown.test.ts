@@ -22,6 +22,18 @@ test('fenced code keeps content verbatim and unformatted', () => {
   assert.ok(!html.includes('<strong>raw</strong>'))
 })
 
+test('D8: fenced code rides the shared CodeBlock card (language chip + copy header) in every zone', () => {
+  const html = renderMarkdown('before\n```python\nx = 1\n```\nafter')
+  assert.ok(html.includes('<div class="lks-codeblock" data-testid="md-codeblock">'))
+  assert.ok(html.includes('<div class="lks-codeblock-head"><span class="lks-codeblock-lang">python</span>'))
+  assert.ok(html.includes('class="lks-codeblock-copy"'))
+  assert.ok(html.includes('<pre><code class="lang-python">x = 1</code></pre>'), 'the pre itself keeps its verbatim shape inside the card')
+  // a fence with no language falls back to the literal "code" chip (upstream lang || "code")
+  const bare = renderMarkdown('```\nplain\n```')
+  assert.ok(bare.includes('<span class="lks-codeblock-lang">code</span>'))
+  assert.ok(bare.includes('<pre><code>plain</code></pre>'))
+})
+
 test('raw HTML is escaped everywhere', () => {
   const html = renderMarkdown('<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>')
   assert.ok(!html.includes('<script'))

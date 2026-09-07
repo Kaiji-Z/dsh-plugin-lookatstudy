@@ -675,4 +675,27 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-importprog-step.pending .lks14-importprog-text{color:rgb(255 255 255/0.25)}
 .lks-ui .lks14-importprog-step.pending .lks14-importprog-dots{animation:none;border-color:rgb(255 255 255/0.15)}
 .lks-ui .lks14-importprog-elapsed{margin-left:4px;color:rgb(255 255 255/0.35)}
+
+/* ── D8: the shared CodeBlock card + the render-failure boundaries ── */
+/* every zone the pipeline feeds (chat rows, lesson prose, notebook notes)
+   gets the same card: language chip + hover copy button over the pre. */
+.lks-ui .lks-codeblock{position:relative;margin:10px 0}
+.lks-ui .lks-codeblock-head{display:flex;align-items:center;justify-content:space-between;padding:5px 12px;background:var(--surface-1);border:1px solid var(--border-faint);border-bottom:none;border-radius:8px 8px 0 0}
+.lks-ui .lks-codeblock-lang{font-size:10.5px;font-family:var(--font-mono,ui-monospace,monospace);color:var(--ink-faint);text-transform:uppercase;letter-spacing:.08em}
+.lks-ui .lks-codeblock-copy{border:none;background:none;color:var(--ink-muted);font:inherit;font-size:10.5px;cursor:pointer;transition:color .15s,opacity .15s;opacity:0}
+.lks-ui .lks-codeblock:hover .lks-codeblock-copy{opacity:1}
+.lks-ui .lks-codeblock-copy:hover{color:var(--brand)}
+.lks-ui .lks-codeblock-copy.copied{color:var(--brand)}
+.lks-ui .lks-codeblock-copy:focus-visible{opacity:1;box-shadow:0 0 0 2px var(--business-primary);outline:none;border-radius:4px}
+@media (pointer:coarse){.lks-ui .lks-codeblock-copy{opacity:1}}
+.lks-ui .lks-codeblock pre{margin:0;border-radius:0 0 8px 8px;border-top:none}
+/* the boundary fallbacks (default inline row + the rich content preview) */
+.lks-ui .lks-renderfail{display:flex;align-items:flex-start;gap:8px;padding:14px;font-size:13px;color:var(--warning-light)}
+.lks-ui .lks-renderfail svg{flex:none;margin-top:2px}
+.lks-ui .lks-renderfail-retry{border:none;background:none;color:inherit;font:inherit;font-size:13px;text-decoration:underline;cursor:pointer;margin-left:4px}
+.lks-ui .lks-renderfail-retry:hover{color:var(--ink-strong)}
+.lks-ui .lks-renderfail-rich{padding:10px 0}
+.lks-ui .lks-renderfail-msg{font-size:13px;color:var(--warning-light);margin-bottom:8px}
+.lks-ui .lks-renderfail-raw{font-size:11.5px;color:var(--ink-muted);white-space:pre-wrap;word-break:break-word;background:var(--surface-1);padding:10px;border-radius:8px}
+.lks-ui .lks-renderfail-rich .lks-renderfail-retry{color:var(--accent);margin-top:8px}
 `
