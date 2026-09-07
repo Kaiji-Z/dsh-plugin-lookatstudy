@@ -101,7 +101,7 @@ await page.waitForTimeout(3500)
 const after = await state()
 const grew = after.courses.length === before.courses.length + 1
 const newCourse = after.courses.find(c => !before.courses.some(b => b.courseId === c.courseId)) ?? null
-const mapBack = await page.evaluate(() => document.querySelector('.lks-mapsec-list') !== null)
+const mapBack = await page.evaluate(() => document.querySelector('.lks-raillist') !== null) // the list rail class (0.19 pivot)
 const railTitle = await page.evaluate(() => document.querySelector('.lks14-railtitle')?.textContent ?? document.querySelector('.lks-set-select')?.value ?? '')
 const selectedOk = newCourse !== null && (railTitle === newCourse.title || railTitle.includes('D7') || railTitle === newCourse.courseId)
 probe('completion lands the course and jumps the rail to it', grew && mapBack && selectedOk,

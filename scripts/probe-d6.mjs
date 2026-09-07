@@ -52,7 +52,7 @@ const practiceState = await page.evaluate(() => ({
   sections: [...document.querySelectorAll('.lks-railsec-head .lks-railsec-title')].map(s => s.textContent ?? '?'),
   studyOn: document.querySelector('[data-testid="world-tab-study"]')?.getAttribute('aria-selected'),
 }))
-const onlyPractice = practiceState.sections.length > 0 && practiceState.sections.every(t => t === 'seed-practice')
+const onlyPractice = practiceState.sections.length > 0 && practiceState.sections.every(t => t === 'seed practice') // humanized display (0.19)
 probe('the practice world tab filters the rail to practice sections only', switcherVisible === 1 && onlyPractice,
   `before=${studySections}sections after=[${practiceState.sections.join(',')}] studyTabSelected=${practiceState.studyOn}`)
 await page.click('[data-testid="world-tab-study"]')
