@@ -6,10 +6,10 @@ Turn any markdown document, local folder, or GitHub learning repository into a g
 
 | | |
 |---|---|
-| ![Three-column study panel: balloon course map, tutor chat, blackboard](docs/media/overview.png) | **The 学习 panel** — LookatStudy's Duolingo-dark UI 1:1: the floating XP/streak app header, the three-column surface ladder (rail / chat / notebook, depth by color step), 3D push-down buttons, and the chat's typing dots; opened from the sidebar's 学习 row. |
-| ![Lesson page with rendered math, code and diagrams](docs/media/blackboard-lesson.png) | **讲解** — server-sanitized markdown rendered rich on demand: KaTeX formulas, syntax-highlighted code, mermaid diagrams (CDN loaders, silent degrade offline). |
-| ![Concept map view](docs/media/concept-map.png) | **🕸 概念图** — the lesson's knowledge components laid out as a draw.io-style concept graph (bundled ELK layout, no external service). |
-| ![Course rail with the balloon map](docs/media/course-rail.png) | **课程栏** — the balloon course map: frosted gold-rim signposts, state spheres (stone-locked / glowing green / blue in-progress / gold mastered / purple exam boss), sagging brand ropes that draw themselves in as you walk them, sky backdrop, due badges; signposts still collapse. |
+| ![Three-column study panel: balloon course map, tutor chat, blackboard](docs/media/overview.png)<br>![Same panel in light theme](docs/media/overview-light.png) | **The 学习 panel** — LookatStudy's UI 1:1 in **both themes** (the panel follows the host's dark/light switch live): the floating XP/streak app header, the three-column surface ladder (rail / chat / notebook, depth by color step), 3D push-down buttons, and the chat's typing dots; opened from the sidebar's 学习 row. |
+| ![Lesson page with rendered math, code and diagrams](docs/media/blackboard-lesson.png)<br>![Lesson page, light theme](docs/media/blackboard-lesson-light.png) | **讲解** — server-sanitized markdown rendered rich on demand: KaTeX formulas, syntax-highlighted code (shared copy-to-clipboard blocks), mermaid diagrams with a zoomable canvas stage (CDN loaders, silent degrade offline). |
+| ![Concept map view](docs/media/concept-map.png)<br>![Concept map, light theme](docs/media/concept-map-light.png) | **🕸 概念图** — the lesson's knowledge components laid out as a draw.io-style concept graph (bundled ELK layout, no external service). |
+| ![Course rail with the balloon map](docs/media/course-rail.png)<br>![Course rail, light theme](docs/media/course-rail-light.png) | **课程栏** — the balloon course map: frosted gold-rim signposts, state spheres (stone-locked / glowing green / blue in-progress / gold mastered / purple exam boss), sagging brand ropes that draw themselves in as you walk them, seasonal sky + weather canvas, due badges; the map is a live physics playground (drag a ball, it swings back on its rope). |
 
 ## Install
 
@@ -32,7 +32,7 @@ Works with any profile. In the `web` profile the plugin additionally serves the 
 - **Learner memory** — three slots (global style / per-course pattern / per-lesson gap), read-merge-write (`study_remember`).
 - A dynamic **learner snapshot** (focus, strategy band, weak concepts, friction, memory, due count, pending proposal) is injected as runtime context every turn.
 
-**2. The study panel (`dsh.client`).** A 「学习」 row in the dsh sidebar (below 新会话, alongside other plugin entries) opens a full-takeover panel arranged like upstream LookatStudy's own app — three columns styled entirely with dsh's `--dsw-*` tokens; closing it (or navigating to any session) hands the center column straight back to the host:
+**2. The study panel (`dsh.client`).** A 「学习」 row in the dsh sidebar (below 新会话, alongside other plugin entries) opens a full-takeover panel arranged like upstream LookatStudy's own app — three columns wearing the upstream v0.28 skin (LookatStudy's verbatim token ladder under `.lks-ui`, riding the host's `--dsw-*` tokens for host-chrome surfaces) and following the host's dark/light theme live; closing it (or navigating to any session) hands the center column straight back to the host:
 
 | Column | What you get |
 |---|---|
@@ -41,6 +41,8 @@ Works with any profile. In the `web` profile the plugin additionally serves the 
 | 右 · 黑板 | The focus lesson's 讲解 (server-sanitized markdown, rendered rich on demand: KaTeX / syntax highlighting / mermaid), a 🕸 concept-map view of the same lesson, the Cornell 笔记 three zones (each note deletable with an armed confirm), and the read-aloud bar — 朗读本课 speaks the lesson sentence-by-sentence through Microsoft's Edge neural voices (host-side synthesis, disk-cached; falls back to the browser's system voice offline) with the current sentence highlighted |
 
 Clicking a lesson in the rail only FOCUSES it — progress updates, the blackboard switches, zero model traffic (upstream's exact interaction). The tutor engages only when you send. Every course-tree glyph, tag, and mastery bar carries a hover tooltip explaining its meaning.
+
+**The 0.16–0.18 alignment round** brought the rest of upstream's surface 1:1: the physics map (vendored matter-js + upstream's island solver — draggable balls, rope-chain swings, snow/wind weather channels, FPS-guarded with a reduced-motion static path), celebration particles anchored to the card/ball that earned them, exam-v2's five-state flow (generating → ready → answering with a per-question timer + KC chips → star settlement with KC breakdown and review → retry; a leave guard intercepts mid-exam navigation), in-stream artifact cards you can answer inline, a tabbed import pane with an installer-style progress screen, selection-to-note anchors with 回到原文 locate, the review surface, full-text search with world switching, the companion creature, ErrorBoundary-guarded markdown with shared copyable code blocks, per-message read-aloud with sentence karaoke (n/total), attachments (paperclip/paste → study workspace → the tutor cites them), a context meter + model chip on the composer, Cmd+K lesson palette, a thread switcher for open lesson threads, A−/A+ zoom tiers, and the C1 scroll contract (sticky follow, back-to-bottom FAB with the streaming pulse, stop button mid-turn).
 
 All study state comes from one shared 3 s poll over `/lookatstudy/api/state`. The host is exactly the conversation-model + agent-turn engine; the panel owns the UI, the host owns the loop.
 
