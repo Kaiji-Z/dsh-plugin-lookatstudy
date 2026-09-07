@@ -502,6 +502,30 @@ export const UPSTREAM_CSS = `
 .lks-confirmcard.danger{border-color:rgb(var(--warning-rgb)/0.4)}
 .lks-confirmcard-msg{font-size:12.5px;color:var(--ink);line-height:1.5;margin-bottom:8px}
 .lks-confirmcard-row{display:flex;gap:8px;justify-content:flex-end}
+/* ══════════ P14 (D3): CanvasStage + the board tab + canvas modals ══════════ */
+.lks-ui .lks14-stage{position:relative;height:100%;width:100%;overflow:hidden;user-select:none;touch-action:none}
+.lks-ui .lks14-stage.grid{background-image:radial-gradient(circle,rgb(var(--ink-rgb)/0.10) 1px,transparent 1px);background-size:22px 22px}
+.lks-ui .lks14-stage-content{position:absolute;top:0;left:0}
+.lks-ui .lks14-stage-content.glide{transition:transform 150ms var(--ease-out-quart)}
+@media (prefers-reduced-motion:reduce){.lks-ui .lks14-stage-content.glide{transition:none}}
+.lks-ui .lks14-stage-tools{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:10;display:flex;align-items:center;gap:2px;padding:4px;border-radius:14px;background:rgb(var(--surface0-rgb,17 17 20)/0.9);backdrop-filter:blur(8px);border:1px solid var(--border);box-shadow:0 8px 24px -4px rgb(var(--shadow-rgb)/0.18),0 2px 6px -2px rgb(var(--shadow-rgb)/0.12)}
+.lks-ui .lks14-stage-tools button{width:32px;height:32px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-muted);font-size:15px;font-weight:700;cursor:pointer}
+.lks-ui .lks14-stage-tools button:hover{background:rgb(var(--ink-rgb)/0.05);color:var(--ink-strong)}
+.lks-ui .lks14-stage-tools button:disabled{opacity:.3;pointer-events:none}
+.lks-ui .lks14-stage-tools span{min-width:52px;text-align:center;font-size:12px;font-weight:700;color:var(--ink-muted);font-variant-numeric:tabular-nums;user-select:none}
+.lks-ui .lks14-stage-probe{display:none}
+.lks-ui .lks14-board{display:flex;flex-direction:column;height:100%;min-height:0}
+.lks-ui .lks14-board-head{display:flex;align-items:center;gap:8px;padding:12px 16px 8px;font-size:13px;font-weight:700;color:var(--ink);flex:none;min-width:0}
+.lks-ui .lks14-board-head svg{color:var(--ink-muted);flex:none}
+.lks-ui .lks14-board-stage{flex:1;min-height:0;padding:0 8px 8px}
+.lks-ui .lks14-board-stage> .lks14-stage{border-radius:14px;border:1px solid var(--border-faint);background:rgb(var(--surface0-rgb,17 17 20)/0.6);overflow:hidden}
+.lks-ui .lks14-board-artifact{padding:20px;width:max-content;max-width:none}
+.lks-ui .lks14-board-artifact .lks-acard{min-width:560px;background:var(--surface-0);border:1px solid var(--border-faint);border-radius:14px}
+.lks-ui .lks14-cmapwrap{position:relative}
+.lks-ui .lks14-cmap-expand{position:absolute;top:10px;right:10px;z-index:5}
+.lks14-modal-diagram{padding:16px;width:max-content}
+.lks-ui .lks-acard-modal-body:has(.lks14-stage){width:min(86vw,1100px);height:min(78vh,720px);padding:0;overflow:hidden}
+.lks-ui .lks-acard-modal-body:has(.lks14-stage) .lks-acard-modal-title{padding:12px 16px;border-bottom:1px solid var(--border-faint)}
 /* ══════════ P13 (D2): CelebrationLayer — root particle bursts + reduced static ══════════ */
 .lks14-celfx-canvas{position:fixed;inset:0;pointer-events:none;z-index:2147483100}
 .lks14-celfx-reduced{position:fixed;inset:0;pointer-events:none;z-index:2147483100;display:flex;align-items:center;justify-content:center}

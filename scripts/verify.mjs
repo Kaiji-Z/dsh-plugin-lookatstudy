@@ -190,6 +190,14 @@ gate('bundle', () => {
     [client, 'seedBurst', 'the pure burst seeder'],
     [client, 'stepParticle', 'the particle physics step'],
     [client, 'energy-full', 'the energy-full celebration kind'],
+    // 0.18.0 P14 (D3): the canvas stage + the board tab
+    [client, 'lks14-stage-tools', 'the zoom toolbar'],
+    [client, 'canvas-zoom-fit', 'the fit button'],
+    [client, 'zoomAtClamped', 'the vendored pan/zoom math'],
+    [client, 'lks14-board', 'the board tab layout'],
+    [client, 'board-canvas-stage', 'the board canvas stage'],
+    [client, 'diagram-modal-stage', 'the mermaid modal stage'],
+    [client, 'cmap-modal-stage', 'the concept-map modal stage'],
     [client, 'data-node-id', 'focus bubble anchor'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]

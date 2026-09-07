@@ -237,6 +237,12 @@ export const ZH: StudyDict = {
   'prompt.import': '导入课程:用 study_import_github 抓取 {url}',
   'prompt.lesson': '学习「{title}」:用 study_lesson 打开这一课开始学习。',
   'prompt.exam': '开始「{section}」的章节测验:按本节课时出题,答完逐题判分',
+  // P14: CanvasStage + the board tab
+  'artifact.zoomOut': '缩小',
+  'artifact.zoomIn': '放大',
+  'artifact.canvas.fit': '适屏',
+  'viewtab.board': '黑板',
+  'bb.board.empty': '导师产出的大幅内容(对比表/图表/代码走查)会登上这块黑板——可缩放、可拖动、双击适屏。',
   // ── Exam v2 (P12, upstream ExamView five states + leave guard) ──
   'exam.generating.title': '正在准备章节测验',
   'exam.generating.stage': '导师正在按本节知识点出题',
@@ -503,6 +509,12 @@ export const EN: StudyDict = {
   'prompt.import': 'Import a course: fetch {url} with study_import_github',
   'prompt.lesson': 'Study "{title}": open this lesson with study_lesson and start teaching.',
   'prompt.exam': 'Start the section exam for "{section}": quiz me on this section\'s lessons and grade each answer',
+  // P14: CanvasStage + the board tab
+  'artifact.zoomOut': 'Zoom out',
+  'artifact.zoomIn': 'Zoom in',
+  'artifact.canvas.fit': 'Fit to screen',
+  'viewtab.board': 'Board',
+  'bb.board.empty': 'Large tutor outputs (tables, diagrams, code walkthroughs) land on this board — zoom, pan, double-click to fit.',
   // Exam v2 (P12)
   'exam.generating.title': 'Preparing your exam',
   'exam.generating.stage': 'Your tutor is writing questions by concept',

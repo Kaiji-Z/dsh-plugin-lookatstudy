@@ -18,7 +18,7 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as 
 import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
-  IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16,
+  IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16,
 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
@@ -41,6 +41,7 @@ import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
 import { ExamView, type ExamSession } from './examview.tsx'
 import { CelebrationLayer } from './celebration-layer.tsx'
+import { CanvasStage } from './canvasstage.tsx'
 import { celebrate, celebrationDiff, type CelebrationSnapshot } from './celebration.ts'
 import { tr } from './locale.ts'
 
@@ -1220,7 +1221,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
 /** 右栏:the notebook — 讲解/概念图/笔记 tabs (upstream NotebookPanel arrangement). */
 function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, examPaused }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void>; send: PanelSend; companionEvent: (event: 'talk-start' | 'talk-end' | 'celebrate' | 'encourage' | 'decay' | 'poke') => void; onExamSession: (session: ExamSession) => void; examPaused: boolean }): ReactNode {
   const lesson = data?.lesson ?? null
-  const [tab, setTab] = useState<'teach' | 'cmap' | 'notes'>('teach')
+  const [tab, setTab] = useState<'teach' | 'cmap' | 'notes' | 'board'>('teach')
   const [error, setError] = useState<string | null>(null)
   const [confirmNoteDel, setConfirmNoteDel] = useState<{ id: string; rect: { left: number; top: number; right: number; bottom: number } } | null>(null)
   // C6: zone collapse + auto-expand on a new note (upstream ZoneSection).
@@ -1231,6 +1232,14 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
   // C6: a locate fired from the notes tab must wait for the teach prose to
   // remount before it can wrap and flash the quote.
   const [pendingLocate, setPendingLocate] = useState<string | null>(null)
+  // P14: the concept-map expand modal (upstream canvas modals).
+  const [cmapExpanded, setCmapExpanded] = useState(false)
+  useEffect(() => {
+    if (!cmapExpanded) return
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') setCmapExpanded(false) }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [cmapExpanded])
   const [read, setRead] = useState<ReadAloudStatus | null>(null)
   const readCtl = useRef<ReadAloudController | null>(null)
   const [readError, setReadError] = useState<string | null>(null)
@@ -1467,6 +1476,12 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
             }
           },
         }, tr('bb.notes'), unseen.length > 0 ? createElement('span', { className: 'lks-viewtab-badge' }, String(unseen.length)) : null),
+        createElement('button', {
+          className: `lks14-viewtab${tab === 'board' ? ' on' : ''}`,
+          'aria-pressed': String(tab === 'board'),
+          'data-tooltip': tr('bb.board.empty'),
+          onClick: () => { setTab('board') },
+        }, createElement(IconMaximizeOutline16, { size: 13 }), tr('viewtab.board')),
       ),
       // B5: the lesson head sits under the tab capsule (upstream ContentTab kicker)
       tab !== 'notes'
@@ -1564,8 +1579,45 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
             createElement(ArtifactCard, { artifact: latestHeavy, send: () => {} }))
             : null,
         )
-        : tab === 'cmap'
-          ? createElement('div', { className: 'lks14-prose', ref: diagRef })
+        : tab === 'board'
+          ? (() => {
+              const heavy = artifacts.filter(a => a.artifactType === 'compare_table' || a.artifactType === 'diagram' || a.artifactType === 'code_walkthrough')
+              const latest = heavy.length > 0 ? heavy[heavy.length - 1]! : null
+              if (latest === null) {
+                return createElement('div', { className: 'lks14-empty', style: { padding: '32px 0' } as CSSProperties }, tr('bb.board.empty'))
+              }
+              // P14: the board — one latest heavy artifact on the zoomable stage
+              return createElement('div', { className: 'lks14-board' },
+                createElement('div', { className: 'lks14-board-head' }, createElement(IconMaximizeOutline16, { size: 14 }), latest.title),
+                createElement('div', { className: 'lks14-board-stage' },
+                  createElement(CanvasStage, { testid: 'board-canvas-stage' },
+                    createElement('div', { className: 'lks14-board-artifact' },
+                      createElement(ArtifactCard, { artifact: latest, send: () => {} })))))
+            })()
+          : tab === 'cmap'
+          ? createElement('div', { className: 'lks14-cmapwrap' },
+            createElement('div', { className: 'lks14-prose', ref: diagRef }),
+            createElement('button', {
+              className: 'lks-acard-expand lks14-cmap-expand',
+              'data-tooltip': tr('artifact.expand'),
+              onClick: () => { setCmapExpanded(true) },
+            }, createElement(IconMaximizeOutline16, { size: 13 })),
+            cmapExpanded && lesson !== null && lesson.concepts.length > 0
+              ? createElement('div', { className: 'lks-acard-modal', onClick: () => { setCmapExpanded(false) } },
+                createElement('div', { className: 'lks-acard-modal-body', onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() } },
+                  createElement('div', { className: 'lks-acard-modal-title' }, tr('viewtab.cmap'),
+                    createElement('button', { className: 'lks-acard-expand', onClick: () => { setCmapExpanded(false) } }, createElement(IconCloseFill16, { size: 13 }))),
+                  createElement(CanvasStage, { testid: 'cmap-modal-stage' },
+                    createElement('div', {
+                      className: 'lks14-modal-diagram',
+                      ref: (el: HTMLDivElement | null) => {
+                        if (el !== null) {
+                          el.textContent = ''
+                          void renderLessonConceptMap(el, lesson.title, lesson.concepts.map(c => ({ title: c.title, masteryPct: c.masteryPct }))).catch(() => { el.textContent = tr('bb.fallback.cmap') })
+                        }
+                      },
+                    }))))
+              : null)
           : createElement('div', { className: 'lks14-zones' },
             (() => {
               const understand = artifacts.filter(a => a.artifactType === 'compare_table' || a.artifactType === 'diagram' || a.artifactType === 'code_walkthrough')
