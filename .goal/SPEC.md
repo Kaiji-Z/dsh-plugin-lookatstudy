@@ -104,7 +104,7 @@ P11b：
 
 ### P16 · 明暗双主题
 
-- [ ] 上游 html.light 全套 token 移植为 `.lks-ui[data-lks-theme=light]`（或宿主属性直连）覆盖块；浅色 surface/ink/语义色/shiki 翻转（--shiki-light）；map-rail-scope 暗锁等价物；主题跟随宿主切换（监听宿主主题属性/事件，无 API 则 MutationObserver html 属性 + prefers-color-scheme）；审计探针两主题 suspect=0
+- [x] 明暗双主题 ✅ 2026-09-07：上游 html.light 全套 token（hex 层 verbatim：surface 五档/ink 四档/border 两档/五语义色全 family 降 L 过 AA/glow-ring-tint 降 alpha/inner-highlight 0.55→0.3/--exam-locked-mix 新增/cm 五色回 draw.io 经典）移植为 `.lks-ui[data-lks-theme='light']` 覆盖块；**map-rail-scope 暗锁等价物**=`.lks-ui[data-lks-theme='light'] .lks14-rail`（中性 token 重锁暗色，语义色保持浅色调整值）；锁定球浅页暗石钉死（lesson/exam-locked 渐变 verbatim）；shiki 翻转=补上消费规则（`.lks-shiki span{color:var(--shiki-dark)}` + light 翻 `--shiki-light`——顺手修掉此前 token 无人消费的潜伏缺口）；浅色滚动条；mermaid themeVariables 活读（.lks-ui 计算值，主题翻转即失效缓存，已画 SVG 保色=记录的降级）。主题跟随：`wirePanelTheme` **DOM 信号为主源**（body[data-ds-dark-theme]+html color-scheme 的 MutationObserver——presenter 每次应用都重写；live 抓虫：service 快照路径对异步 settings 装载有读后订阅竞态，深色宿主上卡浅色、按插件加载序非确定）+ theme/change 事件只做 nudge 重读；panel root data-lks-theme 由 store 驱动。**双主题 audit 均 0**：audit-ui --theme light|dark（浅色模式旗标反转=栏外暗底/浅字为嫌犯、栏=合法暗；附加 follow 断言 data-lks-theme=mode 且与宿主一致；settle 等待防异步竞态）；实测 dark（settings.yaml 翻 dark+reboot）0 嫌疑+follow ✓、light 0+follow ✓、会话内翻转 light→dark→light 跟随 ✓。+1 测试（294），6 needles。
 
 ### P17 · 替换宿主能力（宿主只留模型后端）
 

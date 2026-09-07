@@ -21,6 +21,7 @@ import { StudySettingsSection } from './settings.tsx'
 import { StudyDockPill } from './dock.tsx'
 import { StudyAnswerView, StudyDueView, StudyExamView, StudyLessonView, type ToolViewPropsFace } from './toolviews.tsx'
 import { registerStudyLocale, setStudyTranslator, studyTranslator, tr, type LocaleServiceFace } from './locale.ts'
+import { wirePanelTheme } from './theme.ts'
 
 /** The toolview components' expected props (structural slice of ToolCallViewProps). */
 type ToolViewProps = ToolViewPropsFace
@@ -28,7 +29,7 @@ type ToolViewProps = ToolViewPropsFace
 export { feedRows } from './session-feed.ts'
 export type { ChatRow } from './views.tsx'
 
-export const inject = ['slots', 'workspaces', 'sessions', 'locale']
+export const inject = ['slots', 'workspaces', 'sessions', 'locale', 'theme']
 
 /**
  * Register the study surfaces: styles + locale once; the sidebar-entry panel
@@ -41,6 +42,9 @@ export function apply(ctx: ClientContext): void {
   const localeSvc = (ctx as { locale?: LocaleServiceFace }).locale
   ctx.effect(() => registerStudyLocale(localeSvc), 'lookatstudy.locale()')
   setStudyTranslator(studyTranslator(localeSvc))
+  // P16: the panel follows the host theme (service snapshots when injected,
+  // DOM signals otherwise) — data-lks-theme on the panel root flips the skin.
+  ctx.effect(() => wirePanelTheme(ctx), 'lookatstudy.theme()')
 
   // The study panel: sidebar row in, center-column takeover out. The host
   // session list rides along so USER navigation hands the column back.

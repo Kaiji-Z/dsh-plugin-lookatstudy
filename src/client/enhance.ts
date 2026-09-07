@@ -19,6 +19,13 @@ const LANG_ALIAS: Record<string, string> = {
 }
 
 import { rewriteFlowchartToElk } from '../vendor/mermaid-elk-rewrite.ts'
+import { subscribePanelTheme } from './theme.ts'
+
+// P16: a theme flip invalidates the mermaid cache (upstream's theme-changed
+// nulls mermaidPromise) — the next enhance re-initializes on the new palette.
+if (typeof window !== 'undefined') {
+  subscribePanelTheme(() => { mermaidPromise = null })
+}
 
 type KatexLike = { renderToString(tex: string, opts: Record<string, unknown>): string }
 type ShikiLike = { codeToHtml(code: string, opts: Record<string, unknown>): Promise<string> }
@@ -81,6 +88,59 @@ function defaultLoadShiki(): Promise<ShikiLike> {
 }
 
 let mermaidPromise: Promise<MermaidLike> | null = null
+
+/**
+ * P16: mermaid rides theme:'base' + live token reads (upstream lazy-mermaid's
+ * themeVariables) from the PANEL root — the plugin's lks tokens live on
+ * .lks-ui, not :root. A theme flip resets the loader so the next render
+ * re-initializes with the fresh palette (already-drawn SVGs keep their
+ * colors until re-rendered — the documented degradation).
+ */
+function mermaidThemeVariables(): Record<string, string> {
+  const root = typeof document === 'undefined' ? null : document.querySelector('.lks-ui')
+  const style = root === null ? null : getComputedStyle(root)
+  const read = (name: string, fallback: string): string => {
+    if (style === null) return fallback
+    const v = style.getPropertyValue(name).trim()
+    return v === '' ? fallback : `rgb(${v})`
+  }
+  return {
+    background: 'transparent',
+    primaryColor: read('--surface-3-rgb', 'rgb(42 43 46)'),
+    primaryBorderColor: read('--border-rgb', 'rgb(37 38 41)'),
+    primaryTextColor: read('--ink-strong-rgb', 'rgb(250 250 250)'),
+    secondaryColor: read('--surface-2-rgb', 'rgb(32 33 36)'),
+    secondaryBorderColor: read('--border-faint-rgb', 'rgb(26 26 29)'),
+    secondaryTextColor: read('--ink-rgb', 'rgb(245 245 250)'),
+    tertiaryColor: read('--surface-1-rgb', 'rgb(24 25 27)'),
+    tertiaryBorderColor: read('--border-faint-rgb', 'rgb(26 26 29)'),
+    tertiaryTextColor: read('--ink-rgb', 'rgb(245 245 250)'),
+    lineColor: read('--ink-faint-rgb', 'rgb(117 117 126)'),
+    textColor: read('--ink-rgb', 'rgb(245 245 250)'),
+    edgeLabelBackground: read('--surface-0-rgb', 'rgb(12 13 15)'),
+    clusterBkg: read('--surface-1-rgb', 'rgb(24 25 27)'),
+    clusterBorder: read('--border-faint-rgb', 'rgb(26 26 29)'),
+    nodeBorder: read('--border-rgb', 'rgb(37 38 41)'),
+    mainBkg: read('--surface-3-rgb', 'rgb(42 43 46)'),
+    nodeTextColor: read('--ink-rgb', 'rgb(245 245 250)'),
+    arrowheadColor: read('--ink-faint-rgb', 'rgb(117 117 126)'),
+    actorBkg: read('--surface-3-rgb', 'rgb(42 43 46)'),
+    actorBorder: read('--border-rgb', 'rgb(37 38 41)'),
+    actorTextColor: read('--ink-strong-rgb', 'rgb(250 250 250)'),
+    activationBkgColor: read('--surface-3-rgb', 'rgb(42 43 46)'),
+    activationBorderColor: read('--border-rgb', 'rgb(37 38 41)'),
+    signalColor: read('--ink-rgb', 'rgb(245 245 250)'),
+    signalTextColor: read('--ink-rgb', 'rgb(245 245 250)'),
+    labelBoxBkgColor: read('--surface-2-rgb', 'rgb(32 33 36)'),
+    labelBoxBorderColor: read('--border-rgb', 'rgb(37 38 41)'),
+    labelTextColor: read('--ink-rgb', 'rgb(245 245 250)'),
+    loopTextColor: read('--ink-strong-rgb', 'rgb(250 250 250)'),
+    noteBkgColor: 'rgb(255 200 0 / 0.12)',
+    noteBorderColor: 'rgb(255 200 0 / 0.4)',
+    noteTextColor: read('--ink-rgb', 'rgb(245 245 250)'),
+  }
+}
+
 function defaultLoadMermaid(): Promise<MermaidLike> {
   mermaidPromise ??= (async () => {
     const mod = await import(/* @vite-ignore */ CDN.mermaid) as Record<string, unknown>
@@ -89,7 +149,7 @@ function defaultLoadMermaid(): Promise<MermaidLike> {
       const elk = await import(/* @vite-ignore */ CDN.mermaidElk) as Record<string, unknown>
       mermaid.registerLayoutLoaders(elk.default)
     } catch { /* ELK unavailable → mermaid falls back to dagre silently */ }
-    mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose' })
+    mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose', themeVariables: mermaidThemeVariables() })
     return mermaid
   })()
   return mermaidPromise

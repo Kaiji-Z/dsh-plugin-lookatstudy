@@ -31,6 +31,7 @@ import { speakMathInSentence } from '../vendor/math-speech.ts'
 import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog, importProgressOf } from './session-feed.ts'
 import { ErrorBoundary, ContentBoundary } from './error-boundary.tsx'
 import { wireCodeBlockCopy } from './codeblock.ts'
+import { panelTheme, subscribePanelTheme } from './theme.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { QuizCard, type QuizData } from './quizcard.tsx'
@@ -200,6 +201,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   // D8: the shared CodeBlock's delegated copy wire — one listener for every
   // zone the markdown pipeline feeds (chat, prose, notes).
   useEffect(() => { wireCodeBlockCopy() }, [])
+  // P16: the skin follows the host theme store (wirePanelTheme drives it).
+  const [theme, setTheme] = useState(panelTheme)
+  useEffect(() => subscribePanelTheme(() => { setTheme(panelTheme()) }), [])
   const [sendError, setSendError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // C2: the host prompt resolves at queue time, so the real generation signal
@@ -494,7 +498,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       ),
     ),
   )
-  return createElement('div', { className: 'lks14 lks-ui', 'data-lks-panel': '' },
+  return createElement('div', { className: 'lks14 lks-ui', 'data-lks-panel': '', 'data-lks-theme': theme },
     createElement(GlobalTooltip),
     createElement(Companion, { mood: companion.mood, onPoke: () => {
       setCompanionEvent('poke')

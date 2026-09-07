@@ -104,3 +104,17 @@ test('D6: courseEnv is deterministic per course and rides real presets (upstream
   const envs = new Set(['course-a', 'course-b', 'course-c', 'course-d', 'course-e', 'course-f'].map(id => courseEnv(id).season + '|' + courseEnv(id).weather))
   assert.ok(envs.size >= 2, 'the preset space spreads across courses')
 })
+
+// ——— P16: the panel theme resolution (host preference → panel theme) ———
+
+import { hostPanelTheme } from '../src/client/theme.ts'
+
+test('P16: hostPanelTheme resolves the host preference into the panel theme', () => {
+  assert.equal(hostPanelTheme('light', false), 'light')
+  assert.equal(hostPanelTheme('dark', true), 'dark')
+  assert.equal(hostPanelTheme('system', true), 'light', 'system + prefers-light → light')
+  assert.equal(hostPanelTheme('system', false), 'dark', 'system + prefers-dark → dark')
+  assert.equal(hostPanelTheme(undefined, true), 'light')
+  assert.equal(hostPanelTheme(undefined, false), 'dark')
+  assert.equal(hostPanelTheme('garbage', true), 'light', 'unknown preference degrades to the media query')
+})

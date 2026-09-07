@@ -186,7 +186,7 @@ test('the upstream v0.28 skin is layered over the panel foundation (P9a)', async
 test('the audit gate script exists with an exit-code contract', async () => {
   const { readFileSync } = await import('node:fs')
   const src = readFileSync(new URL('../scripts/audit-ui.mjs', import.meta.url), 'utf8')
-  assert.match(src, /suspectCount === 0 \? 0 : 1/, 'exit 0 iff zero suspects')
+  assert.match(src, /suspectCount === 0 && follows \? 0 : 1/, 'exit 0 iff zero suspects AND the panel followed the host theme (P16 dual-theme gate)')
   assert.match(src, /borderStyle !== 'none'/, 'border flags skip border-style:none false positives')
   assert.match(src, /sat\(/, 'saturated brand hues are exempt by design')
 })

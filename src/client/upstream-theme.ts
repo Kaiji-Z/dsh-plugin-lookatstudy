@@ -698,4 +698,73 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-renderfail-msg{font-size:13px;color:var(--warning-light);margin-bottom:8px}
 .lks-ui .lks-renderfail-raw{font-size:11.5px;color:var(--ink-muted);white-space:pre-wrap;word-break:break-word;background:var(--surface-1);padding:10px;border-radius:8px}
 .lks-ui .lks-renderfail-rich .lks-renderfail-retry{color:var(--accent);margin-top:8px}
+
+/* ── P16: the light theme — upstream html.light verbatim, keyed to the panel's
+   data-lks-theme (the host-following store drives it). Semantic hues keep
+   their hue, only L drops for WCAG AA on white; the gamified rail re-locks
+   its neutrals dark (upstream map-rail-scope); locked bubbles keep their
+   dark stones; shiki flips via --shiki-light. ── */
+.lks-ui[data-lks-theme='light']{
+  --surface-rail:#F1F2F4;--surface-rail-rgb:241 242 244;
+  --surface-0:#FFFFFF;--surface-0-rgb:255 255 255;
+  --surface-1:#F8F8F8;--surface-1-rgb:248 248 248;
+  --surface-2:#FFFFFF;--surface-2-rgb:255 255 255;
+  --surface-3:#EAEBED;--surface-3-rgb:234 235 237;
+  --ink:#181818;--ink-rgb:24 24 24;
+  --ink-strong:#0A0A0A;--ink-strong-rgb:10 10 10;
+  --ink-muted:#555555;--ink-muted-rgb:85 85 85;
+  --ink-faint:#717171;--ink-faint-rgb:113 113 113;
+  --border:#E4E4E4;--border-rgb:228 228 228;
+  --border-faint:#EEEEEE;--border-faint-rgb:238 238 238;
+  --inner-highlight:rgb(255 255 255/0.3);
+  --brand:#3C8613;--brand-rgb:60 134 19;--brand-dark:#286600;--brand-dark-rgb:34 103 0;--brand-light:#559A38;--brand-light-rgb:85 154 56;
+  --brand-glow:#3C861340;--brand-ring:#3C86132E;
+  --accent:#006B99;--accent-rgb:0 108 177;--accent-dark:#005183;--accent-dark-rgb:0 79 152;--accent-light:#0084BB;--accent-light-rgb:0 132 194;
+  --accent-glow:#006B9938;--accent-ring:#006B992E;
+  --gold:#B08900;--gold-rgb:180 136 0;--gold-dark:#946900;--gold-dark-rgb:155 101 0;--gold-light:#C7A01E;--gold-light-rgb:199 160 30;
+  --gold-glow:#B089004C;--gold-ring:#B0890033;
+  --warning:#BB071E;--warning-rgb:187 7 30;--warning-dark:#940015;--warning-dark-rgb:158 0 0;--warning-light:#C8393A;--warning-light-rgb:200 57 58;
+  --warning-glow:#BB071E38;--warning-ring:#BB071E2E;--warning-tint:#BB071E14;--warning-tint-border:#BB071E38;
+  --review:#B84B00;--review-rgb:189 70 0;--review-glow:#B84B001F;--review-tint:#B84B0014;
+  --exam:#7D37BD;--exam-rgb:125 55 189;--exam-dark:#641AA5;--exam-dark-rgb:100 26 165;--exam-light:#905FC0;--exam-light-rgb:144 95 192;
+  --exam-locked:#756D86;--exam-locked-mix:#A7A2B2;--exam-locked-rgb:117 109 134;
+  --exam-glow:#7D37BD40;--exam-ring:#7D37BD2E;
+  /* the concept-map palette returns to the draw.io classics on white */
+  --cm-c0-fill:#DAE8FC;--cm-c0-line:#6C8EBF;--cm-c1-fill:#D5E8D4;--cm-c1-line:#82B366;
+  --cm-c2-fill:#FFE6CC;--cm-c2-line:#D79B00;--cm-c3-fill:#FFF2CC;--cm-c3-line:#D6B656;
+  --cm-c4-fill:#E1D5E7;--cm-c4-line:#9673A6;
+}
+/* the gamified rail stays dark (upstream map-rail-scope): neutrals re-locked,
+   semantic hues keep the light-adjusted values */
+.lks-ui[data-lks-theme='light'] .lks14-rail{
+  --surface-rail:#08090B;--surface-rail-rgb:8 9 11;
+  --surface-0:#0C0D0F;--surface-0-rgb:12 13 15;
+  --surface-1:#111114;--surface-1-rgb:17 17 20;
+  --surface-2:#1A1A1D;--surface-2-rgb:26 26 29;
+  --ink:#F1F2F4;--ink-rgb:245 245 250;
+  --ink-strong:#FAFAFA;--ink-strong-rgb:250 250 250;
+  --ink-muted:#9D9EA2;--ink-muted-rgb:166 166 176;
+  --ink-faint:#88898C;--ink-faint-rgb:136 137 140;
+  --border:#252629;--border-rgb:37 38 41;
+  --border-faint:#1A1A1D;--border-faint-rgb:26 26 29;
+}
+/* locked bubbles keep their dark stones on the light page (upstream pins
+   gradients — the surface ramps would turn white inside the dark rail too) */
+.lks-ui[data-lks-theme='light'] .lks-bubble-locked{
+  background:radial-gradient(circle at 35% 30%,#858689 0%,#68696C 60%,#545558 100%);
+  box-shadow:inset 0 3px 6px rgb(0 0 0/0.25),inset 0 -2px 4px rgb(255 255 255/0.15),0 2px 4px rgb(0 0 0/0.15);
+}
+.lks-ui[data-lks-theme='light'] .lks-bubble-locked::before{
+  background:radial-gradient(ellipse at center,rgb(255 255 255/0.25) 0%,rgb(255 255 255/0) 70%);
+}
+.lks-ui[data-lks-theme='light'] .lks-exam-locked{
+  background:radial-gradient(circle at 35% 30%,#7D778A 0%,#605A6C 60%,#4A4553 100%);
+  box-shadow:inset 0 3px 6px rgb(0 0 0/0.25),inset 0 -2px 4px rgb(255 255 255/0.12),0 2px 4px rgb(0 0 0/0.15);
+}
+/* shiki dual-theme: spans carry --shiki-dark/--shiki-light; light flips */
+.lks-ui .lks-shiki span{color:var(--shiki-dark,var(--ink))}
+.lks-ui[data-lks-theme='light'] .lks-shiki span{color:var(--shiki-light,var(--ink))}
+/* the light scrollbar (dark thumb is var(--border) — too faint on white) */
+.lks-ui[data-lks-theme='light'] ::-webkit-scrollbar-thumb{background:rgb(0 0 0/0.18)}
+.lks-ui[data-lks-theme='light'] ::-webkit-scrollbar-thumb:hover{background:rgb(0 0 0/0.28)}
 `

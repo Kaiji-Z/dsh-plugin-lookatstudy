@@ -233,6 +233,12 @@ gate('bundle', () => {
     [client, 'ContentBoundary', 'the content-zone boundary wrapper'],
     [client, 'md-codeblock', 'the codeblock testid'],
     [host, 'lks-codeblock', 'the pipeline emits the card host-side too'],
+    // 0.18.0 P16: dual light/dark theme following the host
+    [client, 'wirePanelTheme', 'the host-theme follow machinery'],
+    [client, 'mermaidThemeVariables', 'the live mermaid palette'],
+    [client, "data-lks-theme='light'", 'the light token override block'],
+    [client, 'map-rail-scope', 'the rail dark-lock'],
+    [client, '--shiki-light', 'the shiki light flip'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [
