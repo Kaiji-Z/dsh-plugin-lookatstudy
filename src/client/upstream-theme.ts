@@ -611,4 +611,31 @@ export const UPSTREAM_CSS = `
 .lks14-examleave-msg{font-size:13px;color:var(--ink-muted);line-height:1.6;margin-bottom:16px}
 .lks14-examleave-row{display:flex;gap:10px;justify-content:flex-end}
 @keyframes lks-fade-in{from{opacity:0}to{opacity:1}}
+
+/* ── D6: map ambiance — seasonal bubble filters (upstream v0.6 env-*), ──
+   the world switcher, the streaming spinner badge + rail notice ── */
+/* v0.6 节点球季节滤镜(整球色温调,不动状态色本身): status colors are game
+   language — the filter warms/cools every bubble but keeps their relative
+   differences. env-{weather} rides the same wrapper as a marker only (its
+   visuals live on the orb-weather canvas). */
+.lks-ui .env-spring .lks-bubble{filter:hue-rotate(-12deg) saturate(1.15) brightness(1.02)}
+.lks-ui .env-summer .lks-bubble{filter:saturate(1.4) brightness(1.08) contrast(1.05)}
+.lks-ui .env-autumn .lks-bubble{filter:hue-rotate(-22deg) saturate(1.1) brightness(0.97)}
+.lks-ui .env-winter .lks-bubble{filter:saturate(0.5) brightness(1.05) hue-rotate(8deg)}
+.lks-ui .lks-mapsec-list{position:relative;z-index:1}
+/* the two-world switcher (upstream map.world pills: brand study / accent practice) */
+.lks-ui .lks-worldswitch{display:flex;gap:4px;margin-top:6px;padding:3px;border-radius:10px;background:rgb(0 0 0/0.3)}
+.lks-ui .lks-worldtab{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:4px 0;border:none;border-radius:7px;background:none;color:rgb(255 255 255/0.5);font:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:color .15s}
+.lks-ui .lks-worldtab:hover{color:rgb(255 255 255/0.8)}
+.lks-ui .lks-worldtab.on{background:color-mix(in srgb,var(--brand) 30%,transparent);color:var(--brand)}
+.lks-ui .lks-worldtab[data-testid='world-tab-practice'].on{background:color-mix(in srgb,var(--accent) 30%,transparent);color:var(--accent)}
+.lks-ui .lks-worldtab:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
+.lks-ui .lks-empty-practice{padding:32px 16px;text-align:center;color:var(--ink-muted);font-size:12.5px}
+/* the streaming spinner badge on the ball (upstream Loader2 chip) */
+.lks-ui .lks-bubble-spin{position:absolute;top:-7px;right:-7px;z-index:10;display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;background:var(--surface-0);color:var(--accent);box-shadow:0 2px 8px -2px rgb(var(--shadow-rgb)/0.45);pointer-events:none;animation:lks-spin 1s linear infinite}
+/* the rail's streaming notice pill (typing dot + copy) */
+.lks-ui .lks-stream-note{display:flex;align-items:center;gap:7px;margin-top:6px;padding:4px 10px;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);font-size:11px;font-weight:700}
+.lks-ui .lks-typing-dot{width:6px;height:6px;border-radius:999px;background:currentColor;animation:lks-blink 1.2s ease-in-out infinite}
+@keyframes lks-spin{to{transform:rotate(360deg)}}
+@keyframes lks-blink{0%,100%{opacity:.25}50%{opacity:1}}
 `

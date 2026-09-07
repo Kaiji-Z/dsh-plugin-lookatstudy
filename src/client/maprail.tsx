@@ -8,7 +8,7 @@
  */
 import { createElement, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { computeBalloonLayout, balloonSegmentToPath, hashStr, NODE_BOX_H } from '../vendor/map-layout.ts'
-import { IconBookFill16, IconCrownFill16, IconGoalOutline16, IconLockFill16, IconStarFill16 } from './icons.tsx'
+import { IconBookFill16, IconCrownFill16, IconGoalOutline16, IconLoaderArc16, IconLockFill16, IconStarFill16 } from './icons.tsx'
 import { tr } from './locale.ts'
 import { useSectionIsland, type WeatherChannels } from './physics-map.tsx'
 import { balloonSegmentToPath as _bsp } from '../vendor/map-layout.ts'
@@ -50,8 +50,18 @@ export function pickSky(courseId: string): 'day' | 'dusk' | 'night' {
   return (['day', 'dusk', 'night'] as const)[hashStr(courseId) % 3]
 }
 
+/**
+ * A section's world (D6, upstream World = study | practice): the plugin's
+ * state flattens the design's per-lesson world into lesson kinds, so a
+ * section is the practice world iff it is non-empty and purely practice
+ * (the design protocol marks sections, keeping them homogeneous).
+ */
+export function sectionWorldOf(section: { lessons: readonly Pick<MapLesson, 'kind'>[] }): 'study' | 'practice' {
+  return section.lessons.length > 0 && section.lessons.every(l => l.kind === 'practice') ? 'practice' : 'study'
+}
+
 /** One section: signpost head (still the plugin's collapse toggle) + the balloon field. */
-export function MapSectionView({ section, examAllowed, open, onToggle, onJump, physics, physicsWeather, scrollRef, railRef, channels }: {
+export function MapSectionView({ section, examAllowed, open, onToggle, onJump, physics, physicsWeather, scrollRef, railRef, channels, streamingId }: {
   section: { title: string; index: number; lessons: readonly MapLesson[] }
   examAllowed: boolean
   open: boolean
@@ -62,6 +72,8 @@ export function MapSectionView({ section, examAllowed, open, onToggle, onJump, p
   scrollRef: { current: HTMLDivElement | null }
   railRef: { current: HTMLDivElement | null }
   channels: WeatherChannels
+  /** D6: the lesson whose thread is streaming (its ball wears the spinner). */
+  streamingId?: string | null
 }): ReactNode {
   const pathRef = useRef<HTMLDivElement | null>(null)
   const [containerW, setContainerW] = useState(268)
@@ -208,6 +220,16 @@ export function MapSectionView({ section, examAllowed, open, onToggle, onJump, p
                   : createElement(IconStarFill16, { size: 24, className: 'lks-bubble-glyph' }),
           lesson.due && !locked && lesson.kind !== 'exam'
             ? createElement('span', { className: 'lks-bubble-due', 'aria-label': tr('map.node.due') }, '!')
+            : null,
+          // D6 (upstream v0.23 streaming badge): the ball of a streaming thread
+          // wears a spinning chip at its top-right — including from the map.
+          streamingId !== undefined && streamingId !== null && streamingId === lesson.id
+            ? createElement('span', {
+              className: 'lks-bubble-spin',
+              role: 'status',
+              'aria-label': tr('thread.streamingBadge'),
+              'data-node-streaming': lesson.id,
+            }, createElement(IconLoaderArc16, { size: 14 }))
             : null),
           lesson.focus
             ? createElement('div', { className: 'lks-bubble-name' }, lesson.title)

@@ -18,7 +18,7 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as 
 import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
-  IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16,
+  IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16, IconWrenchOutline16,
 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
@@ -36,13 +36,13 @@ import { showStudyToast } from './toast.ts'
 import { Companion, useCompanionMood } from './companion.tsx'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue } from './views.tsx'
-import { MapSectionView, pickSky } from './maprail.tsx'
+import { MapSectionView, pickSky, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
 import { ExamView, type ExamSession } from './examview.tsx'
 import { CelebrationLayer } from './celebration-layer.tsx'
 import { CanvasStage } from './canvasstage.tsx'
-import { MapSky, courseWeather, makeWeatherChannels, useSectionIsland, type WeatherChannels } from './physics-map.tsx'
+import { MapSky, courseEnv, makeWeatherChannels, useSectionIsland, type WeatherChannels } from './physics-map.tsx'
 import { usePrefersReducedMotion } from './celebration-layer.tsx'
 import { celebrate, celebrationDiff, type CelebrationSnapshot } from './celebration.ts'
 import { tr } from './locale.ts'
@@ -460,7 +460,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       // C7: a bubble jump on narrow layout lands the learner on the chat pane.
       onJumped: () => { setNarrowPane('chat') },
       // C13: tapping map blank space pokes the companion (whistle essence).
-      onBlankTap: () => { setCompanionEvent('poke') } }),
+      onBlankTap: () => { setCompanionEvent('poke') },
+      // D6: the bound thread's turn is live → its ball spins on the map.
+      streamingLessonId: feedGen && lesson !== null ? lesson.lessonId : null }),
     createElement('div', { className: 'lks14-righthalf' },
       createElement('div', { className: 'lks14-appheader' },
         createElement('span', { className: 'lks-hdr-title' }, lesson?.courseTitle ?? tr('tab.label')),
@@ -582,7 +584,7 @@ export function setPanelShell(shell: { suppressHandBack(fn: () => void): void } 
 }
 
 /** 左栏:course picker, tree, review box, import. */
-function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, onBlankTap }: {
+function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, onBlankTap, streamingLessonId }: {
   data: StudyData
   activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
@@ -593,6 +595,8 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   onJumped: () => void
   /** C13: a tap on map blank space (companion poke). */
   onBlankTap: () => void
+  /** D6: the lesson whose tutor thread is streaming (spinner ball + rail notice). */
+  streamingLessonId: string | null
 }): ReactNode {
   const [selectedCourse, setSelectedCourse] = useState('')
   const [query, setQuery] = useState('')
@@ -608,6 +612,10 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   const [panel, setPanel] = useState<'map' | 'import'>('map')
   const [searchOpen, setSearchOpen] = useState(false)
   const [reviewOpen, setReviewOpen] = useState(false)
+  // D6 (upstream world switcher): study is the default; a course change resets
+  // (a new course may have no practice world — a stale one would strand the
+  // rail on an empty view).
+  const [world, setWorld] = useState<'study' | 'practice'>('study')
   // C12: the optimistic focus — the clicked bubble shows selected before the
   // 3s poll confirms it (cleared once the feed's focus matches).
   const [optFocus, setOptFocus] = useState<string | null>(null)
@@ -622,7 +630,12 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
     : null
   // P15: the deterministic weather for the course (islands + canvases) —
   // after courseId's declaration (the TDZ trap has bitten three times here).
-  const physicsWeather = courseWeather(courseId)
+  const physicsEnv = courseEnv(courseId)
+  const physicsWeather = physicsEnv.weather
+  // D6: reset the world on course change — after courseId's declaration (the
+  // TDZ trap has bitten here; a stale practice selection on a course without
+  // one would strand the rail on an empty view).
+  useEffect(() => { setWorld('study') }, [courseId])
   const course = data?.courses.find(c => c.courseId === courseId) ?? null
   // C13: blank-tap classification (a >6px move is a drag/scroll, not a whistle).
   const blankDown = useRef<{ x: number; y: number } | null>(null)
@@ -711,6 +724,30 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
           }, createElement(IconBookFill16, { size: 13 }), tr('map.review.label'),
             data.dueCount > 0 ? createElement('span', { className: 'lks-railpill-n' }, String(data.dueCount)) : null),
         ),
+        // D6: the two-world switcher — only when a practice world exists
+        // (upstream hides it for pure-study courses).
+        course.sections.some(s => sectionWorldOf(s) === 'practice')
+          ? createElement('div', { className: 'lks-worldswitch', role: 'tablist' },
+            createElement('button', {
+              className: `lks-worldtab${world === 'study' ? ' on' : ''}`,
+              'data-testid': 'world-tab-study',
+              role: 'tab',
+              'aria-selected': String(world === 'study'),
+              onClick: () => { setWorld('study') },
+            }, createElement(IconBookFill16, { size: 13 }), tr('map.world.study')),
+            createElement('button', {
+              className: `lks-worldtab${world === 'practice' ? ' on' : ''}`,
+              'data-testid': 'world-tab-practice',
+              role: 'tab',
+              'aria-selected': String(world === 'practice'),
+              onClick: () => { setWorld('practice') },
+            }, createElement(IconWrenchOutline16, { size: 13 }), tr('map.world.practice')))
+          : null,
+        // D6: the streaming notice — the tutor is replying somewhere on the rail.
+        streamingLessonId !== null
+          ? createElement('div', { className: 'lks-stream-note', 'data-testid': 'streaming-notice', role: 'status' },
+            createElement('i', { className: 'lks-typing-dot' }, ''), tr('map.streaming.notice'))
+          : null,
       )
       : null,
   )
@@ -736,8 +773,20 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
           onBlankTap()
         },
       },
-        createElement('div', { className: 'lks-mapsec-list' },
-          ...course.sections.flatMap(section => {
+        createElement('div', {
+          className: `lks-mapsec-list env-${physicsEnv.season} env-${physicsEnv.weather}`,
+          // D6: upstream carries both env classes on the map content wrapper —
+          // the season filters every bubble (status colors stay relative),
+          // the weather class is a marker only (its visuals live on canvas).
+          'data-lks-env': `${physicsEnv.season}|${physicsEnv.weather}`,
+        },
+          // D6 (upstream world switcher): practice sections are free-explore and
+          // never study-gated; in-rail search overrides the world (matches can
+          // live in either world); an empty practice world carries its own
+          // empty state instead of a blank rail.
+          query.trim() === '' && world === 'practice' && !course.sections.some(s => sectionWorldOf(s) === 'practice')
+            ? createElement('div', { className: 'lks-empty-practice' }, tr('map.empty.practice'))
+            : course.sections.filter(s => query.trim() !== '' || sectionWorldOf(s) === world).flatMap(section => {
             const examAllowed = examOpen(section.lessons)
             const lessons = section.lessons.filter(l => query.trim() === '' || titleMatches(l.title, query) || l.focus)
             if (lessons.length === 0) return []
@@ -749,6 +798,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
               scrollRef: scrollEl,
               railRef: railEl,
               channels: weatherChannels.current,
+              streamingId: streamingLessonId,
               section: {
                 title: section.title, index: section.index,
                 // C12: the optimistic focus rides alongside the feed's focus.

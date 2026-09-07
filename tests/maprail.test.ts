@@ -72,3 +72,35 @@ test('ropePassed and pickSky fold deterministically', () => {
     assert.ok(['day', 'dusk', 'night'].includes(pickSky(id)), 'sky is always one of the three presets')
   }
 })
+
+// ——— D6: map ambiance — world derivation + deterministic env ———
+
+import { sectionWorldOf } from '../src/client/maprail.tsx'
+import { courseEnv, coursePresetKey, courseWeather } from '../src/client/physics-map.tsx'
+import { PRESETS, PRESET_KEYS } from '../src/vendor/sky-canvas.ts'
+
+test('D6: sectionWorldOf — purely-practice sections are the practice world', () => {
+  const P = (n: number): Array<{ kind: 'study' | 'practice' | 'exam' }> => Array.from({ length: n }, () => ({ kind: 'practice' }))
+  assert.equal(sectionWorldOf({ lessons: P(3) }), 'practice', 'non-empty all-practice → practice')
+  assert.equal(sectionWorldOf({ lessons: [] }), 'study', 'empty → study (never strands an empty world)')
+  assert.equal(sectionWorldOf({ lessons: [{ kind: 'study' }, { kind: 'practice' }] }), 'study', 'mixed → study (homogeneity comes from the design protocol)')
+  assert.equal(sectionWorldOf({ lessons: [{ kind: 'study' }, { kind: 'study' }, { kind: 'exam' }] }), 'study')
+})
+
+test('D6: courseEnv is deterministic per course and rides real presets (upstream re-rolls per launch; the plugin pins)', () => {
+  for (const id of ['course-a', '深度学习', 'x', null]) {
+    const a = courseEnv(id)
+    const b = courseEnv(id)
+    assert.deepEqual(a, b, `env for ${String(id)} is stable across calls`)
+    assert.ok(['spring', 'summer', 'autumn', 'winter'].includes(a.season), 'season ∈ upstream seasons')
+    assert.ok(['clear', 'cloudy', 'rain', 'storm', 'snow', 'fog'].includes(a.weather), 'weather ∈ upstream weathers')
+    assert.equal(courseWeather(id), a.weather, 'courseWeather agrees with courseEnv')
+    const preset = PRESETS[coursePresetKey(id)]
+    assert.ok(preset !== undefined && PRESET_KEYS.includes(coursePresetKey(id)), 'the key indexes a real preset')
+    assert.equal(preset!.season, a.season)
+    assert.equal(preset!.weather, a.weather)
+  }
+  // distinct courses may collide (12 presets) — but the map {course → env} is total and stable
+  const envs = new Set(['course-a', 'course-b', 'course-c', 'course-d', 'course-e', 'course-f'].map(id => courseEnv(id).season + '|' + courseEnv(id).weather))
+  assert.ok(envs.size >= 2, 'the preset space spreads across courses')
+})

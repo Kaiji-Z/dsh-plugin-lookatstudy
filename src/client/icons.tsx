@@ -221,3 +221,18 @@ export function IconMaximizeOutline16({ size = 16, className }: IconProps) {
     createElement('path', { d: 'M9.5 2H14v4.5M6.5 14H2V9.5M14 2 9.2 6.8M2 14l4.8-4.8', stroke: 'currentColor', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
 }
 
+/** IconWrenchOutline16 — the practice-world tab glyph (upstream: lucide Wrench) */
+export function IconWrenchOutline16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M9.8 4.2a.67.67 0 0 0 0 .94l1.07 1.07a.67.67 0 0 0 .94 0l2.5-2.5a4 4 0 0 1-5.3 5.3l-4.6 4.6a1.4 1.4 0 0 1-2-2l4.6-4.6a4 4 0 0 1 5.3-5.3l-2.5 2.5Z', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linejoin': 'round' }))
+}
+
+/** IconLoaderArc16 — the streaming-ball spinner badge (upstream: lucide Loader2) */
+export function IconLoaderArc16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('circle', { cx: 8, cy: 8, r: 6, stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-dasharray': '28 10' }))
+}

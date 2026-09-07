@@ -16,7 +16,8 @@ import {
   classifyPointer, createSectionIsland, decaySquash, knotX, remapSpawnX, ropeChainPathD, squashTransform,
   type FlakeEvent, type ImpactEvent, type SectionIsland, type Vec2,
 } from '../vendor/map-physics.ts'
-import { PRESETS, attachOrbWeather, attachSky, pickPreset, type OrbPos } from '../vendor/sky-canvas.ts'
+import { PRESETS, PRESET_KEYS, attachOrbWeather, attachSky, type OrbPos } from '../vendor/sky-canvas.ts'
+import { hashStr } from '../vendor/map-layout.ts'
 import type { MapLesson } from './maprail.tsx'
 
 /** Weather event channels (nav coordinates) shared by islands and the orb canvas. */
@@ -31,9 +32,25 @@ export function makeWeatherChannels(): WeatherChannels {
   return { impacts: [], flakes: [], orbSnow: new Map() }
 }
 
-/** The deterministic weather key for a course (upstream pickPreset). */
+/**
+ * The deterministic preset key for a course. Upstream's pickPreset re-seeds
+ * with performance.now() so every launch re-rolls the weather; the plugin
+ * pins one season+weather per courseId instead — probes, freeze tests, and
+ * the env-* filter all need the rail's sky to be stable per course.
+ */
+export function coursePresetKey(courseId: string | null): string {
+  return PRESET_KEYS[hashStr(courseId ?? 'none') % PRESET_KEYS.length]!
+}
+
+/** The course's season + weather (drives the env-* bubble filter and the canvases). */
+export function courseEnv(courseId: string | null): { season: string; weather: string } {
+  const preset = PRESETS[coursePresetKey(courseId)]
+  return preset === undefined ? { season: 'summer', weather: 'clear' } : { season: preset.season, weather: preset.weather }
+}
+
+/** The deterministic weather key for a course. */
 export function courseWeather(courseId: string | null): string {
-  return PRESETS[pickPreset(courseId)]?.weather ?? 'clear'
+  return courseEnv(courseId).weather
 }
 
 /* ── the sky + orb-weather canvases (absolute children of the rail column) ── */
@@ -46,7 +63,7 @@ export function MapSky({ scrollRef, railRef, courseId, channels }: {
 }): ReactNode {
   const skyRef = useRef<HTMLCanvasElement | null>(null)
   const orbRef = useRef<HTMLCanvasElement | null>(null)
-  const presetKey = pickPreset(courseId)
+  const presetKey = coursePresetKey(courseId)
   const preset = PRESETS[presetKey]
 
   useEffect(() => {

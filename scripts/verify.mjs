@@ -213,6 +213,13 @@ gate('bundle', () => {
     [client, 'sedimentBacklog', 'the sediment backlog fold'],
     [client, 'lks14-inline-artifact', 'the inline artifact wrapper'],
     [client, 'ARTIFACT_TOOLS', 'the artifact tool map'],
+    // 0.18.0 D6: map ambiance — env-* filters, world switcher, streaming ball
+    [client, 'courseEnv', 'the deterministic season/weather picker'],
+    [client, 'sectionWorldOf', 'the section world derivation'],
+    [client, 'lks-bubble-spin', 'the streaming ball spinner badge'],
+    [client, 'lks-worldswitch', 'the two-world switcher'],
+    [client, 'lks-stream-note', 'the rail streaming notice'],
+    [client, 'env-spring', 'the seasonal env filter rules'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [
