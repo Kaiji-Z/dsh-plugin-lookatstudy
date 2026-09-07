@@ -209,7 +209,7 @@ test('the B-track skeleton: floating rail chrome, swapped widths, de-carded assi
   assert.match(STUDY_CSS, /\.lks14-rail\{flex:0 0 300px/, 'the rail is upstream 300px with its own panes')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railtop\{position:absolute/, 'the tab capsule + title card float over the scrolling map')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railtrack\{[^}]*width:200%/, 'map/import panes slide horizontally')
-  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railscroll\{[^}]*padding:196px/, 'the scroller reserves the floating chrome height (pt-48)')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railscroll\{[^}]*padding:118px/, 'the scroller reserves the distilled two-row head (0.19: 196px -> 118px)')
   assert.doesNotMatch(STUDY_CSS, /\.lks14-colhead\{/, 'the 课程/导师/黑板 column header rows are gone (upstream has none)')
   // B3: the width logic swap
   assert.match(STUDY_CSS, /\.lks14-chat\{flex:0 0 auto;width:clamp\(480px,45%,800px\)/, 'chat is the clamp column (row-relative %, fixed, never squeezed)')

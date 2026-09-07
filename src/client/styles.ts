@@ -69,9 +69,6 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14-railhead{display:flex;align-items:center;gap:6px;margin-top:10px}
 .lks14-railtitle{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .lks14-railsub{font-size:12px;color:var(--dsw-alias-label-secondary);margin:6px 0}
-.lks14-masterybar{height:5px;border-radius:3px;background:var(--dsw-alias-bg-layer-2);overflow:hidden;margin-bottom:8px}
-.lks14-masterybar i{display:block;height:100%;background:var(--dsw-alias-business-primary);transform-origin:left;transition:transform .3s}
-.lks14-masterybar.gold i{background:var(--dsw-alias-state-warn-primary)}
 .lks14-search{width:100%;box-sizing:border-box;font:inherit;font-size:12.5px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:5px 8px;margin:4px 0}
 .lks14-search:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
 .lks14-duebox{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:12.5px}

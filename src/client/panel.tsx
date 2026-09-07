@@ -1008,7 +1008,9 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       }, tr(tab === 'map' ? 'map.tab.map' : 'map.tab.import')))),
     panel === 'map' && course !== null
       ? createElement('div', { className: 'lks14-railhead' },
-        createElement('div', { className: 'lks14-railcard-row' },
+        // distilled two-row head (0.19 critique round): identity row + tools row,
+        // the mastery bar demoted to a hairline between them
+        createElement('div', { className: 'lks14-railcard-row main' },
           data.courses.length > 1
             ? createElement('select', {
               className: 'lks-set-select',
@@ -1016,6 +1018,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
               onChange: (e: { target: { value: string } }) => { setSelectedCourse(e.target.value); setConfirmDel(null) },
             }, ...data.courses.map(c => createElement('option', { key: c.courseId, value: c.courseId }, c.title)))
             : createElement('div', { className: 'lks14-railtitle', title: course.title }, course.title),
+          createElement('span', { className: 'lks14-railpct' }, `${String(course.avgMasteryPct ?? 0)}%`),
           createElement('button', {
             className: 'lks-btn ghost',
             'data-tooltip': tr('rail.delete'),
@@ -1026,14 +1029,11 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             },
           }, createElement(IconTrashOutline16, { size: 14 })),
         ),
-        createElement('div', { className: 'lks14-railcard-row' },
-          createElement('div', {
-            className: `lks14-masterybar${course.avgMasteryPct === 100 ? ' gold' : ''}`,
-            title: course.avgMasteryPct === null ? tr('rail.avg.none') : tr('rail.avg', { pct: course.avgMasteryPct }),
-          }, createElement('i', { style: { transform: `scaleX(${(course.avgMasteryPct ?? 0) / 100})` } })),
-          createElement('span', { className: 'lks14-railpct' }, `${String(course.avgMasteryPct ?? 0)}%`),
-        ),
-        createElement('div', { className: 'lks14-railcard-row' },
+        createElement('div', {
+          className: `lks14-masteryhair${course.avgMasteryPct === 100 ? ' gold' : ''}`,
+          title: course.avgMasteryPct === null ? tr('rail.avg.none') : tr('rail.avg', { pct: course.avgMasteryPct }),
+        }, createElement('i', { style: { transform: `scaleX(${(course.avgMasteryPct ?? 0) / 100})` } })),
+        createElement('div', { className: 'lks14-railcard-row tools' },
           createElement('button', {
             className: 'lks-railpill',
             'data-tooltip': tr('rail.search'),
@@ -1045,31 +1045,26 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             onClick: () => { setReviewOpen(true) },
           }, createElement(IconBookFill16, { size: 13 }), tr('map.review.label'),
             data.dueCount > 0 ? createElement('span', { className: 'lks-railpill-n' }, String(data.dueCount)) : null),
+          // D6: the two-world switcher — only when a practice world exists
+          // (upstream hides it for pure-study courses); shares the tools row.
+          course.sections.some(s => sectionWorldOf(s) === 'practice')
+            ? createElement('div', { className: 'lks-worldswitch', role: 'tablist' },
+              createElement('button', {
+                className: `lks-worldtab${world === 'study' ? ' on' : ''}`,
+                'data-testid': 'world-tab-study',
+                role: 'tab',
+                'aria-selected': String(world === 'study'),
+                onClick: () => { setWorld('study') },
+              }, createElement(IconBookFill16, { size: 13 }), tr('map.world.study')),
+              createElement('button', {
+                className: `lks-worldtab${world === 'practice' ? ' on' : ''}`,
+                'data-testid': 'world-tab-practice',
+                role: 'tab',
+                'aria-selected': String(world === 'practice'),
+                onClick: () => { setWorld('practice') },
+              }, createElement(IconWrenchOutline16, { size: 13 }), tr('map.world.practice')))
+            : null,
         ),
-        // D6: the two-world switcher — only when a practice world exists
-        // (upstream hides it for pure-study courses).
-        course.sections.some(s => sectionWorldOf(s) === 'practice')
-          ? createElement('div', { className: 'lks-worldswitch', role: 'tablist' },
-            createElement('button', {
-              className: `lks-worldtab${world === 'study' ? ' on' : ''}`,
-              'data-testid': 'world-tab-study',
-              role: 'tab',
-              'aria-selected': String(world === 'study'),
-              onClick: () => { setWorld('study') },
-            }, createElement(IconBookFill16, { size: 13 }), tr('map.world.study')),
-            createElement('button', {
-              className: `lks-worldtab${world === 'practice' ? ' on' : ''}`,
-              'data-testid': 'world-tab-practice',
-              role: 'tab',
-              'aria-selected': String(world === 'practice'),
-              onClick: () => { setWorld('practice') },
-            }, createElement(IconWrenchOutline16, { size: 13 }), tr('map.world.practice')))
-          : null,
-        // D6: the streaming notice — the tutor is replying somewhere on the rail.
-        streamingLessonId !== null
-          ? createElement('div', { className: 'lks-stream-note', 'data-testid': 'streaming-notice', role: 'status' },
-            createElement('i', { className: 'lks-typing-dot' }, ''), tr('map.streaming.notice'))
-          : null,
       )
       : null,
   )
@@ -1247,6 +1242,13 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   const effectivePanel = data !== null && data.courses.length === 0 ? 'import' : panel
   return createElement('div', { ref: railEl, className: 'lks14-col lks14-rail' },
     topbar,
+    // D6: the streaming notice — the tutor is replying somewhere on the rail.
+    // Pinned to the rail's bottom so the head stays two rows tall whether or
+    // not it is showing (it used to grow the chrome and overlap the list).
+    streamingLessonId !== null
+      ? createElement('div', { className: 'lks-stream-note', 'data-testid': 'streaming-notice', role: 'status' },
+        createElement('i', { className: 'lks-typing-dot' }, ''), tr('map.streaming.notice'))
+      : null,
     createElement('div', { className: 'lks14-railbody' },
       createElement('div', {
         className: 'lks14-railtrack',
