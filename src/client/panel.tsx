@@ -13,7 +13,7 @@
  * @module dsh-plugin-lookatstudy/client/panel
  */
 
-import { createElement, useEffect, useRef, useState } from 'react'
+import { createElement, useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
@@ -39,6 +39,7 @@ import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiv
 import { MapSectionView, pickSky } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
+import { ExamView, type ExamSession } from './examview.tsx'
 import { tr } from './locale.ts'
 
 /** The three souls in pill order (same shape as the study tab's pills). */
@@ -193,6 +194,18 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const [feedGen, setFeedGen] = useState(false)
   const lastSeqRef = useRef(0)
   const stopWatermarkRef = useRef<number | null>(null)
+  // P12 exam leave guard: ExamView reports its session here; every focus
+  // navigation routes through guardedSetFocus while answering is active.
+  const examSessionRef = useRef<ExamSession>({ active: false, terminate: null })
+  const [examLeave, setExamLeave] = useState<{ pending: (() => void) | null } | null>(null)
+  const guardedSetFocus = useCallback((id: string): void => {
+    if (examSessionRef.current.active) {
+      setExamLeave({ pending: () => { void setFocus(id) } })
+      return
+    }
+    void setFocus(id)
+  }, [setFocus])
+  const onExamSession = useCallback((session: ExamSession): void => { examSessionRef.current = session }, [])
   const [rows, setRows] = useState<ReturnType<typeof feedRows>>([])
   const [feedAttached, setFeedAttached] = useState(false)
   const [draft, setDraft] = useState('')
@@ -237,7 +250,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     nudged.current = true
     showStudyToast(tr('review.nudge', { n: data!.dueCount }), { severity: 'warning', action: { label: tr('review.nudge.go'), onClick: () => {
       const first = data?.due[0]
-      if (first !== undefined) void setFocus(first.lessonId).catch(() => { /* the poll will resync */ })
+      if (first !== undefined) guardedSetFocus(first.lessonId)
     } } })
   }, [data?.dueCount, data?.due, setFocus])
 
@@ -376,6 +389,20 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     })()
   }
 
+  // P12 exam-v2: ExamView decouples itself from this panel's send() — when a
+  // bank is wanted it fires the DOM event and THIS side speaks to the tutor.
+  // (Must live after send's declaration: the deps array reads it at render.)
+  useEffect(() => {
+    const onGenerate = (e: Event): void => {
+      const detail = (e as CustomEvent<{ lessonId: string; sectionTitle: string }>).detail
+      if (detail === undefined || typeof detail.sectionTitle !== 'string') return
+      send(tr('prompt.exam.bank', { section: detail.sectionTitle }))
+    }
+    window.addEventListener('lookatstudy-exam-generate', onGenerate)
+    return () => { window.removeEventListener('lookatstudy-exam-generate', onGenerate) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [send])
+
   const companion = useCompanionMood()
   const setCompanionEvent = companion.emit
   const progress = data?.progress ?? null
@@ -399,7 +426,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       if (next !== null) setNarrowPane(next)
     },
   },
-    createElement(CourseRail, { data, activate, setFocus, searchLessons, deleteCourse, send,
+    createElement(CourseRail, { data, activate, setFocus: guardedSetFocus, searchLessons, deleteCourse, send,
       // C7: a bubble jump on narrow layout lands the learner on the chat pane.
       onJumped: () => { setNarrowPane('chat') },
       // C13: tapping map blank space pokes the companion (whistle essence).
@@ -417,7 +444,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       ),
       createElement('div', { className: 'lks14-row' },
         createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent: setCompanionEvent }),
-        createElement(NotebookPane, { data, deleteNote, send, companionEvent: setCompanionEvent }),
+        createElement(NotebookPane, { data, deleteNote, send, companionEvent: setCompanionEvent, onExamSession, examPaused: examLeave !== null }),
       ),
     ),
   )
@@ -435,12 +462,53 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         onClick: () => { setNarrowPane(pane) },
       }, tr(`pane.${pane}`))),
     ),
-    body, createElement(StudyToastStack))
+    body,
+    // P12 leave guard: upstream's examLeave modal — focus lands on confirm,
+    // Esc keeps answering, confirming terminates (unanswered = wrong) then
+    // runs the intercepted navigation.
+    examLeave !== null ? createElement(ExamLeaveModal, {
+      onCancel: () => { setExamLeave(null) },
+      onConfirm: () => {
+        const action = examLeave.pending
+        setExamLeave(null)
+        const session = examSessionRef.current
+        examSessionRef.current = { active: false, terminate: null }
+        if (session.active && session.terminate !== null) {
+          void session.terminate().catch(() => { /* navigation must not block */ }).finally(() => { action?.() })
+        } else {
+          action?.()
+        }
+      },
+    }) : null,
+    createElement(StudyToastStack))
 }
 
 /** P6: the panel's toast stack (upstream Toast port) — severity capsules,
  * top-center, auto-dismiss with an exit-animation handshake; the store clears
  * on unmount so no toast outlives the panel. */
+/** P12: the exam leave-guard modal (upstream examLeave + useFocusTrap port):
+ * overlay, focus starts on the destructive confirm, Esc keeps answering. */
+function ExamLeaveModal({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }): ReactNode {
+  const confirmRef = useRef<HTMLButtonElement | null>(null)
+  useEffect(() => {
+    confirmRef.current?.focus()
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  return createElement('div', { className: 'lks14-examleave', role: 'alertdialog', 'aria-modal': 'true', 'aria-label': tr('exam.leave.title') },
+    createElement('div', { className: 'lks14-examleave-card' },
+      createElement('div', { className: 'lks14-examleave-title' }, createElement(IconWarningOutline16, { size: 18 }), tr('exam.leave.title')),
+      createElement('div', { className: 'lks14-examleave-msg' }, tr('exam.leave.message')),
+      createElement('div', { className: 'lks14-examleave-row' },
+        createElement('button', { className: 'lks-btn ghost', onClick: onCancel }, tr('exam.leave.cancel')),
+        createElement('button', { ref: confirmRef, className: 'lks-btn danger', onClick: onConfirm }, tr('exam.leave.confirm')),
+      ),
+    ),
+  )
+}
+
 function StudyToastStack(): ReactNode {
   const [items, setItems] = useState<readonly ToastItem[]>([])
   useEffect(() => {
@@ -1122,7 +1190,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
 }
 
 /** 右栏:the notebook — 讲解/概念图/笔记 tabs (upstream NotebookPanel arrangement). */
-function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void>; send: PanelSend; companionEvent: (event: 'talk-start' | 'talk-end' | 'celebrate' | 'encourage' | 'decay' | 'poke') => void }): ReactNode {
+function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, examPaused }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void>; send: PanelSend; companionEvent: (event: 'talk-start' | 'talk-end' | 'celebrate' | 'encourage' | 'decay' | 'poke') => void; onExamSession: (session: ExamSession) => void; examPaused: boolean }): ReactNode {
   const lesson = data?.lesson ?? null
   const [tab, setTab] = useState<'teach' | 'cmap' | 'notes'>('teach')
   const [error, setError] = useState<string | null>(null)
@@ -1145,6 +1213,21 @@ function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyD
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
   }
+
+  // P12: exam nodes swap the notebook for the ExamView answering surface
+  // (upstream swaps the whole middle column); the gate mirrors the rail's
+  // examOpen — every sibling study lesson ≥50% mastery. Computed as a VALUE,
+  // never an early return — the hook order must stay unconditional.
+  const examContent: ReactNode = lesson !== null && lesson.kind === 'exam'
+    ? (() => {
+        const section = data?.courses.flatMap(c => c.sections).find(s => s.lessons.some(l => l.id === lesson.lessonId))
+        const allowed = examOpen(section?.lessons ?? [])
+        return allowed
+          ? createElement(ExamView, { lessonId: lesson.lessonId, sectionTitle: lesson.sectionTitle, paused: examPaused, onSessionChange: onExamSession })
+          : createElement('div', { className: 'lks14-empty', style: { padding: '16px 0' } as CSSProperties }, tr('status.exam'))
+      })()
+    : null
+
 
   // Canvas semantics (upstream): artifacts sediment into the notebook — the
   // 笔记 tab wears a badge for unseen ones, a toast announces each arrival
@@ -1539,8 +1622,10 @@ function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyD
             ),
       )
   return createElement('div', { className: 'lks14-col lks14-note' },
-    body,
-    confirmNoteDel !== null
+    examContent !== null
+      ? createElement('div', { className: 'lks14-notebody' }, examContent)
+      : body,
+    examContent === null && confirmNoteDel !== null
       ? createElement(ConfirmCard, {
         anchor: confirmNoteDel.rect,
         message: tr('note.delete.confirm'),

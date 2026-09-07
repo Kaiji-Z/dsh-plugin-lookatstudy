@@ -13,7 +13,7 @@ import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { computeSm2, type ReviewQuality, type Sm2State } from './vendor/sm2.ts'
 import { masteryToCrown, updateMastery } from './vendor/bkt.ts'
-import { accuracyToStars } from './vendor/exam-logic.ts'
+import { accuracyToStars, EXAM_MAX_QUESTIONS, EXAM_MIN_QUESTIONS } from './vendor/exam-logic.ts'
 import { computeStreakTransition } from './vendor/streak-transition.ts'
 import { XP_CORRECT, XP_WRONG, XP_MASTERED } from './vendor/xp.ts'
 import type { StudyArtifact } from './artifacts.ts'
@@ -111,12 +111,60 @@ export interface LessonState {
   examStars?: number
   /** Exam nodes only: graded exam attempts recorded. */
   examAttempts?: number
+  /** Exam nodes only: the exam-v2 question bank (P12; generation rides the tutor). */
+  examBank?: ExamBank
+  /** Exam nodes only: full attempt history for the settlement view (newest last). */
+  examAttemptLog?: ExamAttempt[]
   /** 1–2 sentence lesson summary (upstream lesson-summary-kc: generated once with the concepts). */
   summary?: string
   /** Paired translation body (bilingual blackboard rendering). */
   translation?: string
   /** Translation language code when translation is present. */
   translationLang?: string
+}
+
+/** One bank question (tutor-authored, applied through study_exam_bank_apply). */
+export interface ExamBankQuestion {
+  id: string
+  prompt: string
+  options: string[]
+  answer: number
+  kcTitle: string | null
+  explanation: string | null
+}
+
+/** The exam-v2 bank lifecycle (upstream exam-generation-store, persisted here). */
+export interface ExamBank {
+  status: 'idle' | 'generating' | 'ready' | 'failed'
+  questions: ExamBankQuestion[]
+  error?: string
+  generatedAt?: string
+}
+
+/** Per-question settlement snapshot (self-contained: review survives regen). */
+export interface ExamAttemptPerQuestion {
+  exerciseId: string
+  kcTitle: string | null
+  correct: boolean
+  answered: boolean
+  userAnswer: string
+  correctAnswer: string
+  explanation: string | null
+  prompt: string | null
+  options: string[] | null
+}
+
+/** One answering session against a bank (id doubles as the shuffle seed). */
+export interface ExamAttempt {
+  id: string
+  startedAt: string
+  finishedAt: string | null
+  answers: Record<string, string>
+  correctCount: number | null
+  totalCount: number | null
+  stars: number | null
+  terminated: boolean
+  perQuestion: ExamAttemptPerQuestion[] | null
 }
 
 /** A section holding an ordered list of lessons. */
@@ -604,6 +652,192 @@ export function recordExamResult(
   ref.lesson.examAttempts = (ref.lesson.examAttempts ?? 0) + 1
   ref.lesson.lastAnsweredAt = new Date().toISOString()
   return { ref, stars, bestStars: ref.lesson.examStars, attempts: ref.lesson.examAttempts }
+}
+
+/**
+ * ── Exam v2 (P12): the bank + attempt lifecycle, upstream exam-service
+ * semantics on state.json instead of SQLite. Generation rides the tutor
+ * (the panel asks, study_exam_bank_apply lands the validated bank); grading
+ * is pure (unanswered = wrong, terminated attempts keep partial credit).
+ */
+
+/** The section's KC-title union (anti-hallucination anchor for bank applies). */
+function sectionKcTitles(ref: LessonRef): Set<string> {
+  const titles = new Set<string>()
+  for (const lesson of ref.section.lessons) {
+    if (lesson.kind === 'exam') continue
+    for (const concept of lesson.concepts ?? []) titles.add(concept.title)
+  }
+  return titles
+}
+
+/** Flip the bank to generating (a ready bank stays — regeneration resets it first). */
+export function beginExamGeneration(state: LearningState, lessonId: string): void {
+  const ref = findLesson(state, lessonId)
+  if (ref.lesson.kind !== 'exam') {
+    throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is not an exam node`)
+  }
+  if (ref.lesson.examBank?.status === 'ready') return
+  ref.lesson.examBank = { status: 'generating', questions: [] }
+}
+
+/** A tutor-authored bank question before the plugin assigns ids. */
+export interface ExamBankQuestionInput {
+  prompt: string
+  options: string[]
+  answer: number
+  kcTitle?: string | null
+  explanation?: string | null
+}
+
+/** Validate and land the tutor's question bank (anti-hallucination: KC titles must exist). */
+export function applyExamBank(state: LearningState, lessonId: string, questions: ExamBankQuestionInput[], now: Date): { questionCount: number; kcCount: number } {
+  const ref = findLesson(state, lessonId)
+  if (ref.lesson.kind !== 'exam') {
+    throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is not an exam node`)
+  }
+  if (!Array.isArray(questions) || questions.length < EXAM_MIN_QUESTIONS || questions.length > EXAM_MAX_QUESTIONS) {
+    throw new Error(`lookatstudy-plugin: exam bank needs ${String(EXAM_MIN_QUESTIONS)}-${String(EXAM_MAX_QUESTIONS)} questions (planExamQuota on the section's KC union), got ${String(Array.isArray(questions) ? questions.length : 'non-array')}`)
+  }
+  const kcUnion = sectionKcTitles(ref)
+  const bank: ExamBankQuestion[] = questions.map((q, i) => {
+    if (typeof q?.prompt !== 'string' || q.prompt.trim() === '') {
+      throw new Error(`lookatstudy-plugin: question ${String(i)} has an empty prompt`)
+    }
+    if (!Array.isArray(q.options) || q.options.length < 2 || q.options.some(o => typeof o !== 'string' || o.trim() === '')) {
+      throw new Error(`lookatstudy-plugin: question ${String(i)} needs 2+ non-empty options`)
+    }
+    if (!Number.isInteger(q.answer) || q.answer < 0 || q.answer >= q.options.length) {
+      throw new Error(`lookatstudy-plugin: question ${String(i)} answer index ${String(q.answer)} is out of range`)
+    }
+    if (q.kcTitle !== undefined && q.kcTitle !== null && q.kcTitle !== '' && !kcUnion.has(q.kcTitle)) {
+      throw new Error(`lookatstudy-plugin: question ${String(i)} kcTitle ${JSON.stringify(q.kcTitle)} is not in the section's concept union ${JSON.stringify([...kcUnion])} — read the section lessons with study_view before authoring`)
+    }
+    return {
+      id: `q${String(i)}`,
+      prompt: q.prompt,
+      options: q.options,
+      answer: q.answer,
+      kcTitle: q.kcTitle === undefined || q.kcTitle === null || q.kcTitle === '' ? null : q.kcTitle,
+      explanation: q.explanation === undefined || q.explanation === null || q.explanation === '' ? null : q.explanation,
+    }
+  })
+  ref.lesson.examBank = { status: 'ready', questions: bank, generatedAt: now.toISOString() }
+  return { questionCount: bank.length, kcCount: new Set(bank.map(q => q.kcTitle).filter(k => k !== null)).size }
+}
+
+/** Drop the bank back to idle (regenerate; history snapshots stay self-contained). */
+export function regenerateExamBank(state: LearningState, lessonId: string): void {
+  const ref = findLesson(state, lessonId)
+  if (ref.lesson.kind !== 'exam') {
+    throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is not an exam node`)
+  }
+  ref.lesson.examBank = { status: 'idle', questions: [] }
+}
+
+/** Settle every dangling attempt of the lesson (grade dead — unanswered = wrong). */
+export function settleDanglingAttempts(state: LearningState, lessonId: string): void {
+  const ref = findLesson(state, lessonId)
+  for (const attempt of ref.lesson.examAttemptLog ?? []) {
+    if (attempt.finishedAt === null) submitExamAttempt(state, lessonId, attempt.id, true, new Date())
+  }
+}
+
+/** Open a new attempt against the ready bank (dangling ones are graded dead first). */
+export function startExamAttempt(state: LearningState, lessonId: string, now: Date): { attemptId: string; questions: ExamBankQuestion[] } {
+  const ref = findLesson(state, lessonId)
+  if (ref.lesson.kind !== 'exam') {
+    throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is not an exam node`)
+  }
+  if (ref.lesson.examBank?.status !== 'ready') {
+    throw new Error(`lookatstudy-plugin: exam bank on ${JSON.stringify(lessonId)} is not ready (${String(ref.lesson.examBank?.status ?? 'idle')})`)
+  }
+  settleDanglingAttempts(state, lessonId)
+  const log = ref.lesson.examAttemptLog ?? []
+  let n = log.length
+  while (log.some(a => a.id === `${lessonId}:a${String(n)}`)) n++
+  const attempt: ExamAttempt = {
+    id: `${lessonId}:a${String(n)}`,
+    startedAt: now.toISOString(),
+    finishedAt: null,
+    answers: {},
+    correctCount: null,
+    totalCount: null,
+    stars: null,
+    terminated: false,
+    perQuestion: null,
+  }
+  ref.lesson.examAttemptLog = [...log, attempt]
+  return { attemptId: attempt.id, questions: ref.lesson.examBank.questions }
+}
+
+/** Persist one answer incrementally (open attempts only; original option index as string). */
+export function recordExamAnswer(state: LearningState, lessonId: string, attemptId: string, questionId: string, answer: string): void {
+  const ref = findLesson(state, lessonId)
+  const attempt = ref.lesson.examAttemptLog?.find(a => a.id === attemptId)
+  if (attempt === undefined) {
+    throw new Error(`lookatstudy-plugin: exam attempt ${JSON.stringify(attemptId)} not found on ${JSON.stringify(lessonId)}`)
+  }
+  if (attempt.finishedAt !== null) {
+    throw new Error(`lookatstudy-plugin: exam attempt ${JSON.stringify(attemptId)} already finished`)
+  }
+  const question = ref.lesson.examBank?.questions.find(q => q.id === questionId)
+  if (question === undefined) {
+    throw new Error(`lookatstudy-plugin: exam question ${JSON.stringify(questionId)} not in the bank`)
+  }
+  if (answer !== '' && (!/^\d+$/.test(answer) || Number(answer) >= question.options.length)) {
+    throw new Error(`lookatstudy-plugin: exam answer ${JSON.stringify(answer)} is not an option index of ${JSON.stringify(questionId)}`)
+  }
+  attempt.answers = { ...attempt.answers, [questionId]: answer }
+}
+
+/** Grade and close an attempt: unanswered = wrong, snapshots self-contained, best-of stars kept. */
+export function submitExamAttempt(state: LearningState, lessonId: string, attemptId: string, terminated: boolean, now: Date): {
+  correctCount: number
+  totalCount: number
+  stars: number
+  bestStars: number
+  terminated: boolean
+  perQuestion: ExamAttemptPerQuestion[]
+} {
+  const ref = findLesson(state, lessonId)
+  const attempt = ref.lesson.examAttemptLog?.find(a => a.id === attemptId)
+  if (attempt === undefined) {
+    throw new Error(`lookatstudy-plugin: exam attempt ${JSON.stringify(attemptId)} not found on ${JSON.stringify(lessonId)}`)
+  }
+  if (attempt.finishedAt !== null) {
+    throw new Error(`lookatstudy-plugin: exam attempt ${JSON.stringify(attemptId)} already finished`)
+  }
+  const bank = ref.lesson.examBank
+  const questions = bank?.status === 'ready' ? bank.questions : []
+  const perQuestion: ExamAttemptPerQuestion[] = questions.map(q => {
+    const user = attempt.answers[q.id] ?? ''
+    return {
+      exerciseId: q.id,
+      kcTitle: q.kcTitle,
+      correct: user === String(q.answer),
+      answered: user !== '',
+      userAnswer: user,
+      correctAnswer: String(q.answer),
+      explanation: q.explanation,
+      prompt: q.prompt,
+      options: q.options,
+    }
+  })
+  const correctCount = perQuestion.filter(p => p.correct).length
+  const totalCount = perQuestion.length
+  attempt.finishedAt = now.toISOString()
+  attempt.correctCount = correctCount
+  attempt.totalCount = totalCount
+  attempt.stars = totalCount > 0 ? accuracyToStars(correctCount / totalCount) : 0
+  attempt.terminated = terminated
+  attempt.perQuestion = perQuestion
+  // best-of stars + attempt counter ride the same fields study_exam_result writes
+  const prevBest = ref.lesson.examStars ?? -1
+  ref.lesson.examStars = Math.max(prevBest, attempt.stars)
+  ref.lesson.examAttempts = (ref.lesson.examAttempts ?? 0) + 1
+  ref.lesson.lastAnsweredAt = now.toISOString()
+  return { correctCount, totalCount, stars: attempt.stars, bestStars: ref.lesson.examStars, terminated, perQuestion }
 }
 
 /**

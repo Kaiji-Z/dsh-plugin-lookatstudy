@@ -502,4 +502,73 @@ export const UPSTREAM_CSS = `
 .lks-confirmcard.danger{border-color:rgb(var(--warning-rgb)/0.4)}
 .lks-confirmcard-msg{font-size:12.5px;color:var(--ink);line-height:1.5;margin-bottom:8px}
 .lks-confirmcard-row{display:flex;gap:8px;justify-content:flex-end}
+/* ══════════ P12 (D1): ExamView five states + leave guard (upstream ExamView.tsx) ══════════ */
+.lks-ui .lks-btn.danger{background:color-mix(in srgb,var(--warning) 82%,#000);color:#fff}
+.lks-ui .lks-btn.danger:hover{filter:brightness(1.1)}
+/* generating / failed / ready: the centered stage */
+.lks-ui .lks14-examstage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 24px;text-align:center}
+.lks-ui .lks14-exam-glyph{color:var(--accent);opacity:.65;margin-bottom:14px}
+.lks-ui .lks14-exam-glyph.warn{color:var(--warning-light)}
+.lks-ui .lks14-exam-dots{display:flex;gap:5px;margin:10px 0 6px}
+.lks-ui .lks14-exam-dots i{width:6px;height:6px;border-radius:999px;background:var(--brand);animation:lks-typing-dot 1.2s ease-in-out infinite}
+.lks-ui .lks14-exam-dots i:nth-child(2){animation-delay:.15s}
+.lks-ui .lks14-exam-dots i:nth-child(3){animation-delay:.3s}
+.lks-ui .lks14-exam-h1{font-size:19px;font-weight:800;color:var(--ink-strong)}
+.lks-ui .lks14-exam-hero{font-size:26px;font-weight:800;color:var(--ink-strong);margin-top:4px}
+.lks-ui .lks14-exam-sub{font-size:13.5px;color:var(--ink-muted);line-height:1.6;margin-top:6px}
+.lks-ui .lks14-exam-hint{font-size:11.5px;color:var(--ink-faint);max-width:300px;margin-top:18px}
+.lks-ui .lks14-exam-badge{width:56px;height:56px;border-radius:999px;background:rgb(var(--brand-rgb)/0.15);display:inline-flex;align-items:center;justify-content:center;color:var(--brand);margin-bottom:10px}
+.lks-ui .lks14-exam-meta{font-size:12px;color:var(--ink-muted);margin:8px 0 22px;font-variant-numeric:tabular-nums}
+.lks-ui .lks14-exam-ctas{display:flex;flex-direction:column;align-items:center;gap:10px}
+.lks-ui .lks-btn.primary.big{padding:10px 26px;font-size:15px}
+.lks-ui .lks14-exam-regen{display:inline-flex}
+.lks-ui .lks14-exam-arrow{margin-left:4px;font-weight:700}
+/* answering: fixed top row + scrollable body (upstream max-w-2xl layout) */
+.lks-ui .lks14-examans{flex:1;display:flex;flex-direction:column;min-height:0;max-width:680px;margin:0 auto;width:100%}
+.lks-ui .lks14-exam-top{display:flex;align-items:center;justify-content:space-between;padding:22px 4px 10px;flex:none}
+.lks-ui .lks14-exam-qno{font-size:12px;color:var(--ink-muted);font-variant-numeric:tabular-nums}
+.lks-ui .lks14-exam-timer{font-size:13px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums}
+.lks-ui .lks14-exam-timer.warn{color:var(--warning-light);animation:lks-exam-timer-pulse 1s ease-in-out infinite}
+@keyframes lks-exam-timer-pulse{50%{opacity:.55}}
+.lks-ui .lks14-exam-track{height:6px;border-radius:999px;background:rgb(var(--shadow-rgb)/0.16);overflow:hidden;margin-bottom:20px;flex:none}
+.lks-ui .lks14-exam-track i{display:block;height:100%;border-radius:999px;background:var(--accent);transition:width 300ms var(--ease-out-quart)}
+.lks-ui .lks14-exam-scroll{flex:1;min-height:0;overflow-y:auto;padding:0 4px 24px}
+.lks-ui .lks14-exam-kc{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--accent);background:rgb(var(--accent-rgb)/0.1);border-radius:999px;padding:4px 11px;margin-bottom:12px}
+.lks-ui .lks14-exam-prompt{font-size:16.5px;color:var(--ink-strong);line-height:1.65;margin-bottom:20px;white-space:pre-wrap;overflow-wrap:anywhere}
+.lks-ui .lks14-exam-opts{display:flex;flex-direction:column;gap:10px}
+.lks-ui .lks14-exam-opt{text-align:left;padding:13px 17px;border-radius:14px;border:1px solid var(--border);background:var(--surface-2);color:var(--ink);font-size:13.5px;line-height:1.5;cursor:pointer;transition:border-color 150ms,background 150ms}
+.lks-ui .lks14-exam-opt:hover{border-color:var(--border)}
+.lks-ui .lks14-exam-opt.picked{border-color:var(--accent);background:rgb(var(--accent-rgb)/0.14)}
+.lks-ui .lks14-exam-nextrow{display:flex;justify-content:flex-end;margin-top:22px}
+/* result: stars + KC breakdown + review */
+.lks-ui .lks14-examresult{flex:1;overflow-y:auto;padding:30px 4px 20px;max-width:680px;margin:0 auto;width:100%}
+.lks-ui .lks14-exam-scorehead{display:flex;flex-direction:column;align-items:center;margin-bottom:20px}
+.lks-ui .lks14-exam-stars{display:flex;gap:5px}
+.lks-ui .lks14-exam-stars .lit{color:var(--gold)}
+.lks-ui .lks14-exam-stars .dim{color:var(--ink-faint);opacity:.35}
+.lks-ui .lks14-exam-term{display:flex;align-items:center;gap:8px;border:1px solid rgb(var(--warning-rgb)/0.4);background:rgb(var(--warning-rgb)/0.1);border-radius:14px;padding:11px 15px;margin-bottom:20px;color:var(--ink);font-size:13px}
+.lks-ui .lks14-exam-kcblock{margin-bottom:26px}
+.lks-ui .lks14-exam-h2{font-size:15px;font-weight:700;color:var(--ink-strong);margin-bottom:10px}
+.lks-ui .lks14-exam-kcrow{display:flex;align-items:center;justify-content:space-between;padding:10px 15px;border-radius:14px;background:var(--surface-2);margin-bottom:7px}
+.lks-ui .lks14-exam-kcname{display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-ui .lks14-exam-kcstat{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-muted);font-variant-numeric:tabular-nums;flex:none}
+.lks-ui .lks14-exam-weak{font-style:normal;color:var(--warning-light);font-size:11.5px}
+.lks-ui .lks14-exam-revrow{display:flex;align-items:flex-start;gap:9px;padding:12px 14px;border-radius:14px;background:var(--surface-2);margin-bottom:7px}
+.lks-ui .lks14-exam-mark{flex:none;width:18px;height:18px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;margin-top:1px}
+.lks-ui .lks14-exam-mark.ok{color:var(--brand);background:rgb(var(--brand-rgb)/0.14)}
+.lks-ui .lks14-exam-mark.bad{color:var(--warning-light);background:rgb(var(--warning-rgb)/0.14)}
+.lks-ui .lks14-exam-mark.skip{color:var(--ink-faint);background:rgb(var(--shadow-rgb)/0.14)}
+.lks-ui .lks14-exam-revbody{min-width:0;flex:1}
+.lks-ui .lks14-exam-revprompt{color:var(--ink);font-size:13px;line-height:1.5;margin-bottom:3px;overflow-wrap:anywhere}
+.lks-ui .lks14-exam-revmeta{color:var(--ink-faint);font-size:11.5px;line-height:1.5}
+.lks-ui .lks14-exam-ok{color:var(--brand)}
+.lks-ui .lks14-exam-revexp{color:var(--ink-muted);font-size:11.5px;line-height:1.5;margin-top:4px}
+/* leave guard modal (upstream examLeave + focus trap) */
+.lks14-examleave{position:fixed;inset:0;z-index:2147483000;background:rgb(var(--shadow-rgb)/0.5);display:flex;align-items:center;justify-content:center;animation:lks-fade-in 140ms var(--ease-out-quart)}
+.lks14-examleave-card{width:340px;background:var(--surface-0);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 16px 48px -8px rgb(var(--shadow-rgb)/0.3);animation:lks-confirm-enter 160ms var(--ease-out-back)}
+.lks14-examleave-title{display:flex;align-items:center;gap:8px;font-size:15.5px;font-weight:800;color:var(--ink-strong);margin-bottom:6px}
+.lks14-examleave-title svg{color:var(--warning-light)}
+.lks14-examleave-msg{font-size:13px;color:var(--ink-muted);line-height:1.6;margin-bottom:16px}
+.lks14-examleave-row{display:flex;gap:10px;justify-content:flex-end}
+@keyframes lks-fade-in{from{opacity:0}to{opacity:1}}
 `

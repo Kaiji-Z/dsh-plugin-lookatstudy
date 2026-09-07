@@ -345,3 +345,61 @@ test('the state feed carries the plugin version read from the running package.js
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
   assert.equal((api.json() as { version: string }).version, pkg.version, 'version equals the installed package.json — strictly the running build')
 })
+
+
+test('routes: the exam-v2 lifecycle rides the dashboard API (P12)', async () => {
+  const state = emptyState()
+  const course = importCourse(state, parseMarkdownToCourse(COURSE_MD), 'markdown', 'fixture')
+  const exam = state.courses[0]!.sections.flatMap(s => s.lessons).find(l => l.kind === 'exam')!
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+
+  const idle = (await handle(routes, new FakeRequest('GET', `/lookatstudy/api/exam?lessonId=${encodeURIComponent(exam.id)}`), new FakeResponse()) as { status: number; json(): { status: string; questionCount: number; attemptCount: number } })
+  assert.equal(idle.status, 200)
+  assert.equal(idle.json().status, 'idle')
+
+  const notExam = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/exam?lessonId=ghost:0:0'), new FakeResponse())
+  assert.equal(notExam.status, 404)
+
+  await handle(routes, new FakeRequest('POST', '/lookatstudy/api/exam/prepare', { lessonId: exam.id }), new FakeResponse())
+  const bank = Array.from({ length: 5 }, (_v, i) => ({ prompt: `Q${String(i + 1)}`, options: ['a', 'b', 'c', 'd'], answer: i % 4, kcTitle: null, explanation: null }))
+  // banks land through the TOOL (anti-hallucination validated) — the routes only
+  // carry the lifecycle; apply directly through state like the tool does
+  const { applyExamBank } = await import('../src/state.ts')
+  applyExamBank(state, exam.id, bank, new Date())
+
+  const ready = (await handle(routes, new FakeRequest('GET', `/lookatstudy/api/exam?lessonId=${encodeURIComponent(exam.id)}`), new FakeResponse()) as { json(): { status: string; questionCount: number; kcCount: number; questions: unknown[] } })
+  const rv = ready.json()
+  assert.equal(rv.status, 'ready')
+  assert.equal(rv.questionCount, 5)
+  assert.equal(rv.questions.length, 5, 'the full bank ships to the answering view (upstream trust model)')
+
+  const start = (await handle(routes, new FakeRequest('POST', '/lookatstudy/api/exam/start', { lessonId: exam.id }), new FakeResponse()) as { json(): { attemptId: string } })
+  const attemptId = start.json().attemptId
+  await handle(routes, new FakeRequest('POST', '/lookatstudy/api/exam/record', { lessonId: exam.id, attemptId, questionId: 'q0', answer: '0' }), new FakeResponse())
+  const badRecord = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/exam/record', { lessonId: exam.id, attemptId, questionId: 'q0', answer: 'zz' }), new FakeResponse())
+  assert.equal(badRecord.status, 404, 'non-index answers fail loud')
+
+  // a dangling attempt is graded dead on the next status read (upstream semantics)
+  const resettle = (await handle(routes, new FakeRequest('GET', `/lookatstudy/api/exam?lessonId=${encodeURIComponent(exam.id)}`), new FakeResponse()) as { json(): { latestAttempt: { finishedAt: string | null; terminated: boolean; correctCount: number | null } } })
+  const latest = resettle.json().latestAttempt
+  assert.equal(latest.finishedAt !== null, true, 'GET settles the dangling attempt')
+  assert.equal(latest.terminated, true)
+  assert.equal(latest.correctCount, 1, 'partial credit kept')
+
+  const submit = (await handle(routes, new FakeRequest('POST', '/lookatstudy/api/exam/submit', { lessonId: exam.id, attemptId }), new FakeResponse()) as { status: number })
+  assert.equal(submit.status, 404, 'already-settled attempts refuse a second submit')
+
+  await handle(routes, new FakeRequest('POST', '/lookatstudy/api/exam/regenerate', { lessonId: exam.id }), new FakeResponse())
+  const backIdle = (await handle(routes, new FakeRequest('GET', `/lookatstudy/api/exam?lessonId=${encodeURIComponent(exam.id)}`), new FakeResponse()) as { json(): { status: string; attemptCount: number } })
+  assert.equal(backIdle.json().status, 'idle')
+  assert.equal(backIdle.json().attemptCount, 1, 'history survives regeneration')
+
+  // the state feed's lesson projection carries the exam summary + kind
+  state.focus = { lessonId: exam.id }
+  const wb = workbenchState(state, 'C:/state.json')
+  assert.equal(wb.lesson!.kind, 'exam')
+  assert.equal(wb.lesson!.exam!.status, 'idle')
+  assert.equal(wb.lesson!.exam!.attemptCount, 1)
+  void course
+})

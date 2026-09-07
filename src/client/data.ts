@@ -41,6 +41,7 @@ export interface StudyState {
     readonly courseTitle: string
     readonly sectionTitle: string
     readonly title: string
+    readonly kind: string
     readonly status: string
     readonly masteryPct: number | null
     readonly strategy: string
@@ -49,6 +50,13 @@ export interface StudyState {
     readonly artifacts: ReadonlyArray<{ id: string; artifactType: string; title: string; data: Record<string, unknown> }>
     readonly due: boolean
     readonly notes: ReadonlyArray<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null; pinned: boolean }>
+    readonly exam: {
+      readonly status: string
+      readonly questionCount: number
+      readonly kcCount: number
+      readonly bestStars: number
+      readonly attemptCount: number
+    } | null
     readonly html: string
     readonly markdown: string
     readonly speechText: string
@@ -73,6 +81,58 @@ export interface StudyState {
   readonly statePath: string
   /** Plugin version from the running build's package.json (settings About row). */
   readonly version: string
+}
+
+/** ── Exam v2 wire shapes (GET /lookatstudy/api/exam; upstream ExamStatusView). ── */
+export interface ExamQuestionView {
+  readonly id: string
+  readonly prompt: string
+  readonly options: readonly string[]
+  readonly answer: number
+  readonly kcTitle: string | null
+  readonly explanation: string | null
+}
+
+export interface ExamPerQuestionResult {
+  readonly exerciseId: string
+  readonly kcTitle: string | null
+  readonly correct: boolean
+  readonly answered: boolean
+  readonly userAnswer: string
+  readonly correctAnswer: string
+  readonly explanation: string | null
+  readonly prompt: string | null
+  readonly options: readonly string[] | null
+}
+
+export interface ExamStatusView {
+  readonly ok: boolean
+  readonly status: 'idle' | 'generating' | 'ready' | 'failed'
+  readonly error: string | null
+  readonly questionCount: number
+  readonly kcCount: number
+  readonly questions: readonly ExamQuestionView[]
+  readonly bestStars: number
+  readonly attemptCount: number
+  readonly latestAttempt: {
+    readonly id: string
+    readonly finishedAt: string | null
+    readonly correctCount: number | null
+    readonly totalCount: number | null
+    readonly stars: number | null
+    readonly terminated: boolean
+    readonly perQuestion: readonly ExamPerQuestionResult[]
+  } | null
+}
+
+export interface ExamSubmitResult {
+  readonly ok: boolean
+  readonly correctCount: number
+  readonly totalCount: number
+  readonly stars: number
+  readonly bestStars: number
+  readonly terminated: boolean
+  readonly perQuestion: readonly ExamPerQuestionResult[]
 }
 
 /** Poll cadence for the shared store; one cycle serves every mounted seat. */
@@ -248,6 +308,58 @@ class StudyStore {
     this.refresh()
   }
 
+  /** ── Exam v2 (P12): bank + attempt lifecycle (upstream exam-service API shape). ── */
+
+  async examStatus(lessonId: string): Promise<ExamStatusView> {
+    return await fetchJson(`/lookatstudy/api/exam?lessonId=${encodeURIComponent(lessonId)}`) as ExamStatusView
+  }
+
+  async examPrepare(lessonId: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/exam/prepare', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId }),
+    })
+    this.refresh()
+  }
+
+  async examStart(lessonId: string): Promise<{ attemptId: string; questions: ExamQuestionView[] }> {
+    const r = await fetchJson('/lookatstudy/api/exam/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId }),
+    }) as { attemptId: string; questions: ExamQuestionView[] }
+    this.refresh()
+    return r
+  }
+
+  async examRecord(lessonId: string, attemptId: string, questionId: string, answer: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/exam/record', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId, attemptId, questionId, answer }),
+    })
+  }
+
+  async examSubmit(lessonId: string, attemptId: string, terminated: boolean): Promise<ExamSubmitResult> {
+    const r = await fetchJson('/lookatstudy/api/exam/submit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId, attemptId, terminated }),
+    }) as ExamSubmitResult
+    this.refresh()
+    return r
+  }
+
+  async examRegenerate(lessonId: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/exam/regenerate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId }),
+    })
+    this.refresh()
+  }
+
   /** Synthesize one speakable chunk to MP3 (host-side Edge TTS, cache-first). */
   async tts(text: string, voice?: string): Promise<ArrayBuffer> {
     const body = await fetchJson('/lookatstudy/api/tts', {
@@ -313,6 +425,12 @@ export function useStudy(): {
   deleteNote: (lessonId: string, noteId: string) => Promise<void>
   editNote: (lessonId: string, noteId: string, text: string) => Promise<void>
   pinNote: (lessonId: string, noteId: string, pinned: boolean) => Promise<void>
+  examStatus: (lessonId: string) => Promise<ExamStatusView>
+  examPrepare: (lessonId: string) => Promise<void>
+  examStart: (lessonId: string) => Promise<{ attemptId: string; questions: readonly ExamQuestionView[] }>
+  examRecord: (lessonId: string, attemptId: string, questionId: string, answer: string) => Promise<void>
+  examSubmit: (lessonId: string, attemptId: string, terminated: boolean) => Promise<ExamSubmitResult>
+  examRegenerate: (lessonId: string) => Promise<void>
   addUserNote: (lessonId: string, quote: string) => Promise<void>
   recordReview: (lessonId: string, quality: 1 | 4 | 5) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string) => Promise<void>
@@ -328,6 +446,12 @@ export function useStudy(): {
     deleteNote: studyStore.deleteNote.bind(studyStore),
     editNote: studyStore.editNote.bind(studyStore),
     pinNote: studyStore.pinNote.bind(studyStore),
+    examStatus: studyStore.examStatus.bind(studyStore),
+    examPrepare: studyStore.examPrepare.bind(studyStore),
+    examStart: studyStore.examStart.bind(studyStore),
+    examRecord: studyStore.examRecord.bind(studyStore),
+    examSubmit: studyStore.examSubmit.bind(studyStore),
+    examRegenerate: studyStore.examRegenerate.bind(studyStore),
     addUserNote: studyStore.addUserNote.bind(studyStore),
     recordReview: studyStore.recordReview.bind(studyStore),
     bindLessonSession: studyStore.bindLessonSession.bind(studyStore),

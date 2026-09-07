@@ -1,6 +1,6 @@
 # dsh-plugin-lookatstudy · Agent Development Guide
 
-A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) community plugin: LookatStudy ported as a SIDEBAR-ENTRY PANEL (0.14.0, the stardeck panel-entry doctrine) — a 「学习」 row in the host sidebar toggles a center-column takeover arranged like upstream LookatStudy's app (课程 rail | 导师 chat with its own composer | 黑板 notebook) — plus an on-demand host surface (30 `study_*` tools + a three-soul tutor persona) and a vendored zero-dependency learning engine (SM-2, BKT, markdown/course parsers). The host is exactly the conversation-model + agent-turn engine: the panel drives it through the session face (`sessions.create` + `face.prompt`) and renders the thread back from the session's event window.
+A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) community plugin: LookatStudy ported as a SIDEBAR-ENTRY PANEL (0.14.0, the stardeck panel-entry doctrine) — a 「学习」 row in the host sidebar toggles a center-column takeover arranged like upstream LookatStudy's app (课程 rail | 导师 chat with its own composer | 黑板 notebook) — plus an on-demand host surface (31 `study_*` tools + a three-soul tutor persona) and a vendored zero-dependency learning engine (SM-2, BKT, markdown/course parsers). The host is exactly the conversation-model + agent-turn engine: the panel drives it through the session face (`sessions.create` + `face.prompt`) and renders the thread back from the session's event window.
 
 **Before developing any feature, read the verification protocol in [VERIFICATION.md](VERIFICATION.md)** — its operative ideas are wired into this repo: `pnpm run verify` is the single machine-checkable gate (§6), the regression suite freezes acceptance paths, and the schema-conformance test mirrors the real tool-call path's output validation. Claims of "done" cite command output, not impressions.
 
@@ -29,7 +29,7 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 ## Layout
 
 - `src/state.ts` — the learning state machine (the source of truth for every rule below)
-- `src/tools.ts` — the 20 `study_*` tools; every mutation goes through the store and persists synchronously
+- `src/tools.ts` — the 21 `study_*` tools; every mutation goes through the store and persists synchronously
 - `src/import-design.ts` — the tutor-design import protocol: design brief, anchor slicing, anti-hallucination validation (GitHub imports)
 - `src/dashboard.ts` — the study panel's HTTP API under `/lookatstudy/api/*` (state feed, activation/focus/mode/delete/lesson-session/note-delete writes, study-workspace path, Edge-TTS synthesis)
 - `src/surface.ts` — the activation gate: persona texts render empty and the tools stay unregistered while `state.active` is false
@@ -63,7 +63,7 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 ## Backlog
 
 - (shipped 0.15.0) artifact cards, selection-to-note, review surface, full-text search panel, proposal banner, companion — the upstream alignment round.
-- Deliberately not restored (accurate as of upstream v0.28.0): the companion creature + its TTS infra (Electron surface), and exam-v2's persistent machinery (background question generation, SQLite attempt settlement, retake shuffling — the plugin's exams are conversational). Image inlining, the translation system, exam-star display, and Edge-TTS read-aloud ARE shipped (the plugin's read-aloud is Edge TTS with a system-voice fallback, richer than upstream's Electron TTS).
+- Deliberately not restored (accurate as of upstream v0.28.0): the companion creature + its TTS infra (Electron surface), and exam-v2's SQLite persistence (the plugin's exam-v2 banks/attempts live in state.json since P12 — `study_exam_bank_apply` lands the tutor-authored bank with anti-hallucination KC validation, the ExamView five-state UI + leave guard ride the dashboard `/api/exam/*` routes, retake shuffling is the vendored `buildAttemptShuffle`). Image inlining, the translation system, exam-star display, and Edge-TTS read-aloud ARE shipped (the plugin's read-aloud is Edge TTS with a system-voice fallback, richer than upstream's Electron TTS).
 
 ## Design rationale (the whys that outlived the code)
 

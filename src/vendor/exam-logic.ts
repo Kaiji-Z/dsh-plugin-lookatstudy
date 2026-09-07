@@ -1,9 +1,9 @@
 // Vendored from LookatStudy shared/exam-logic.ts + src/main/services/exam-service.ts
 // (accuracyToStars) + src/renderer/lib/post-quiz-actions.ts (MIT License,
 // https://github.com/Kaiji-Z/LookatStudy). Pure exam semantics, verbatim where
-// possible; the DB-backed attempt lifecycle stays upstream-only (the plugin's
-// exam attempts are conversational — the tutor grades through study_record_answer,
-// and study_exam_result consumes these pure functions for stars/actions).
+// possible. Since P12 (exam-v2) the attempt lifecycle also lives in the plugin's
+// state (bank + attempts in state.json); study_exam_result remains for
+// conversational grading and shares the same star thresholds.
 
 /** 每场考试的题量上限/下限。 */
 export const EXAM_MIN_QUESTIONS = 5;
@@ -88,4 +88,65 @@ export function getPostQuizActions(
     ];
   }
   return [{ id: "go-deeper" }, { id: "retry" }];
+}
+
+/** 一次考试的重排:题序 + 每题选项序(重新考试时两者都变)。 (upstream verbatim) */
+export interface AttemptShuffle {
+  /** 题目显示顺序:显示位置 i → 原 items 数组下标 */
+  questionOrder: number[];
+  /** 每题选项排列:显示选项位 j → 原选项下标 */
+  optionPerms: Record<string, number[]>;
+}
+
+/** FNV-1a 字符串哈希 → 32 位种子(与 mapLayout.hashStr 同族,独立实现避免跨层 import)。 */
+function hashSeed(str: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/** mulberry32:小而稳的可种子 PRNG(重排可复现,测试可断言)。 */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Fisher-Yates 洗 [0, n) 的排列。 */
+function shuffledIndices(n: number, rand: () => number): number[] {
+  const arr = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    const tmp = arr[i]!;
+    arr[i] = arr[j]!;
+    arr[j] = tmp;
+  }
+  return arr;
+}
+
+/** 用 attemptId 作种子构建一次考试的重排(同种子确定,不同 attempt 两序皆变)。 */
+export function buildAttemptShuffle(
+  items: Array<{ id: string; optionCount: number }>,
+  seed: string,
+): AttemptShuffle {
+  const rand = mulberry32(hashSeed(seed));
+  const questionOrder = shuffledIndices(items.length, rand);
+  const optionPerms: Record<string, number[]> = {};
+  for (const it of items) {
+    optionPerms[it.id] = shuffledIndices(Math.max(1, it.optionCount), rand);
+  }
+  return { questionOrder, optionPerms };
+}
+
+/** 显示选项位 → 原始选项下标(字符串;渲染端第 j 位显示 options[perm[j]],与此配对)。 */
+export function displayAnswerToOriginal(perm: number[], displayIdx: number): string {
+  return perm[displayIdx] !== undefined ? String(perm[displayIdx]) : String(displayIdx);
 }

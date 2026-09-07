@@ -78,7 +78,7 @@ P11b：
 
 ### D 轨 · 大件（P12-P15 + P17）
 
-- [ ] D1/P12 考试作答 UI（ExamView 五态：generating 进度→ready 元信息+开始+重出题确认→answering 逐题限时 60/90s+超时自动记+KC chip→submitting→result 星级+KC 分解+逐题回顾+重考/重出题）+ 考试离开守卫（导航拦截警告模态）+ exam-v2 后台题库语义（宿主模型经 tutor 出题，题库状态入 state.json）
+- [x] D1/P12 考试作答 UI ✅ 2026-09-07：ExamView 五态 1:1（examview.tsx：loading/generating 可离开/ready 元信息+开始/failed 重试/answering 逐题动态限时（questionTimeLimitSec 60-300s）+超时自动记+KC chip+attempt 洗牌（vendor buildAttemptShuffle 题序+选项序）/submitting/result 星级+KC 分解+逐题回顾+重考/重出题 ConfirmCard）；离开守卫（examSessionRef + guardedSetFocus 包住全部焦点路径 + ExamLeaveModal 焦点圈禁/Esc/确认终止→terminated banner）；题库语义（state.json：examBank/examAttemptLog，study_exam_bank_apply 反幻觉校验 kcTitle∈本节概念并，悬挂 attempt 读时判死，快照自包含抗重出题，dashboard /api/exam/* 六路由）。实测：tests/exam-v2.test.ts 6 + dashboard 路由 1（267 tests，verify PASS，audit 0）；探针 scripts/probe-p12.mjs 9/10（挂起=上游 API 长 generation 间歇停摆：三轮模型轮两次完整落地 05:48/06:14 UTC 会话日志实证 study_exam_bank_apply→ready，prompt 武装手动复现 3s 落地）。已知窄边：守卫往返→refocus 后聊天 feed 重绑间歇竞态（自愈于下次 send，P17 线程切换重构时一并处理）。实catch：①NotebookPane 考试分支提前 return→React #300（hook 数不定），改值分支；②出题事件 effect 放 send 声明前→TDZ，移到其后；③活服务器内存态遮蔽重种 state.json（种后必须重启）。
 - [ ] D2/P13 庆祝粒子层（CelebrationLayer：correct/wrong/mastery/unlock/streak/energy-full/exam-pass；锚定 quiz 卡/解锁球；reduced-motion 静态降级）
 - [ ] D3/P14 黑板 board tab + CanvasStage（平移/捏合/滚轮/双击适屏 + −/%/适屏/+ 浮动工具条；mermaid/对比表/代码走查/概念图模态全部接入）
 - [ ] D4 流内 artifact 内联渲染（quiz 可直接作答）——sediment 模型并存（流内优先展示未见过的）

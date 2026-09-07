@@ -19,6 +19,13 @@ import { cachedTtsMp3, normalizeVoice } from './tts.ts'
 import {
   searchLessons,
   conceptViews,
+  applyExamBank,
+  beginExamGeneration,
+  regenerateExamBank,
+  settleDanglingAttempts,
+  startExamAttempt,
+  recordExamAnswer,
+  submitExamAttempt,
   deleteCourse,
   addNote,
   deleteNote,
@@ -118,6 +125,7 @@ export interface WorkbenchLesson {
   courseTitle: string
   sectionTitle: string
   title: string
+  kind: string
   status: string
   masteryPct: number | null
   strategy: string
@@ -128,6 +136,8 @@ export interface WorkbenchLesson {
   artifacts: Array<{ id: string; artifactType: string; title: string; data: Record<string, unknown> }>
   /** Whether this lesson has a review due now (the self-rating card shows). */
   due: boolean
+  /** Exam nodes only: the bank + attempt summary (P12; full bank via GET /api/exam). */
+  exam: { status: string; questionCount: number; kcCount: number; bestStars: number; attemptCount: number } | null
   html: string
   /** Raw lesson body (the read-aloud control and the settings page speak from this). */
   markdown: string
@@ -209,11 +219,23 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
         courseTitle: ref.course.title,
         sectionTitle: ref.section.title,
         title: ref.lesson.title,
+        kind: ref.lesson.kind,
         status: ref.lesson.status,
         masteryPct: ref.lesson.mastery === null ? null : Math.round(ref.lesson.mastery * 100),
         strategy: strategyBand(ref.lesson.mastery),
         concepts: conceptViews(ref.lesson) ?? [],
         due: dueIds.has(ref.lesson.id),
+        exam: ref.lesson.kind === 'exam'
+          ? {
+              status: ref.lesson.examBank?.status ?? 'idle',
+              questionCount: ref.lesson.examBank?.status === 'ready' ? ref.lesson.examBank.questions.length : 0,
+              kcCount: ref.lesson.examBank?.status === 'ready'
+                ? new Set(ref.lesson.examBank.questions.map(q => q.kcTitle).filter(k => k !== null)).size
+                : 0,
+              bestStars: ref.lesson.examStars ?? 0,
+              attemptCount: ref.lesson.examAttempts ?? 0,
+            }
+          : null,
         artifacts: (state.artifacts[ref.lesson.id] ?? []).map(a => ({ id: a.id, artifactType: a.artifactType, title: a.title, data: a.data })),
         starters: starterPrompts(ref.lesson.title).map(s => ({ label: s.label, message: s.message })),
         notes: ref.lesson.notes.map(n => ({
@@ -474,6 +496,127 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
           recordReview(deps.store.get(), body.lessonId, quality as 1 | 4 | 5, new Date())
           deps.store.save()
           sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      // ── Exam v2 (P12): bank + attempt lifecycle (upstream exam-service on state.json) ──
+      if (req.method === 'GET' && pathname === '/lookatstudy/api/exam') {
+        const lessonId = new URL(req.url ?? '/', 'http://x').searchParams.get('lessonId') ?? ''
+        if (lessonId === '') {
+          sendJson(res, 400, { ok: false, error: 'lessonId required' })
+          return
+        }
+        try {
+          // upstream semantics: dangling attempts are graded dead on read
+          settleDanglingAttempts(deps.store.get(), lessonId)
+          deps.store.save()
+          const ref = findLesson(deps.store.get(), lessonId)
+          if (ref.lesson.kind !== 'exam') throw new Error('not an exam node')
+          const bank = ref.lesson.examBank
+          const ready = bank?.status === 'ready'
+          const log = ref.lesson.examAttemptLog ?? []
+          const latest = log.length > 0 ? log[log.length - 1]! : null
+          sendJson(res, 200, {
+            ok: true,
+            status: bank?.status ?? 'idle',
+            error: bank?.error ?? null,
+            questionCount: ready ? bank!.questions.length : 0,
+            kcCount: ready ? new Set(bank!.questions.map(q => q.kcTitle).filter(k => k !== null)).size : 0,
+            questions: ready ? bank!.questions : [],
+            bestStars: ref.lesson.examStars ?? 0,
+            attemptCount: ref.lesson.examAttempts ?? 0,
+            latestAttempt: latest === null ? null : {
+              id: latest.id,
+              finishedAt: latest.finishedAt,
+              correctCount: latest.correctCount,
+              totalCount: latest.totalCount,
+              stars: latest.stars,
+              terminated: latest.terminated,
+              perQuestion: latest.perQuestion ?? [],
+            },
+          })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/exam/prepare') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'lessonId (string) required' })
+          return
+        }
+        try {
+          beginExamGeneration(deps.store.get(), body.lessonId)
+          deps.store.save()
+          sendJson(res, 200, { ok: true, status: 'generating' })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/exam/start') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'lessonId (string) required' })
+          return
+        }
+        try {
+          const r = startExamAttempt(deps.store.get(), body.lessonId, new Date())
+          deps.store.save()
+          sendJson(res, 200, { ok: true, attemptId: r.attemptId, questions: r.questions })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/exam/record') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string' || typeof body.attemptId !== 'string' || typeof body.questionId !== 'string' || typeof body.answer !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'lessonId, attemptId, questionId, answer (strings) required' })
+          return
+        }
+        try {
+          recordExamAnswer(deps.store.get(), body.lessonId, body.attemptId, body.questionId, body.answer)
+          deps.store.save()
+          sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/exam/submit') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string' || typeof body.attemptId !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'lessonId and attemptId (strings) required' })
+          return
+        }
+        try {
+          const r = submitExamAttempt(deps.store.get(), body.lessonId, body.attemptId, body.terminated === true, new Date())
+          deps.store.save()
+          sendJson(res, 200, { ok: true, ...r })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/exam/regenerate') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'lessonId (string) required' })
+          return
+        }
+        try {
+          regenerateExamBank(deps.store.get(), body.lessonId)
+          deps.store.save()
+          sendJson(res, 200, { ok: true, status: 'idle' })
         } catch (error) {
           sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
         }

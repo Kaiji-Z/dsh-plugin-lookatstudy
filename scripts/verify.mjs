@@ -175,6 +175,15 @@ gate('bundle', () => {
     [client, 'lks-flash-fade', 'note-locate flash'],
     [client, 'note/edit', 'note editing write route'],
     [client, 'note/pin', 'note pin write route'],
+    // 0.18.0 P12 (D1): the exam-v2 surface
+    [client, 'lks14-examstage', 'the exam five-state stage'],
+    [client, 'lks14-examans', 'the answering layout'],
+    [client, 'lks14-examresult', 'the settlement page'],
+    [client, 'lks14-examleave', 'the leave-guard modal'],
+    [client, 'buildAttemptShuffle', 'the attempt shuffle rides the bundle'],
+    [client, 'exam/start', 'exam attempt start route'],
+    [client, 'exam/submit', 'exam submit route'],
+    [client, 'lookatstudy-exam-generate', 'the tutor bank prompt event'],
     [client, 'data-node-id', 'focus bubble anchor'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]

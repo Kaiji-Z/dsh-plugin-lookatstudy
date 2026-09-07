@@ -58,6 +58,7 @@ import {
   proposeMastery,
   recordAnswer,
   recordExamResult,
+  applyExamBank,
   recordReview,
   resolveProposal,
   searchLessons,
@@ -1137,6 +1138,62 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
   })
 
+  const examBankApplyTool = defineTool({
+    name: 'study_exam_bank_apply',
+    description:
+      'Author the question bank for a section exam node (exam-v2). The exam page asks for a bank when the learner '
+      + 'opens it; call this once with the full multiple-choice set. Question count follows planExamQuota on the '
+      + 'section\'s KC union (clamp 5-15); each kcTitle MUST be one of the section lessons\' concept titles '
+      + '(anti-hallucination — unknown KC titles are rejected; read the section with study_view first). On a '
+      + 'validation error the tutor fixes the bank and simply calls again. The learner answers in the exam page; '
+      + 'grading is automatic (unanswered = wrong, best-of stars kept).',
+    parameters: {
+      lessonId: { type: 'string', required: true, description: 'The exam lesson node id.' },
+      questions: {
+        type: 'array',
+        required: true,
+        description: 'The full question set (5-15; planExamQuota on the KC union).',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            prompt: { type: 'string', required: true, description: 'Question text (self-contained).' },
+            options: { type: 'array', required: true, items: { type: 'string' }, description: 'Answer options (2+).' },
+            answer: { type: 'integer', required: true, description: 'Index of the correct option (0-based, original order — the exam page reshuffles).' },
+            kcTitle: { type: 'string', description: 'Concept title this question tests; must exist in the section\'s KC union.' },
+            explanation: { type: 'string', description: 'One-line why (shown in the per-question review).' },
+          },
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          lessonId: { type: 'string', required: true },
+          questionCount: { type: 'integer', required: true },
+          kcCount: { type: 'integer', required: true },
+          status: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Exam bank ready: ${value.questionCount} questions across ${value.kcCount} knowledge components. `
+          + `The exam page settles into its ready state — tell the learner to hit 开始考试.`,
+      }],
+    },
+    execute(args) {
+      return mutate((state) => {
+        const r = applyExamBank(state, args.lessonId, args.questions, new Date())
+        return { lessonId: args.lessonId, questionCount: r.questionCount, kcCount: r.kcCount, status: 'ready' }
+      })
+    },
+    presentCall: args => ({ card: 'generic', title: `Exam bank: ${Array.isArray(args.questions) ? String(args.questions.length) : '?'} questions` }),
+    presentationMeta: (_args, value) => [`${value.questionCount}Q`],
+    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+  })
+
   const completeLessonTool = defineTool({
     name: 'study_complete_lesson',
     description:
@@ -2044,6 +2101,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     lessonContent,
     recordAnswerTool,
     examResultTool,
+    examBankApplyTool,
     completeLessonTool,
     dueReviewsTool,
     recordReviewTool,
