@@ -712,6 +712,7 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-btn-attach:hover:not(:disabled){color:var(--ink);background:var(--surface-2)}
 .lks-ui .lks-btn-attach:disabled{opacity:.4;cursor:not-allowed}
 .lks-ui .lks-btn-attach:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
+.lks-ui .lks14-threadlabel{color:var(--ink-faint)}
 /* ── light-mode chrome sweep: the rail-head glass family hardcoded dark for
    the map era; the list rail follows the theme, so the chrome reads
    ink-on-surface here too ── */

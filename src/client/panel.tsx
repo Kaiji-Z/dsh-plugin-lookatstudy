@@ -1752,6 +1752,11 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             }, p.title)))
           : null)
       : null,
+    // critique fix: the thread's owner is VISIBLE — a learner clicking around
+    // the rail must never wonder whose conversation the chat column shows
+    bound && lesson !== null
+      ? createElement('div', { className: 'lks14-threadlabel' }, tr('thread.label', { title: lesson.title }))
+      : null,
     createElement('div', {
       className: 'lks14-stream',
       onScroll: onStreamScroll,

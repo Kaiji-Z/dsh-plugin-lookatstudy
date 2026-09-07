@@ -229,6 +229,7 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 
 /* rail search results panel (P4, upstream CourseSearchPanel) */
 .lks14-searchpanel{margin:4px 0 6px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}
+.lks14-threadlabel{flex:none;padding:8px 20px 0;font-size:11px;font-weight:600;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lks14-searchrow{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;text-align:left;font:inherit;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .lks14-searchrow:last-child{border-bottom:none}
 .lks14-searchrow:hover{background:var(--dsw-alias-interactive-bg-hover)}
