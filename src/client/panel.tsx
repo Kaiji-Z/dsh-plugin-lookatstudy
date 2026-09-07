@@ -586,7 +586,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         createElement('span', { className: 'lks-hdr-title' }, lesson?.courseTitle ?? tr('tab.label')),
         createElement('span', { className: 'lks-hdr-xp', 'data-tooltip': tr('header.xp', { xp: progress?.totalXp ?? 0 }) },
           createElement('span', { className: 'lks-hdr-stat lks-hdr-glyph' }, createElement(IconBoltFill16, { size: 14 })),
-          createElement('span', { className: 'lks-hdr-xpbar' }, createElement('i', { style: { width: `${Math.min(100, progress?.levelPct ?? 0)}%` } }))),
+          createElement('span', { className: 'lks-hdr-xpbar' }, createElement('i', { style: { transform: `scaleX(${String(Math.min(100, progress?.levelPct ?? 0) / 100)})` } }))),
         createElement('span', { className: 'lks-hdr-stat lks-hdr-streak', 'data-tooltip': tr('header.streak') },
           createElement('span', { className: 'lks-hdr-glyph' }, createElement(IconFlameFill16, { size: 14 })),
           String(progress?.streak ?? 0)),
@@ -740,7 +740,7 @@ function CommandPalette({ searchLessons, courses, onClose, onLesson, onCourse, o
         actions.map(a => createElement('button', {
           key: a.id, className: 'lks14-palette-row', onClick: a.run,
         },
-          createElement('span', { className: 'lks14-palette-kind' }, '⌘K'),
+          createElement('span', { className: 'lks14-palette-kind' }, tr('palette.kind.action')),
           createElement('span', { className: 'lks14-palette-text' }, a.label))),
         lessons.length === 0 && courseRows.length === 0 && actions.length === 0
           ? createElement('div', { className: 'lks14-palette-empty' }, tr('palette.empty'))
@@ -1813,7 +1813,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
       // pct + token pair; the estimate is labeled as such).
       createElement('div', { className: 'lks14-ctxmeter', 'data-testid': 'context-meter', 'data-estimated': String(contextMeter.estimated), title: tr('meter.label') },
         createElement('span', { className: 'lks14-ctxmeter-bar' },
-          createElement('i', { style: { width: `${String(contextMeter.pct ?? 0)}%` }, className: contextMeter.pct !== null && contextMeter.pct > 80 ? 'hot' : undefined })),
+          createElement('i', { style: { transform: `scaleX(${String((contextMeter.pct ?? 0) / 100)})` }, className: contextMeter.pct !== null && contextMeter.pct > 80 ? 'hot' : undefined })),
         createElement('span', { className: 'lks14-ctxmeter-label' }, contextMeter.estimated ? contextMeter.label : `${String(contextMeter.pct ?? 0)}% · ${contextMeter.label}`)),
       createElement('div', {
         className: 'lks14-composer-card',

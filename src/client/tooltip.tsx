@@ -59,16 +59,21 @@ export function GlobalTooltip(): ReactNode {
     const onUp = (): void => {
       if (pressTimer.current !== null) { clearTimeout(pressTimer.current); pressTimer.current = null }
     }
+    // a click dismisses — reading a tooltip over the thing you just acted on
+    // must not outlive the action
+    const onClick = (): void => { setTip(null) }
 
     document.addEventListener('pointermove', onMove)
     document.addEventListener('pointerleave', onLeave)
     document.addEventListener('pointerdown', onDown)
     document.addEventListener('pointerup', onUp)
+    document.addEventListener('click', onClick)
     return () => {
       document.removeEventListener('pointermove', onMove)
       document.removeEventListener('pointerleave', onLeave)
       document.removeEventListener('pointerdown', onDown)
       document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('click', onClick)
       if (pressTimer.current !== null) clearTimeout(pressTimer.current)
     }
   }, [])

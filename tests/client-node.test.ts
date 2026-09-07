@@ -183,6 +183,18 @@ test('the upstream v0.28 skin is layered over the panel foundation (P9a)', async
   assert.match(STUDY_CSS, /\.lks14-body\[data-pane='rail'\] \.lks14-righthalf\{display:none\}/, 'narrow rail mode hides the whole right half')
 })
 
+test('the light token block survives the CSS comment parse (P18 live regression)', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  // a stray fragment outside a comment merges into the next rule's prelude and
+  // silently DROPS it — this killed the whole light theme once (2026-09-08,
+  // caught by the critique run: light hosts got a dark panel with light-only
+  // shiki/scrollbar fragments applied on top)
+  const stripped = UPSTREAM_CSS.replace(/\/\*[\s\S]*?\*\//g, '')
+  assert.match(stripped, /\.lks-ui\[data-lks-theme='light'\]\{\s*--surface-rail:#F1F2F4/, 'the light token ladder opens as a live rule once comments are stripped')
+  assert.match(stripped, /\.lks-ui\[data-lks-theme='light'\] \.lks14-railhead\{/, 'the light chrome sweep rides a live rule too')
+  assert.equal((UPSTREAM_CSS.match(/\/\*/g) ?? []).length, (UPSTREAM_CSS.match(/\*\//g) ?? []).length, 'comment delimiters stay balanced')
+})
+
 test('the audit gate script exists with an exit-code contract', async () => {
   const { readFileSync } = await import('node:fs')
   const src = readFileSync(new URL('../scripts/audit-ui.mjs', import.meta.url), 'utf8')

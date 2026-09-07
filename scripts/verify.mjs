@@ -230,6 +230,7 @@ gate('bundle', () => {
     [client, 'mermaidThemeVariables', 'the live mermaid palette'],
     [client, "data-lks-theme='light'", 'the light token override block'],
     [client, '--shiki-light', 'the shiki light flip'],
+    [client, "data-lks-theme='light'] .lks14-railhead", 'the light chrome sweep'],
     // 0.18.0 P17: host-capability replacements
     [client, 'lks14-ctxmeter', 'the context meter'],
     [client, 'lks14-threadpill', 'the thread switcher pills'],

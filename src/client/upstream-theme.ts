@@ -65,7 +65,7 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-hdr-title{flex:1;min-width:0;font-size:.825rem;font-weight:700;color:var(--ink-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lks-ui .lks-hdr-xp{display:flex;align-items:center;gap:5px;flex:none}
 .lks-ui .lks-hdr-xpbar{width:92px;height:10px;border-radius:999px;background:rgb(var(--ink-rgb)/0.08);overflow:hidden;box-shadow:inset 0 2px 3px rgb(var(--shadow-rgb)/0.3)}
-.lks-ui .lks-hdr-xpbar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-light));border-radius:999px;transition:width .5s var(--ease-out-expo)}
+.lks-ui .lks-hdr-xpbar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--gold-light));border-radius:999px;transform-origin:left;transition:transform .5s var(--ease-out-expo)}
 .lks-ui .lks-hdr-stat{display:inline-flex;align-items:center;gap:4px;font-size:.825rem;font-weight:700;color:var(--ink);flex:none}
 .lks-ui .lks-hdr-streak{color:var(--review)}
 
@@ -101,9 +101,9 @@ export const UPSTREAM_CSS = `
 
 /* ── the composer capsule (claude.ai style) + circular 3D send ── */
 .lks-ui .lks14-composer{border-top:none;background:linear-gradient(to bottom,transparent 0%,var(--surface-1) 40%)}
-.lks-ui .lks14-composer-card{flex:1;display:flex;align-items:flex-end;gap:8px;background:rgb(var(--ink-rgb)/0.05);border-radius:1rem;padding:.625rem .75rem .5rem .875rem;transition:background .15s}
+.lks-ui .lks14-composer-card{flex:1;display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;background:rgb(var(--ink-rgb)/0.05);border-radius:1rem;padding:.625rem .75rem .5rem .875rem;transition:background .15s}
 .lks-ui .lks14-composer-card:focus-within{background:rgb(var(--ink-rgb)/0.07)}
-.lks-ui .lks14-composertext{background:transparent;border:none;box-shadow:none;color:var(--ink-strong);font-size:.875rem}
+.lks-ui .lks14-composertext{background:transparent;border:none;box-shadow:none;color:var(--ink-strong);font-size:.875rem;flex:1 1 120px;min-width:0}
 .lks-ui .lks14-composertext:focus{border-color:transparent}
 .lks-ui .lks14-composertext::placeholder{color:var(--ink-faint)}
 .lks-ui .lks-btn-send{width:36px;height:36px;border-radius:999px !important;padding:0 !important;display:inline-flex;align-items:center;justify-content:center;flex:none;background:var(--brand);color:#fff;box-shadow:0 3px 0 0 var(--brand-dark);border:none;cursor:pointer;transition:all .15s var(--ease-spring)}
@@ -207,12 +207,13 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-lessorow.st-available .lks-lessorow-glyph{color:var(--brand)}
 .lks-ui .lks-lessorow.st-in-progress .lks-lessorow-glyph{color:var(--accent)}
 .lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph{color:var(--gold)}
-.lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph svg{animation:lks-crown-sparkle 1.6s ease-in-out infinite}
+.lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph svg{animation:lks-crown-sparkle 1.6s ease-in-out 2}
 .lks-ui .lks-lessorow.st-exam .lks-lessorow-glyph,.lks-ui .lks-lessorow.st-exam-passed .lks-lessorow-glyph{color:var(--exam-light)}
 .lks-ui .lks-lessorow-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .lks-ui .lks-lessorow-title{font-size:12.5px;font-weight:600;line-height:1.35;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lks-ui .lks-lessorow-bar{display:block;height:3px;border-radius:2px;background:rgb(0 0 0/0.4);overflow:hidden}
 .lks-ui .lks-lessorow-bar i{display:block;height:100%;background:var(--brand);transform-origin:left;transition:transform .3s var(--ease-out-expo)}
+.lks-ui .lks-lessorow:focus-visible,.lks-ui .lks-railsec-head:focus-visible{outline:none;box-shadow:0 0 0 2px var(--business-primary)}
 .lks-ui .lks-lessorow.st-mastered .lks-lessorow-bar i{background:var(--gold)}
 .lks-ui .lks-lessorow-due{flex:none;min-width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:var(--review);color:#fff;font-size:10px;font-weight:800;box-shadow:0 0 0 2px var(--surface-1)}
 .lks-ui .lks-lessorow-spin{flex:none;display:flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:999px;background:var(--surface-0);color:var(--accent);box-shadow:0 2px 8px -2px rgb(var(--shadow-rgb)/0.45);pointer-events:none;animation:lks-spin 1s linear infinite}
@@ -353,13 +354,13 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-raildemo{margin-bottom:10px}
 /* the full-rail overlays (search / review) */
 .lks-ui .lks-railoverlay{position:absolute;inset:0;z-index:50;display:flex;flex-direction:column;gap:8px;padding:12px;overflow-y:auto;
-  background:rgb(var(--surface-rail-rgb)/0.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  background:rgb(var(--surface-rail-rgb)/0.97);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .lks-ui .lks-railoverlay-head{display:flex;gap:8px;align-items:center}
 .lks-ui .lks-railoverlay-head .lks14-search{flex:1}
 /* chat: thin current-lesson row (ThreadSwitcher empty-state voice) */
 .lks-ui .lks14-lessonrow{flex:none;padding:6px 14px;font-size:12px;font-weight:700;color:var(--ink-muted);opacity:.75}
 /* composer: the soul pills ride the capsule's first row */
-.lks-ui .lks14-soulrow{display:flex;align-items:center;gap:6px;padding:0 2px 6px}
+.lks-ui .lks14-soulrow{display:flex;align-items:center;gap:6px;padding:0 2px 6px;width:100%}
 .lks-ui .lks14-soullabel{flex:none;font-size:11px;color:var(--ink-faint)}
 /* B6: assistant text is full-width prose (no card); user bubbles right-align */
 .lks-ui .lks14-msg-assistant{background:none;border:none;box-shadow:none;border-radius:0;padding:0;max-width:80ch;font-size:.9375rem}
@@ -502,7 +503,7 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-exam-timer.warn{color:var(--warning-light);animation:lks-exam-timer-pulse 1s ease-in-out infinite}
 @keyframes lks-exam-timer-pulse{50%{opacity:.55}}
 .lks-ui .lks14-exam-track{height:6px;border-radius:999px;background:rgb(var(--shadow-rgb)/0.16);overflow:hidden;margin-bottom:20px;flex:none}
-.lks-ui .lks14-exam-track i{display:block;height:100%;border-radius:999px;background:var(--accent);transition:width 300ms var(--ease-out-quart)}
+.lks-ui .lks14-exam-track i{display:block;height:100%;border-radius:999px;background:var(--accent);transform-origin:left;transition:transform 300ms var(--ease-out-quart)}
 .lks-ui .lks14-exam-scroll{flex:1;min-height:0;overflow-y:auto;padding:0 4px 24px}
 .lks-ui .lks14-exam-kc{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--accent);background:rgb(var(--accent-rgb)/0.1);border-radius:999px;padding:4px 11px;margin-bottom:12px}
 .lks-ui .lks14-exam-prompt{font-size:16.5px;color:var(--ink-strong);line-height:1.65;margin-bottom:20px;white-space:pre-wrap;overflow-wrap:anywhere}
@@ -621,7 +622,6 @@ export const UPSTREAM_CSS = `
 /* ── P16: the light theme — upstream html.light verbatim, keyed to the panel's
    data-lks-theme (the host-following store drives it). Semantic hues keep
    their hue, only L drops for WCAG AA on white; shiki flips via --shiki-light. ── */
-   dark stones; shiki flips via --shiki-light. ── */
 .lks-ui[data-lks-theme='light']{
   --surface-rail:#F1F2F4;--surface-rail-rgb:241 242 244;
   --surface-0:#FFFFFF;--surface-0-rgb:255 255 255;
@@ -691,7 +691,7 @@ export const UPSTREAM_CSS = `
 /* E1: the context meter above the composer */
 .lks-ui .lks14-ctxmeter{display:flex;align-items:center;gap:8px;padding:0 4px 6px;font-size:10px;color:var(--ink-faint)}
 .lks-ui .lks14-ctxmeter-bar{flex:1;height:4px;border-radius:999px;background:rgb(var(--ink-rgb)/0.08);overflow:hidden}
-.lks-ui .lks14-ctxmeter-bar i{display:block;height:100%;border-radius:999px;background:var(--brand);transition:width .3s var(--ease-out-expo)}
+.lks-ui .lks14-ctxmeter-bar i{display:block;height:100%;border-radius:999px;background:var(--brand);transform-origin:left;transition:transform .3s var(--ease-out-expo)}
 .lks-ui .lks14-ctxmeter-bar i.hot{background:var(--warning)}
 .lks-ui .lks14-ctxmeter-label{flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* E6: the model face chip + catalog popover */
@@ -712,4 +712,34 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-btn-attach:hover:not(:disabled){color:var(--ink);background:var(--surface-2)}
 .lks-ui .lks-btn-attach:disabled{opacity:.4;cursor:not-allowed}
 .lks-ui .lks-btn-attach:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
+/* ── light-mode chrome sweep: the rail-head glass family hardcoded dark for
+   the map era; the list rail follows the theme, so the chrome reads
+   ink-on-surface here too ── */
+.lks-ui[data-lks-theme='light'] .lks14-railhead{background:rgb(255 255 255/0.72);border-color:var(--border-faint);box-shadow:0 1px 4px rgb(0 0 0/0.05)}
+.lks-ui[data-lks-theme='light'] .lks14-railtitle{color:var(--ink-strong);text-shadow:none}
+.lks-ui[data-lks-theme='light'] .lks14-railpct{color:var(--ink-strong);text-shadow:none}
+.lks-ui[data-lks-theme='light'] .lks-railtabs{background:rgb(255 255 255/0.72);box-shadow:0 1px 4px rgb(0 0 0/0.05)}
+.lks-ui[data-lks-theme='light'] .lks-railtab{color:var(--ink-muted)}
+.lks-ui[data-lks-theme='light'] .lks-railtab.on{color:var(--brand-dark)}
+.lks-ui[data-lks-theme='light'] .lks-railpill{background:rgb(0 0 0/0.04);box-shadow:inset 0 0 0 1px var(--border-faint);color:var(--ink)}
+.lks-ui[data-lks-theme='light'] .lks-railpill:hover{background:rgb(0 0 0/0.07)}
+.lks-ui[data-lks-theme='light'] .lks14-search{background:rgb(0 0 0/0.03);border-color:var(--border-faint)}
+.lks-ui[data-lks-theme='light'] .lks14-search::placeholder{color:var(--ink-faint)}
+.lks-ui[data-lks-theme='light'] .lks-worldswitch{background:rgb(0 0 0/0.05)}
+.lks-ui[data-lks-theme='light'] .lks-worldtab{color:var(--ink-muted)}
+.lks-ui[data-lks-theme='light'] .lks-worldtab:hover{color:var(--ink-strong)}
+.lks-ui[data-lks-theme='light'] .lks-worldtab.on{color:var(--brand-dark)}
+.lks-ui[data-lks-theme='light'] .lks-worldtab[data-testid='world-tab-practice'].on{color:var(--accent-dark)}
+.lks-ui[data-lks-theme='light'] .lks-empty-practice{color:var(--ink-muted)}
+.lks-ui[data-lks-theme='light'] .lks14-importtabs{background:rgb(0 0 0/0.04)}
+.lks-ui[data-lks-theme='light'] .lks14-importtab{color:var(--ink-muted)}
+.lks-ui[data-lks-theme='light'] .lks-railoverlay{background:rgb(241 242 244/0.97)}
+.lks-ui[data-lks-theme='light'] .lks-lessorow.st-mastered .lks-lessorow-glyph{color:var(--gold-dark)}
+.lks-ui[data-lks-theme='light'] .lks-lessorow.st-exam .lks-lessorow-glyph,.lks-ui[data-lks-theme='light'] .lks-lessorow.st-exam-passed .lks-lessorow-glyph{color:var(--exam)}
+.lks-ui[data-lks-theme='light'] .lks-lessorow-bar{background:rgb(0 0 0/0.08)}
+/* ambient glyph motion sleeps under reduced-motion (A7 never had a guard) */
+@media (prefers-reduced-motion: reduce){
+  .lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph svg,.lks-ui .lks-hdr-xp .lks-hdr-glyph,.lks-ui .lks-hdr-streak .lks-hdr-glyph{animation:none}
+}
+
 `

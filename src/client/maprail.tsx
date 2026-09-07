@@ -8,6 +8,7 @@
 import { createElement, type CSSProperties, type ReactNode } from 'react'
 import { IconBookFill16, IconCrownFill16, IconGoalOutline16, IconLoaderArc16, IconLockFill16, IconStarFill16 } from './icons.tsx'
 import { tr } from './locale.ts'
+import { statusTitle } from './views.tsx'
 
 /** The rail lesson projection (a structural slice of StudyData's section lessons). */
 export interface MapLesson {
@@ -79,13 +80,22 @@ export function ListSectionView({ section, examAllowed, open, onToggle, onJump, 
           const locked = lesson.status === 'locked' || (lesson.kind === 'exam' && !examAllowed)
           const pct = rowMasteryPct(lesson)
           const state = rowStateClass(lesson, examAllowed)
+          // the second tooltip slot carries STATE, not the title repeated:
+          // gating/lock/due when relevant, otherwise status + live mastery.
+          const stateWord = lesson.kind === 'exam' && !examAllowed
+            ? tr('map.exam.locked')
+            : locked
+              ? tr('map.node.locked')
+              : lesson.due
+                ? tr('map.node.due')
+                : `${statusTitle('study', lesson.status)}${pct !== null ? ` · ${String(pct)}%` : ''}`
           return createElement('button', {
             key: lesson.id,
             type: 'button',
             className: `lks-lessorow st-${state}${lesson.focus ? ' selected' : ''}`,
             'data-node-id': lesson.id,
             'aria-disabled': locked || undefined,
-            'data-tooltip': `${lesson.title} — ${lesson.kind === 'exam' && !examAllowed ? tr('map.exam.locked') : locked ? tr('map.node.locked') : lesson.due ? tr('map.node.due') : lesson.title}`,
+            'data-tooltip': `${lesson.title} — ${stateWord}`,
             onClick: () => { if (!locked) onJump(lesson.id) },
           },
           createElement('span', { className: 'lks-lessorow-glyph', 'aria-hidden': 'true' },

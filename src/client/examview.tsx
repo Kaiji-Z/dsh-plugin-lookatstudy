@@ -328,7 +328,7 @@ export function ExamView({ lessonId, sectionTitle, paused, onSessionChange }: {
           `${String(Math.floor(timeLeft / 60))}:${String(timeLeft % 60).padStart(2, '0')}`),
       ),
       createElement('div', { className: 'lks14-exam-track' },
-        createElement('i', { style: { width: `${String(Math.round((currentIdx / Math.max(1, exercises.length)) * 100))}%` } })),
+        createElement('i', { style: { transform: `scaleX(${String(Math.round((currentIdx / Math.max(1, exercises.length)) * 100) / 100)})` } })),
       createElement('div', { className: 'lks14-exam-scroll', ref: answerScrollRef },
         currentQ.kcTitle !== null
           ? createElement('span', { className: 'lks14-exam-kc' }, createElement(IconThinkOutline16, { size: 13 }), currentQ.kcTitle)
