@@ -101,6 +101,13 @@ export function DiagramCard({ artifact }: { artifact: ArtifactRow }): ReactNode 
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const [failed, setFailed] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  // C10: Escape closes the modal (upstream DiagramViewerModal).
+  useEffect(() => {
+    if (!expanded) return
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') setExpanded(false) }
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('keydown', onKey) }
+  }, [expanded])
   useEffect(() => {
     if (bodyRef.current === null) return
     void renderMermaidInto(bodyRef.current, mermaid, () => { setFailed(true) })
@@ -110,7 +117,7 @@ export function DiagramCard({ artifact }: { artifact: ArtifactRow }): ReactNode 
     : createElement('div', { className: 'lks-acard-diagram', ref: bodyRef })
   return createElement('div', { className: 'lks-acard', 'data-lks-artifact': artifact.id },
     createElement('div', { className: 'lks-acard-head' }, artifact.title,
-      createElement('button', { className: 'lks-acard-expand', title: tr('artifact.expand'), onClick: () => { setExpanded(true) } }, createElement(IconMaximizeOutline16, { size: 13 }))),
+      createElement('button', { className: 'lks-acard-expand', 'data-tooltip': tr('artifact.expand'), onClick: () => { setExpanded(true) } }, createElement(IconMaximizeOutline16, { size: 13 }))),
     body,
     expanded
       ? createElement('div', {

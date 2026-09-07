@@ -1,11 +1,12 @@
 /**
  * The panel tutor's chat stream fold: durable user/assistant events become
- * rows, tool traffic stays out, live text deltas accumulate per attempt.
+ * rows, tool calls ride as three-state chips and reasoning as collapsible
+ * rows (C14), live text deltas accumulate per attempt.
  */
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { feedRows, type FeedEntry, type FeedWindow } from '../src/client/session-feed.ts'
+import { feedRows, feedLastSeq, feedTurnActive, type FeedEntry, type FeedWindow } from '../src/client/session-feed.ts'
 
 function entry(event: Record<string, unknown>): FeedEntry {
   return { type: 'event', event: event as never }
@@ -19,23 +20,51 @@ function win(entries: FeedEntry[]): FeedWindow {
   return { entries, hasMore: false }
 }
 
-test('feedRows folds user and assistant message events in order', () => {
+test('feedRows folds user, tool chips, and assistant message events in order', () => {
   const rows = feedRows(win([
     entry({ type: 'user/message', seq: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '什么是梯度下降?' }] } }),
-    entry({ type: 'tool/call', seq: 2, data: {} }),
+    entry({ type: 'tool/call', seq: 2, data: { callId: 'c1', tool: { name: 'study_view' } } }),
     entry({ type: 'assistant/message', seq: 3, data: { message: { content: [{ kind: 'text', text: '梯度下降是...' }] } } }),
   ]))
-  assert.deepEqual(rows.map(r => [r.role, r.key]), [['user', 'u1'], ['assistant', 'a3']])
-  assert.equal(rows[1]!.text, '梯度下降是...')
+  assert.deepEqual(rows.map(r => [r.role, r.key]), [['user', 'u1'], ['tool', 'tc1'], ['assistant', 'a3']])
+  assert.equal(rows[1]!.text, 'study_view')
+  assert.equal(rows[1]!.toolState, 'loading')
+  assert.equal(rows[2]!.text, '梯度下降是...')
 })
 
-test('feedRows skips tool traffic entirely', () => {
-  const rows = feedRows(win([
-    entry({ type: 'tool/call', seq: 1, data: {} }),
-    entry({ type: 'tool/result', seq: 2, data: {} }),
-    entry({ type: 'step/end', seq: 3, data: {} }),
+test('tool chips settle done/error on their result; orphans and steps stay out (C14)', () => {
+  const settled = feedRows(win([
+    entry({ type: 'tool/call', seq: 1, data: { callId: 'c1', tool: { name: 'search' } } }),
+    entry({ type: 'tool/call', seq: 2, data: { callId: 'c2', tool: { name: 'record' } } }),
+    entry({ type: 'tool/result', seq: 3, data: { callId: 'c1' } }),
+    entry({ type: 'tool/result', seq: 4, data: { callId: 'c2', error: { message: 'boom' } } }),
+    entry({ type: 'tool/result', seq: 5, data: { callId: 'orphan' } }),
+    entry({ type: 'step/end', seq: 6, data: {} }),
   ]))
-  assert.deepEqual(rows, [], 'the study view never mirrors tool traffic')
+  assert.deepEqual(settled.map(r => [r.key, r.toolState]), [['tc1', 'done'], ['tc2', 'error']],
+    'the three-state chip settles by callId; orphan results and steps never render rows')
+})
+
+test('tool chips settle off the LIVE host result shape: callId inside data.message, isError (0.18 live catch)', () => {
+  const rows = feedRows(win([
+    entry({ type: 'tool/call', seq: 1, data: { turn: 1, step: 0, callId: 'live-1', name: 'study_view', arguments: '{}' } }),
+    entry({ type: 'tool/result', seq: 2, data: { turn: 1, step: 1, message: { source: { kind: 'tool', callId: 'live-1' }, content: [{ type: 'tool-result', toolCallId: 'live-1', content: [] }] } } }),
+    entry({ type: 'tool/call', seq: 3, data: { turn: 2, step: 0, callId: 'live-2', name: 'study_quiz', arguments: '{}' } }),
+    entry({ type: 'tool/result', seq: 4, data: { turn: 2, step: 1, message: { source: { kind: 'tool', callId: 'live-2' }, content: [], isError: true } } }),
+  ]))
+  assert.deepEqual(rows.map(r => [r.key, r.text, r.toolState]),
+    [['tlive-1', 'study_view', 'done'], ['tlive-2', 'study_quiz', 'error']],
+    'the journal wire shape (result wraps a message with source.kind tool) settles by message.source.callId and reads isError')
+})
+
+test('reasoning blocks fold into a collapsible row ahead of the text (C14)', () => {
+  const rows = feedRows(win([
+    entry({ type: 'assistant/message', seq: 1, data: { message: { content: [
+      { kind: 'reasoning', text: '先想清楚梯度方向' },
+      { kind: 'text', text: '答案是逆梯度。' },
+    ] } } }),
+  ]))
+  assert.deepEqual(rows.map(r => [r.role, r.text]), [['reasoning', '先想清楚梯度方向'], ['assistant', '答案是逆梯度。']])
 })
 
 test('live text-deltas accumulate into one streaming row for the latest attempt', () => {
@@ -79,4 +108,50 @@ test('only learner-sourced user messages render; machinery kinds never do', () =
     entry({ type: 'user/message', seq: 4, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '真正的学习者提问' }] } }),
   ]))
   assert.deepEqual(rows.map(r => [r.role, r.text]), [['user', '真正的学习者提问']])
+})
+
+test('feedTurnActive reads the turn lifecycle — the stop twin rides it, not the prompt promise (C2)', () => {
+  // full turn: start -> work -> end = idle
+  assert.equal(feedTurnActive(win([
+    entry({ type: 'turn/start', seq: 1, data: {} }),
+    entry({ type: 'user/message', seq: 2, data: { source: { kind: 'user' }, content: [] } }),
+    entry({ type: 'assistant/message', seq: 3, data: {} }),
+    entry({ type: 'turn/end', seq: 4, data: {} }),
+  ])), false)
+  // mid-turn: step/end does NOT close a turn (journal-verified)
+  assert.equal(feedTurnActive(win([
+    entry({ type: 'turn/start', seq: 1, data: {} }),
+    entry({ type: 'step/end', seq: 2, data: {} }),
+    entry({ type: 'step/start', seq: 3, data: {} }),
+    entry({ type: 'tool/call', seq: 4, data: { callId: 'c1', name: 'x' } }),
+  ])), true)
+  // truncated window: the turn/start slid out, live chunks still prove active
+  assert.equal(feedTurnActive(win([
+    transient({ type: 'assistant/live-chunk', seq: 1, data: { attemptId: 'a', chunk: { type: 'text-delta', text: 'x' } } }),
+  ])), true)
+  // nothing bound / empty window
+  assert.equal(feedTurnActive(undefined), false)
+  assert.equal(feedTurnActive(win([])), false)
+})
+
+test('the stop watermark disarms the host cancel wedge-open turn (C2 live catch)', () => {
+  const window = win([
+    entry({ type: 'turn/start', seq: 1, data: {} }),
+    entry({ type: 'user/message', seq: 2, data: { source: { kind: 'user' }, content: [] } }),
+    entry({ type: 'assistant/attempt', seq: 3, data: {} }),
+    entry({ type: 'step/end', seq: 4, data: {} }),
+    // cancel: attempt + step/end journal, turn/end NEVER comes — turn reads open
+  ])
+  assert.equal(feedTurnActive(window), true, 'pre-stop: the fold honestly reads the open turn')
+  assert.equal(feedLastSeq(window), 4)
+  assert.equal(feedTurnActive(window, 4), false, 'post-stop watermark: the wedge-open turn no longer reads busy')
+  // a fresh turn past the watermark re-arms
+  const next = win([...window.entries,
+    entry({ type: 'turn/start', seq: 5, data: {} }),
+    entry({ type: 'step/start', seq: 6, data: {} }),
+  ])
+  assert.equal(feedTurnActive(next, 4), true)
+  assert.equal(feedLastSeq(next), 6)
+  assert.equal(feedTurnActive(win([]), 3), false)
+  assert.equal(feedLastSeq(undefined), 0)
 })

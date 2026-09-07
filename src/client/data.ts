@@ -48,7 +48,7 @@ export interface StudyState {
     readonly starters: ReadonlyArray<{ label: string; message: string }>
     readonly artifacts: ReadonlyArray<{ id: string; artifactType: string; title: string; data: Record<string, unknown> }>
     readonly due: boolean
-    readonly notes: ReadonlyArray<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null }>
+    readonly notes: ReadonlyArray<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null; pinned: boolean }>
     readonly html: string
     readonly markdown: string
     readonly speechText: string
@@ -228,6 +228,26 @@ class StudyStore {
     this.refresh()
   }
 
+  /** Edit a note's body (C6). */
+  async editNote(lessonId: string, noteId: string, text: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/note/edit', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId, noteId, text }),
+    })
+    this.refresh()
+  }
+
+  /** Pin/unpin a note (C6). */
+  async pinNote(lessonId: string, noteId: string, pinned: boolean): Promise<void> {
+    await fetchJson('/lookatstudy/api/note/pin', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId, noteId, pinned }),
+    })
+    this.refresh()
+  }
+
   /** Synthesize one speakable chunk to MP3 (host-side Edge TTS, cache-first). */
   async tts(text: string, voice?: string): Promise<ArrayBuffer> {
     const body = await fetchJson('/lookatstudy/api/tts', {
@@ -291,6 +311,8 @@ export function useStudy(): {
   searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>
   deleteCourse: (courseId: string) => Promise<void>
   deleteNote: (lessonId: string, noteId: string) => Promise<void>
+  editNote: (lessonId: string, noteId: string, text: string) => Promise<void>
+  pinNote: (lessonId: string, noteId: string, pinned: boolean) => Promise<void>
   addUserNote: (lessonId: string, quote: string) => Promise<void>
   recordReview: (lessonId: string, quality: 1 | 4 | 5) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string) => Promise<void>
@@ -304,6 +326,8 @@ export function useStudy(): {
     searchLessons: studyStore.searchLessons.bind(studyStore),
     deleteCourse: studyStore.deleteCourse.bind(studyStore),
     deleteNote: studyStore.deleteNote.bind(studyStore),
+    editNote: studyStore.editNote.bind(studyStore),
+    pinNote: studyStore.pinNote.bind(studyStore),
     addUserNote: studyStore.addUserNote.bind(studyStore),
     recordReview: studyStore.recordReview.bind(studyStore),
     bindLessonSession: studyStore.bindLessonSession.bind(studyStore),

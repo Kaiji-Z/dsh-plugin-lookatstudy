@@ -75,7 +75,7 @@ export function MapSectionView({ section, examAllowed, open, onToggle, onJump }:
       type: 'button',
       className: 'lks-signpost',
       'aria-expanded': String(open),
-      title: open ? tr('rail.section.collapse') : tr('rail.section.expand', { count: section.lessons.length }),
+      'data-tooltip': open ? tr('rail.section.collapse') : tr('rail.section.expand', { count: section.lessons.length }),
       onClick: onToggle,
     },
     createElement('span', { className: 'lks-signpost-num' }, String(section.index + 1)),
@@ -124,7 +124,7 @@ export function MapSectionView({ section, examAllowed, open, onToggle, onJump }:
             type: 'button',
             className: `${bubbleClasses(lesson, examAllowed)}${lesson.focus ? ' selected' : ''}`,
             'aria-disabled': locked || undefined,
-            title: `${lesson.title} — ${lesson.kind === 'exam' && !examAllowed ? tr('map.exam.locked') : locked ? tr('map.node.locked') : lesson.due ? tr('map.node.due') : lesson.title}`,
+            'data-tooltip': `${lesson.title} — ${lesson.kind === 'exam' && !examAllowed ? tr('map.exam.locked') : locked ? tr('map.node.locked') : lesson.due ? tr('map.node.due') : lesson.title}`,
             onClick: () => { if (!locked) onJump(lesson.id) },
           },
           showRing

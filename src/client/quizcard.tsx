@@ -196,7 +196,7 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
         ...actions.map(a => createElement('button', {
           key: a.id,
           className: 'lks-qcard-action',
-          title: a.advancesMastery ? tr('quiz.action.markMastered.hint') : undefined,
+          'data-tooltip': a.advancesMastery ? tr('quiz.action.markMastered.hint') : undefined,
           onClick: () => { send(tr(`quiz.msg.${a.id}`)) },
         }, createElement(ACTION_ICONS[a.id]!, { size: 13 }), tr(`quiz.action.${a.id}`)))),
     )

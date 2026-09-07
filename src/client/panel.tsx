@@ -16,7 +16,7 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import {
-  IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16,
+  IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
   IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16,
 } from './icons.tsx'
@@ -27,16 +27,18 @@ import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
 import { renderLessonConceptMap } from './diagrams.ts'
 import { speechSentencesOf } from '../vendor/speech-text.ts'
 import { speakMathInSentence } from '../vendor/math-speech.ts'
-import { feedRows } from './session-feed.ts'
+import { feedRows, feedLastSeq, feedTurnActive } from './session-feed.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { Companion, useCompanionMood } from './companion.tsx'
-import { applyHighlights, getTextModel, locateInModel } from './highlights.ts'
+import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue } from './views.tsx'
 import { MapSectionView, pickSky } from './maprail.tsx'
+import { GlobalTooltip } from './tooltip.tsx'
+import { ConfirmCard } from './confirmcard.tsx'
 import { tr } from './locale.ts'
 
 /** The three souls in pill order (same shape as the study tab's pills). */
@@ -59,6 +61,26 @@ function toastIcon(severity: ToastSeverity): ReactNode {
   if (severity === 'error') return createElement(IconWarningOutline16, { size: 14, className: 'lks-toast-glyph err' })
   if (severity === 'info') return createElement(IconGlobeOutline14, { size: 13, className: 'lks-toast-glyph info' })
   return null
+}
+
+/** C6: locate a note's quote in the prose — wrap, flash, scroll into view. */
+function locateNoteQuote(quote: string, prose: HTMLElement | null): void {
+  if (prose === null || quote.trim() === '') return
+  const model = getTextModel(prose, { includeMarks: true })
+  const hit = locateInModel(model, quote, undefined)
+  if (hit === null) return
+  prose.querySelectorAll('mark.lks-flash').forEach(m => { m.replaceWith(...m.childNodes) })
+  for (const seg of planSegments(model.nodes, hit.start, hit.end)) {
+    const entry = model.nodes[seg.index]!
+    const mid = seg.localStart > 0 ? entry.node.splitText(seg.localStart) : entry.node
+    const localEnd = seg.localEnd - seg.localStart
+    if (mid.textContent !== null && mid.textContent.length > localEnd) mid.splitText(localEnd)
+    const mark = document.createElement('mark')
+    mark.className = 'lks-flash'
+    mid.parentElement?.insertBefore(mark, mid)
+    mark.appendChild(mid)
+    mark.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
 }
 
 /** C8: the most recent decided proposal's badge payload (render order preserved). */
@@ -95,21 +117,54 @@ function textOf(blocks: readonly { type?: string; text?: string }[] | undefined)
 }
 
 /** One rendered chat row (shared shape with the read-aloud era's renderer). */
-function chatRow(row: { key: string; role: string; text: string }, interactive?: { send: PanelSend }): ReactNode {
+/** One assistant row's audio controls (C11): speak/stop + n/total + karaoke. */
+interface RowAudio {
+  playing: boolean
+  index: number
+  total: number
+  onPlay: (key: string) => void
+  onStop: () => void
+}
+
+function chatRow(row: { key: string; role: string; text: string; toolState?: 'loading' | 'done' | 'error' }, interactive?: { send: PanelSend }, audio?: RowAudio): ReactNode {
   if (row.role === 'user') {
     return createElement('div', { key: row.key, className: 'lks14-msg lks14-msg-user' }, row.text)
+  }
+  if (row.role === 'reasoning') {
+    // C14: the collapsible reasoning block (upstream ReasoningBlock).
+    return createElement('details', { key: row.key, className: 'lks14-reasoning' },
+      createElement('summary', null, tr('chat.reasoning', { n: String(row.text.length) })), row.text)
+  }
+  if (row.role === 'tool') {
+    // C14: the three-state chip (loading dots / done check / error cross).
+    return createElement('div', { key: row.key, className: 'lks14-toolchip' + ' ' + String(row.toolState ?? 'loading') },
+      row.toolState === 'done' ? '✓' : row.toolState === 'error' ? '×' : createElement('i', null),
+      createElement('span', null, row.text))
   }
   const cls = row.role === 'streaming' ? 'lks14-msg lks14-msg-assistant streaming' : 'lks14-msg lks14-msg-assistant'
   const body = createElement('div', {
     key: row.key,
     className: cls,
+    'data-row-key': row.key,
     dangerouslySetInnerHTML: { __html: renderMarkdown(row.text) },
   })
+  if (audio !== undefined && row.role === 'assistant') {
+    return createElement('div', { key: row.key, className: 'lks14-msgwrap' },
+      body,
+      createElement('div', { className: 'lks14-msgaudio' },
+        createElement('button', {
+          className: 'lks-btn ghost',
+          style: { padding: '2px 8px', fontSize: '11.5px', flex: 'none' },
+          title: audio.playing ? tr('read.stop') : tr('msg.speak'),
+          onClick: () => { if (audio.playing) audio.onStop(); else audio.onPlay(row.key) },
+        }, audio.playing ? tr('read.stop') : tr('msg.speak')),
+        audio.playing ? createElement('span', { className: 'lks14-msgaudio-n' }, String(audio.index + 1) + '/' + String(audio.total)) : null))
+  }
   const options = interactive === undefined || row.role === 'streaming' ? [] : quizOptions(row.text)
   if (options.length < 2) return body
   return createElement('div', { key: row.key, className: 'lks14-turn' },
     body,
-    createElement('div', { className: 'lks14-quiz', title: tr('quiz.title') },
+    createElement('div', { className: 'lks14-quiz', 'data-tooltip': tr('quiz.title') },
       ...options.map(opt => createElement('button', {
         key: opt.letter,
         className: 'lks14-opt',
@@ -133,6 +188,11 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession } = useStudy()
   const [sendError, setSendError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // C2: the host prompt resolves at queue time, so the real generation signal
+  // is the event window's turn lifecycle (turn/start..turn/end).
+  const [feedGen, setFeedGen] = useState(false)
+  const lastSeqRef = useRef(0)
+  const stopWatermarkRef = useRef<number | null>(null)
   const [rows, setRows] = useState<ReturnType<typeof feedRows>>([])
   const [feedAttached, setFeedAttached] = useState(false)
   const [draft, setDraft] = useState('')
@@ -146,7 +206,24 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const activeFace = useRef<SessionPromptFace | null>(null)
   const stop = (): void => {
     void (async () => {
-      try { await activeFace.current?.cancel?.() } catch { /* already settled */ }
+      try {
+        // C2: the face ref only exists after THIS panel sent; a page opened
+        // mid-generation must resolve the bound session's face on demand.
+        let face: SessionPromptFace | null | undefined = activeFace.current
+        if (face === null) {
+          const sessionId = localBound.current ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null)
+          if (sessionId !== null && sessionKnown(ctx, sessionId)) {
+            const actx = ctx.sessions.scope(sessionId)
+            face = actx === undefined ? undefined : ctx.sessions.sessionOf(actx) ?? null
+          }
+        }
+        await face?.cancel?.()
+      } catch { /* already settled */ }
+      // the host's cancel never journals turn/end (live 2026-09-06 catch) —
+      // watermark the current seq so the wedge-open turn stops reading busy;
+      // a fresh turn/start past the watermark re-arms naturally.
+      stopWatermarkRef.current = lastSeqRef.current
+      setFeedGen(false)
     })().finally(() => { setBusy(false) })
   }
 
@@ -174,6 +251,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   useEffect(() => {
     if (boundId === null) {
       setRows([])
+      setFeedGen(false)
       setFeedAttached(false)
       return
     }
@@ -185,7 +263,12 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       const binding = (ctx.sessions as { binding(id: string): { eventSource?: { getSnapshot(): unknown; subscribe(l: () => void): () => void } } | undefined }).binding(boundId)
       const source = binding?.eventSource
       if (source === undefined) return false
-      const update = (): void => { setRows(feedRows(source.getSnapshot() as never)) }
+      const update = (): void => {
+        const snap = source.getSnapshot() as never
+        setRows(feedRows(snap))
+        lastSeqRef.current = feedLastSeq(snap)
+        setFeedGen(feedTurnActive(snap, stopWatermarkRef.current))
+      }
       update()
       setFeedAttached(true)
       offSource = source.subscribe(update)
@@ -256,6 +339,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       if (busy || lesson === null || text.trim() === '') return
       setBusy(true)
       setSendError(null)
+      stopWatermarkRef.current = null
       try {
         if (data?.active !== true) await activate(true)
         let sessionId = localBound.current ?? data?.lessonSessions[lesson.lessonId] ?? null
@@ -323,21 +407,22 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     createElement('div', { className: 'lks14-righthalf' },
       createElement('div', { className: 'lks14-appheader' },
         createElement('span', { className: 'lks-hdr-title' }, lesson?.courseTitle ?? tr('tab.label')),
-        createElement('span', { className: 'lks-hdr-xp', title: tr('header.xp', { xp: progress?.totalXp ?? 0 }) },
+        createElement('span', { className: 'lks-hdr-xp', 'data-tooltip': tr('header.xp', { xp: progress?.totalXp ?? 0 }) },
           createElement('span', { className: 'lks-hdr-stat lks-hdr-glyph' }, createElement(IconBoltFill16, { size: 14 })),
           createElement('span', { className: 'lks-hdr-xpbar' }, createElement('i', { style: { width: `${Math.min(100, progress?.levelPct ?? 0)}%` } }))),
-        createElement('span', { className: 'lks-hdr-stat lks-hdr-streak', title: tr('header.streak') },
+        createElement('span', { className: 'lks-hdr-stat lks-hdr-streak', 'data-tooltip': tr('header.streak') },
           createElement('span', { className: 'lks-hdr-glyph' }, createElement(IconFlameFill16, { size: 14 })),
           String(progress?.streak ?? 0)),
-        createElement('span', { className: 'lks-hdr-stat', title: tr('header.level') }, `Lv${String(progress?.level ?? 1)}`),
+        createElement('span', { className: 'lks-hdr-stat', 'data-tooltip': tr('header.level') }, `Lv${String(progress?.level ?? 1)}`),
       ),
       createElement('div', { className: 'lks14-row' },
-        createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent: setCompanionEvent }),
+        createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent: setCompanionEvent }),
         createElement(NotebookPane, { data, deleteNote, send, companionEvent: setCompanionEvent }),
       ),
     ),
   )
   return createElement('div', { className: 'lks14 lks-ui', 'data-lks-panel': '' },
+    createElement(GlobalTooltip),
     createElement(Companion, { mood: companion.mood, onPoke: () => {
       setCompanionEvent('poke')
       showStudyToast(tr('companion.poked'), { severity: 'success' })
@@ -417,7 +502,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   const toggleSection = (title: string, next: boolean): void => {
     setSectionOverrides(cur => ({ ...cur, [title]: next }))
   }
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirmDel, setConfirmDel] = useState<{ rect: { left: number; top: number; right: number; bottom: number } } | null>(null)
   const [error, setError] = useState<string | null>(null)
   // B1: the upstream rail frame — a map/import tab capsule over two sliding
   // panes; search and review open as full-rail overlays from the title card.
@@ -452,28 +537,6 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
     }
   }, [data?.focusLessonId])
   const reportError = (err: unknown): void => { setError(err instanceof Error ? err.message : String(err)) }
-  useEffect(() => {
-    if (!confirmDelete) return
-    const disarm = (): void => { setConfirmDelete(false) }
-    // C12: Enter confirms the armed deletion, Escape disarms it.
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') disarm()
-      if (e.key === 'Enter' && courseId !== null) {
-        setConfirmDelete(false)
-        deleteCourse(courseId).then(() => {
-          setSelectedCourse('')
-          showStudyToast(tr('rail.deleted'), { severity: 'success' })
-        }, reportError)
-      }
-    }
-    window.addEventListener('click', disarm)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('click', disarm)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [confirmDelete, courseId, deleteCourse])
-
   // Live search: title hits from the loaded tree + debounced full-text hits
   // merge into the results panel (upstream CourseSearchPanel semantics).
   useEffect(() => {
@@ -509,22 +572,18 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             ? createElement('select', {
               className: 'lks-set-select',
               value: courseId ?? '',
-              onChange: (e: { target: { value: string } }) => { setSelectedCourse(e.target.value); setConfirmDelete(false) },
+              onChange: (e: { target: { value: string } }) => { setSelectedCourse(e.target.value); setConfirmDel(null) },
             }, ...data.courses.map(c => createElement('option', { key: c.courseId, value: c.courseId }, c.title)))
             : createElement('div', { className: 'lks14-railtitle', title: course.title }, course.title),
           createElement('button', {
-            className: `lks-btn ${confirmDelete ? 'primary' : 'ghost'}`,
-            title: confirmDelete ? tr('rail.delete.title.confirm') : tr('rail.delete'),
-            onClick: (e: { stopPropagation: () => void }) => {
+            className: 'lks-btn ghost',
+            'data-tooltip': tr('rail.delete'),
+            onClick: (e: { currentTarget: HTMLButtonElement; stopPropagation: () => void }) => {
               e.stopPropagation()
-              if (!confirmDelete) { setConfirmDelete(true); return }
-              setConfirmDelete(false)
-              deleteCourse(courseId ?? '').then(() => {
-                setSelectedCourse('')
-                showStudyToast(tr('rail.deleted'), { severity: 'success' })
-              }, reportError)
+              const r = e.currentTarget.getBoundingClientRect()
+              setConfirmDel({ rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } })
             },
-          }, confirmDelete ? tr('rail.delete.confirm') : createElement(IconTrashOutline16, { size: 14 })),
+          }, createElement(IconTrashOutline16, { size: 14 })),
         ),
         createElement('div', { className: 'lks14-railcard-row' },
           createElement('div', {
@@ -536,7 +595,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
         createElement('div', { className: 'lks14-railcard-row' },
           createElement('button', {
             className: 'lks-railpill',
-            title: tr('rail.search'),
+            'data-tooltip': tr('rail.search'),
             onClick: () => { setSearchOpen(true) },
           }, createElement(IconGlobeOutline14, { size: 13 }), tr('map.search.label')),
           createElement('button', {
@@ -651,7 +710,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
           ...searchRows.map(row => createElement('button', {
             key: row.lessonId,
             className: 'lks14-searchrow',
-            title: tr('rail.search.jump'),
+            'data-tooltip': tr('rail.search.jump'),
             onClick: () => {
               setQuery('')
               setSearchRows([])
@@ -677,7 +736,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       ...data.due.map(d => createElement('button', {
         key: d.lessonId,
         className: 'lks14-dueitem',
-        title: tr('review.jump'),
+        'data-tooltip': tr('review.jump'),
         onClick: () => { void setFocus(d.lessonId).catch(reportError) },
       },
         createElement('span', null, d.lessonTitle),
@@ -686,7 +745,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
         ? createElement('div', { className: 'lks14-reviewrow' },
           createElement('button', {
             className: 'lks-btn ghost',
-            title: tr('review.random.hint'),
+            'data-tooltip': tr('review.random.hint'),
             onClick: () => {
               const pick = pickRandomDue(data.due)
               setReviewOpen(false)
@@ -715,6 +774,23 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
     ),
     searchOverlay,
     reviewOverlay,
+    confirmDel !== null && courseId !== null
+      ? createElement(ConfirmCard, {
+        anchor: confirmDel.rect,
+        message: `${course?.title ?? ''} — ${tr('rail.delete.confirm')}`,
+        danger: true,
+        confirmLabel: tr('rail.delete'),
+        onConfirm: () => {
+          const id = courseId
+          setConfirmDel(null)
+          deleteCourse(id).then(() => {
+            setSelectedCourse('')
+            showStudyToast(tr('rail.deleted'), { severity: 'success' })
+          }, reportError)
+        },
+        onCancel: () => { setConfirmDel(null) },
+      })
+      : null,
     createElement('div', { className: 'lks-propcard-err' }, error),
   )
 }
@@ -789,6 +865,97 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
   }, [busy, stop])
+
+  // C11: per-message read-aloud — speak/stop under every assistant reply with
+  // n/total progress and a sentence-level karaoke highlight inside the row.
+  const { tts } = useStudy()
+  const [msgAudio, setMsgAudio] = useState<{ key: string; index: number; total: number } | null>(null)
+  const msgReadCtl = useRef<ReadAloudController | null>(null)
+  const rowElement = (key: string): HTMLDivElement | null => {
+    const el = streamEl.current?.querySelector(`[data-row-key="${CSS.escape(key)}"]`)
+    return el instanceof HTMLDivElement ? el : null
+  }
+  /** Wrap the nth sentence of the row's text model in a reading mark (pure DOM). */
+  const karaokeMark = (el: HTMLDivElement, index: number, sentences: readonly string[]): void => {
+    el.querySelectorAll('mark.lks-reading').forEach(m => { m.replaceWith(...m.childNodes) })
+    if (index >= sentences.length) return
+    const model = getTextModel(el, { includeMarks: false })
+    let cursor = 0
+    for (let i = 0; i <= index; i++) {
+      const hit = model.text.indexOf(sentences[i] ?? '', cursor)
+      if (hit === -1) return
+      if (i === index) {
+        for (const seg of planSegments(model.nodes, hit, hit + (sentences[i] ?? '').length)) {
+          const entry = model.nodes[seg.index]!
+          const mid = seg.localStart > 0 ? entry.node.splitText(seg.localStart) : entry.node
+          const localEnd = seg.localEnd - seg.localStart
+          if (mid.textContent !== null && mid.textContent.length > localEnd) mid.splitText(localEnd)
+          const mark = document.createElement('mark')
+          mark.className = 'lks-reading'
+          mid.parentElement?.insertBefore(mark, mid)
+          mark.appendChild(mid)
+        }
+        return
+      }
+      cursor = hit + (sentences[i] ?? '').length
+    }
+  }
+  const playMessage = (key: string): void => {
+    const el = rowElement(key)
+    if (el === null) return
+    const plain = (el.textContent ?? '').trim()
+    const sentences = speechSentencesOf(plain)
+    if (sentences.length === 0) return
+    companionEvent('talk-start')
+    msgReadCtl.current?.stop()
+    const voice = storedTtsVoice()
+    const prefetch = new Map<string, Promise<Uint8Array>>()
+    let currentAudio: HTMLAudioElement | null = null
+    const fetchAudio = (text: string): Promise<Uint8Array> => {
+      const hit = prefetch.get(text)
+      if (hit !== undefined) { prefetch.delete(text); return hit }
+      return tts(text, voice)
+    }
+    const edgeEngine: SpeechEngine = {
+      speak: (text: string) => fetchAudio(text).then(buf => new Promise<void>((resolve, reject) => {
+        const blobUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }))
+        const audio = new Audio(blobUrl)
+        currentAudio = audio
+        audio.onended = () => { URL.revokeObjectURL(blobUrl); if (currentAudio === audio) currentAudio = null; resolve() }
+        audio.onerror = () => { URL.revokeObjectURL(blobUrl); if (currentAudio === audio) currentAudio = null; reject(new Error('audio playback failed')) }
+        void audio.play().catch(reject)
+      })),
+      pause: () => { currentAudio?.pause() },
+      resume: () => { void currentAudio?.play().catch(() => { /* ended */ }) },
+      cancel: () => { currentAudio?.pause(); currentAudio = null },
+    }
+    const systemEngine: SpeechEngine = {
+      speak: (text: string) => new Promise<void>(resolve => {
+        const u = new SpeechSynthesisUtterance(text)
+        u.lang = 'zh-CN'
+        u.onend = () => { resolve() }
+        u.onerror = () => { resolve() }
+        window.speechSynthesis?.speak(u)
+      }),
+      pause: () => { window.speechSynthesis?.pause() },
+      resume: () => { window.speechSynthesis?.resume() },
+      cancel: () => { window.speechSynthesis?.cancel() },
+    }
+    const controller = new ReadAloudController(sentences, edgeEngine, systemEngine, s => {
+      setMsgAudio(s.state === 'idle' && s.index >= s.total - 1 ? null : { key, index: s.index, total: s.total })
+      const el2 = rowElement(key)
+      if (el2 !== null) karaokeMark(el2, s.index, sentences)
+    })
+    msgReadCtl.current = controller
+    setMsgAudio({ key, index: 0, total: sentences.length })
+    void controller.start().catch(() => { setMsgAudio(null) })
+  }
+  const stopMessage = (): void => {
+    companionEvent('talk-end')
+    msgReadCtl.current?.stop()
+    setMsgAudio(null)
+    document.querySelectorAll('mark.lks-reading').forEach(m => { m.replaceWith(...m.childNodes) })
+  }
   const lastAssistant = rows.reduce((acc, row, i) => row.role === 'assistant' ? i : acc, -1)
   const [error, setError] = useState<string | null>(null)
   const fire = (action: Promise<void>): void => {
@@ -856,11 +1023,15 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           !dormant
             ? createElement('button', {
               className: 'lks-btn primary',
-              title: tr('chat.start.hint'),
+              'data-tooltip': tr('chat.start.hint'),
               onClick: () => { send(starters[0]?.message ?? tr('prompt.start')) },
             }, tr('chat.start'))
             : null)
-        : rows.map((row, i) => chatRow(row, !dormant && i === lastAssistant ? { send } : undefined)),
+        : rows.map((row, i) => chatRow(row,
+          !dormant && i === lastAssistant ? { send } : undefined,
+          row.role === 'assistant'
+            ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, onPlay: playMessage, onStop: stopMessage }
+            : undefined)),
       rows.length > 0 && rows[rows.length - 1]!.role === 'user'
         ? createElement('div', { className: 'lks14-thinking' }, createElement('i', null), createElement('i', null), createElement('i', null))
         : null,
@@ -919,7 +1090,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           ? createElement('button', {
             className: 'lks-btn-send stop',
             'aria-label': tr('chat.stop'),
-            title: tr('chat.stop'),
+            'data-tooltip': tr('chat.stop'),
             onClick: stop,
           }, createElement(IconCloseFill16, { size: 14 }))
           : createElement('button', {
@@ -934,7 +1105,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
       ? createElement('button', {
         className: `lks14-scrollfab${busy ? ' streaming' : ''}`,
         'aria-label': tr('scroll.bottom'),
-        title: tr('scroll.bottom'),
+        'data-tooltip': tr('scroll.bottom'),
         onClick: () => {
           const el = streamEl.current
           stuck.current = true
@@ -955,25 +1126,21 @@ function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyD
   const lesson = data?.lesson ?? null
   const [tab, setTab] = useState<'teach' | 'cmap' | 'notes'>('teach')
   const [error, setError] = useState<string | null>(null)
-  const [armedNote, setArmedNote] = useState<string | null>(null)
+  const [confirmNoteDel, setConfirmNoteDel] = useState<{ id: string; rect: { left: number; top: number; right: number; bottom: number } } | null>(null)
+  // C6: zone collapse + auto-expand on a new note (upstream ZoneSection).
+  const [zoneOverrides, setZoneOverrides] = useState<Record<string, boolean>>({})
+  const zoneCounts = useRef<Record<string, number>>({})
+  const [editingNote, setEditingNote] = useState<string | null>(null)
+  const [editDraft, setEditDraft] = useState('')
+  // C6: a locate fired from the notes tab must wait for the teach prose to
+  // remount before it can wrap and flash the quote.
+  const [pendingLocate, setPendingLocate] = useState<string | null>(null)
   const [read, setRead] = useState<ReadAloudStatus | null>(null)
   const readCtl = useRef<ReadAloudController | null>(null)
   const [readError, setReadError] = useState<string | null>(null)
-  const { tts, addUserNote, recordReview } = useStudy()
+  const { tts, addUserNote, recordReview, editNote, pinNote } = useStudy()
   const proseRef = useRef<HTMLDivElement | null>(null)
   const diagRef = useRef<HTMLDivElement | null>(null)
-
-  useEffect(() => {
-    if (!armedNote) return
-    const disarm = (): void => { setArmedNote(null) }
-    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') disarm() }
-    window.addEventListener('click', disarm)
-    window.addEventListener('keydown', onKey)
-    return () => {
-      window.removeEventListener('click', disarm)
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [armedNote])
 
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
@@ -1165,12 +1332,19 @@ function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyD
       })
   }, [tab, lesson?.html]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // C6: fire the queued locate once the teach prose is back in the tree.
+  useEffect(() => {
+    if (pendingLocate === null || tab !== 'teach' || proseRef.current === null) return
+    locateNoteQuote(pendingLocate, proseRef.current)
+    setPendingLocate(null)
+  }, [pendingLocate, tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const body: ReactNode = lesson === null
     ? createElement('div', { className: 'lks14-empty' }, tr('bb.empty'), createElement('br'), tr('bb.empty.hint'))
     : createElement('div', { className: 'lks14-notebody' },
       createElement('div', { className: 'lks14-viewtabs' },
         createElement('button', { className: `lks14-viewtab${tab === 'teach' ? ' on' : ''}`, 'aria-pressed': String(tab === 'teach'), onClick: () => { setTab('teach') } }, tr('viewtab.teach')),
-        createElement('button', { className: `lks14-viewtab${tab === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(tab === 'cmap'), title: tr('viewtab.cmap.title'), onClick: () => { setTab('cmap') } }, createElement(IconGlobeOutline14, { size: 13 }), tr('viewtab.cmap')),
+        createElement('button', { className: `lks14-viewtab${tab === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(tab === 'cmap'), 'data-tooltip': tr('viewtab.cmap.title'), onClick: () => { setTab('cmap') } }, createElement(IconGlobeOutline14, { size: 13 }), tr('viewtab.cmap')),
         createElement('button', {
           className: `lks14-viewtab${tab === 'notes' ? ' on' : ''}`,
           'aria-pressed': String(tab === 'notes'),
@@ -1232,7 +1406,7 @@ function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyD
               ? createElement('button', {
                 className: 'lks-btn ghost',
                 style: { padding: '3px 8px', fontSize: '12.5px', flex: 'none' },
-                title: tr('read.stop'),
+                'data-tooltip': tr('read.stop'),
                 onClick: stopReading,
               }, tr('read.stop'))
               : null,
@@ -1287,31 +1461,95 @@ function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyD
             })(),
             lesson.notes.length === 0
               ? createElement('div', { className: 'lks14-empty', style: { padding: '16px 0' } as CSSProperties }, tr('bb.notes.empty'))
-              : ZONES.filter(([zone]) => lesson.notes.some(n => n.zone === zone)).map(([zone, labelKey]) =>
-                createElement('div', { key: zone, className: 'lks14-zone' },
-                  createElement('div', { className: 'lks14-zoneh' }, tr(labelKey)),
-                  ...lesson.notes.filter(n => n.zone === zone).map(n => createElement('div', { key: n.id, className: 'lks-note' },
+              : ZONES.filter(([zone]) => lesson.notes.some(n => n.zone === zone)).map(([zone, labelKey]) => {
+                const zoneNotes = lesson.notes.filter(n => n.zone === zone)
+                  .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
+                const prevCount = zoneCounts.current[zone] ?? zoneNotes.length
+                if (zoneNotes.length > prevCount && zoneOverrides[zone] !== undefined) setZoneOverrides(cur => ({ ...cur, [zone]: true }))
+                zoneCounts.current[zone] = zoneNotes.length
+                const open = zoneOverrides[zone] ?? true
+                return createElement('div', { key: zone, className: 'lks14-zone' },
+                  createElement('button', {
+                    className: 'lks14-zoneh',
+                    'aria-expanded': String(open),
+                    onClick: () => { setZoneOverrides(cur => ({ ...cur, [zone]: !open })) },
+                  },
+                  tr(labelKey),
+                  createElement('span', { className: 'lks14-zonecount' }, String(zoneNotes.length)),
+                  createElement('span', { className: 'lks14-zonecaret' }, open ? '▾' : '▸')),
+                  ...(open ? zoneNotes.map(n => createElement('div', { key: n.id, className: `lks-note${n.pinned ? ' pinned' : ''}` },
                     createElement('span', { className: 'lks-note-src' }, n.source),
                     createElement('button', {
-                      className: `lks-note-del${armedNote === n.id ? ' armed' : ''}`,
-                      title: armedNote === n.id ? tr('note.delete.confirm') : tr('note.delete'),
-                      'aria-label': armedNote === n.id ? tr('note.delete.confirm') : tr('note.delete'),
-                      onClick: (e: { stopPropagation: () => void }) => {
+                      className: 'lks-note-act',
+                      title: n.pinned ? tr('note.unpin') : tr('note.pin'),
+                      'aria-label': n.pinned ? tr('note.unpin') : tr('note.pin'),
+                      onClick: () => { fire(pinNote(lesson.lessonId, n.id, !n.pinned)) },
+                    }, createElement(IconPinFill16, { size: 12 })),
+                    n.quote !== null
+                      ? createElement('button', {
+                        className: 'lks-note-act',
+                      'data-tooltip': tr('note.locate'),
+                      'aria-label': tr('note.locate'),
+                      onClick: () => {
+                        if (tab !== 'teach') { setTab('teach'); setPendingLocate(n.quote ?? '') }
+                        else locateNoteQuote(n.quote ?? '', proseRef.current)
+                      },
+                      }, createElement(IconGoalOutline16, { size: 12 }))
+                      : null,
+                    createElement('button', {
+                      className: 'lks-note-act',
+                      'data-tooltip': tr('note.edit'),
+                      'aria-label': tr('note.edit'),
+                      onClick: () => { setEditingNote(n.id); setEditDraft(n.text) },
+                    }, '✎'),
+                    createElement('button', {
+                      className: 'lks-note-del',
+                      'data-tooltip': tr('note.delete'),
+                      'aria-label': tr('note.delete'),
+                      onClick: (e: { currentTarget: HTMLButtonElement; stopPropagation: () => void }) => {
                         e.stopPropagation()
-                        if (armedNote !== n.id) { setArmedNote(n.id); return }
-                        setArmedNote(null)
-                        fire(deleteNote(lesson.lessonId, n.id))
+                        const r = e.currentTarget.getBoundingClientRect()
+                        setConfirmNoteDel({ id: n.id, rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } })
                       },
                     }, createElement(IconTrashOutline16, { size: 12 })),
                     createElement('div', { className: 'lks-note-title' }, n.title),
-                    createElement('div', { className: 'lks-note-text', dangerouslySetInnerHTML: { __html: renderMarkdown(n.text) } }),
-                    n.quote !== null ? createElement('div', { className: 'lks-note-q' }, `“${n.quote}”`) : null,
-                  )),
-                )),
+                    editingNote === n.id
+                      ? createElement('div', { className: 'lks-note-edit' },
+                        createElement('textarea', {
+                          className: 'lks14-search',
+                          rows: 3,
+                          value: editDraft,
+                          onChange: (e: { target: { value: string } }) => { setEditDraft(e.target.value) },
+                        }),
+                        createElement('div', { className: 'lks-confirmcard-row' },
+                          createElement('button', {
+                            className: 'lks-btn ghost',
+                            onClick: () => { setEditingNote(null) },
+                          }, tr('confirm.cancel')),
+                          createElement('button', {
+                            className: 'lks-btn primary',
+                            disabled: editDraft.trim() === '',
+                            onClick: () => { setEditingNote(null); fire(editNote(lesson.lessonId, n.id, editDraft)) },
+                          }, tr('note.save'))))
+                      : createElement('div', { className: 'lks-note-text', dangerouslySetInnerHTML: { __html: renderMarkdown(n.text) } }),
+                    n.quote !== null ? createElement('div', { className: 'lks-note-q' }, `'${n.quote}'`) : null,
+                  )) : []),
+                )
+              }),
             ),
       )
   return createElement('div', { className: 'lks14-col lks14-note' },
     body,
+    confirmNoteDel !== null
+      ? createElement(ConfirmCard, {
+        anchor: confirmNoteDel.rect,
+        message: tr('note.delete.confirm'),
+        danger: true,
+        confirmLabel: tr('note.delete'),
+        onConfirm: () => { const id = confirmNoteDel.id; setConfirmNoteDel(null); if (lesson !== null) fire(deleteNote(lesson.lessonId, id)) },
+        onCancel: () => { setConfirmNoteDel(null) },
+      })
+      : null,
     createElement('div', { className: 'lks-propcard-err' }, error),
   )
 }

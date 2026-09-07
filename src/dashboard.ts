@@ -30,6 +30,8 @@ import {
   starterPrompts,
   strategyBand,
   type LearningState,
+  editNote,
+  pinNote,
 } from './state.ts'
 
 /** State access shared with the tools (same live object). */
@@ -121,7 +123,7 @@ export interface WorkbenchLesson {
   strategy: string
   concepts: Array<{ title: string; masteryPct: number; weak: boolean }>
   starters: Array<{ label: string; message: string }>
-  notes: Array<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null }>
+  notes: Array<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null; pinned: boolean }>
   /** Recorded artifacts (0.15.0 P1): the panel's interactive cards. */
   artifacts: Array<{ id: string; artifactType: string; title: string; data: Record<string, unknown> }>
   /** Whether this lesson has a review due now (the self-rating card shows). */
@@ -221,6 +223,7 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
           text: n.text,
           source: n.source,
           quote: n.quote,
+          pinned: n.pinned === true,
         })),
         html: renderMarkdown(normalizeMathNotation(
           ref.lesson.translation === undefined ? ref.lesson.body : renderBilingual(ref.lesson.body, ref.lesson.translation),
@@ -402,6 +405,38 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         }
         try {
           deleteNote(deps.store.get(), body.lessonId, body.noteId)
+          deps.store.save()
+          sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/note/edit') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string' || typeof body.noteId !== 'string' || typeof body.text !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'lessonId, noteId (strings) and text (string) required' })
+          return
+        }
+        try {
+          editNote(deps.store.get(), body.lessonId, body.noteId, body.text)
+          deps.store.save()
+          sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/note/pin') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string' || typeof body.noteId !== 'string' || typeof body.pinned !== 'boolean') {
+          sendJson(res, 400, { ok: false, error: 'lessonId, noteId (strings) and pinned (boolean) required' })
+          return
+        }
+        try {
+          pinNote(deps.store.get(), body.lessonId, body.noteId, body.pinned)
           deps.store.save()
           sendJson(res, 200, { ok: true })
         } catch (error) {

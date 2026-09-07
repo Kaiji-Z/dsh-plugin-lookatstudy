@@ -165,6 +165,16 @@ gate('bundle', () => {
     [client, 'pickRandomDue', 'interleaved random review'],
     [client, 'optionTone', 'select-then-submit quiz tone'],
     [client, 'attachCodeHeader', 'code block lang+copy header'],
+    // 0.18.0 P11b (C-track closure)
+    [client, 'lks14-reasoning', 'the streaming reasoning fold'],
+    [client, 'lks14-toolchip', 'three-state tool call chips'],
+    [client, 'lks-tip', 'GlobalTooltip portal'],
+    [client, 'lks-confirmcard', 'ConfirmCard popover'],
+    [client, 'data-row-key', 'per-message audio row anchor'],
+    [client, 'lks-reading', 'karaoke sentence highlight'],
+    [client, 'lks-flash-fade', 'note-locate flash'],
+    [client, 'note/edit', 'note editing write route'],
+    [client, 'note/pin', 'note pin write route'],
     [client, 'data-node-id', 'focus bubble anchor'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]

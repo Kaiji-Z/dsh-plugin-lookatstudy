@@ -70,11 +70,11 @@ P11a：
 - [x] C13 点空白吹哨→companion poke 事件（物理版并入 P15）
 
 P11b：
-- [ ] C6 笔记溯源闭环：「回到原文」定位+闪烁；备注编辑；pin；三区折叠+新笔记自动展开
-- [ ] C10 模态 Esc + CanvasStage 缩放（并入 P14 大件）
-- [ ] C11 对话流逐消息朗读（🔊 + n/total + 句级 karaoke 高亮，复用 readaloud/highlights）
-- [ ] C14 流内 reasoning 折叠块 + 工具调用三态 chip（loading/ready/error；宿主事件流有则渲染，无则降级占位行）
-- [ ] C15 GlobalTooltip（portal + hover 跟随 + 长按 500ms 通道 + 视口钳制）；ConfirmCard 锚定浮层化（outside/Esc/Enter + 翻转）
+- [x] C6 笔记溯源闭环：「回到原文」定位+闪烁；备注编辑；pin；三区折叠+新笔记自动展开 ✅ 2026-09-07：探针 10/10（zone 折叠 0↔全隐、pin 置顶 idx3→0、编辑保存、notes-tab 溯源→teach tab mark.lks-flash）。实catch：溯源按钮在 notes tab 上 proseRef 为 null 静默无效——pendingLocate 排队切 tab 后闪烁
+- [x] C10 模态 Esc + CanvasStage 缩放（并入 P14 大件） ✅ Esc 部分 2026-09-07：ConfirmCard Esc/外点/Enter 实测；CanvasStage 缩放随 P14
+- [x] C11 对话流逐消息朗读（🔊 + n/total + 句级 karaoke 高亮，复用 readaloud/highlights） ✅ 2026-09-07：data-row-key 行锚 + mark.lks-reading 句级 karaoke + playMessage/stopMessage（edge+system 双引擎）
+- [x] C14 流内 reasoning 折叠块 + 工具调用三态 chip（loading/ready/error；宿主事件流有则渲染，无则降级占位行） ✅ 2026-09-07：探针 done chip + reasoning 折叠实测。实catch×2：①宿主 tool/result 的 callId 藏在 data.message.source.callId、错误是 isError（journal zstd 解码实证），首版折叠读不到→chip 永久 loading；②face.prompt 在 queue 时即 resolve，busy 不能骑 prompt promise——feedTurnActive(turn/start..turn/end) 折叠 + stop 水位线（宿主 cancel 只记 attempt+step/end 永不记 turn/end，不设水位线则永久忙）
+- [x] C15 GlobalTooltip（portal + hover 跟随 + 长按 500ms 通道 + 视口钳制）；ConfirmCard 锚定浮层化（outside/Esc/Enter + 翻转） ✅ 2026-09-07：clampTip/anchorPlacement 纯函数冻结 + hover 进出/固定定位/Esc 取消实测
 
 ### D 轨 · 大件（P12-P15 + P17）
 
@@ -152,4 +152,4 @@ P11b：
 - C1 滚动跟随（isStuck 80px 容差 + 自己发言强制贴底）+ 回底 FAB（流式红点脉冲）；C2 停止生成（宿主 session face 有 cancel() —— faces.ts 补结构类型，真中断非降级）+ busy 时 Esc 中止；C3 焦点球 scrollIntoView（data-node-id 锚 + ±60px 规则）；C4 代码块头（语言标签大写 + 复制 ✓ 1.5s，enhanceCode 注入）；C5 quiz 先选后提交（optionTone 纯函数：提交前不泄对错）；C7 窄屏跳转切 chat 栏；C8 proposal 决策徽章（applied 金/declined 弱化，重提议自动重臂）；C9 删课 toast + Enter 确认 + 复习 overlay 随机抽一课；C12 乐观聚焦 + coarse settle 600/250 分档 + 触屏滑动切栏（swipePane）；C13 点空白吹哨→companion poke。
 - 实测：253 tests + verify PASS + audit suspect=0；探针证实：搜索跳转→选中球+锚点、随机复习→跳转关闭、shiki×2+代码头 PYTHON+katex×3（种子课加了 python 围栏）。
 - 本轮踩坑：①TDZ——effect 依赖数组引用了声明在后的 const（courseId），渲染期即炸，已上移；②活体服务器的内存态会遮蔽重播种的 state.json（改文件后必须重启）；③seed 脚本模板字面量里写 ``` 围栏会终结模板（AGENTS 已有记载），改 ${FENCE} 构造；④enhance 管线"全静默失败"实为轮换/启动竞态的脏状态，干净轮换后一切正常。
-- 停止按钮的完整模型回合实测并入 P11b/P12 的 live 会话轮（send→streaming→stop 全链）。
+- 停止按钮的完整模型回合实测并入 P11b/P12 的 live 会话轮（send→streaming→stop 全链）。✅ 2026-09-07 P11b 完成：send→streaming row→stop 武装→点击解除 全链实测通过（探针 scripts/probe-p11b.mjs 第 8/9 项）。

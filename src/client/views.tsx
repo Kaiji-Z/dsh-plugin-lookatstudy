@@ -13,8 +13,10 @@ import { tr, type StudyT } from './locale.ts'
 /** One rendered tutor chat row (fed by session-feed's fold). */
 export interface ChatRow {
   readonly key: string
-  readonly role: 'user' | 'assistant' | 'error' | 'streaming' | 'thinking'
+  readonly role: 'user' | 'assistant' | 'error' | 'streaming' | 'thinking' | 'reasoning' | 'tool'
   readonly text: string
+  /** tool rows only: the chip's state (loading → done/error). */
+  readonly toolState?: 'loading' | 'done' | 'error'
 }
 
 /** Small inline error surface for failed write actions (shared with settings). */

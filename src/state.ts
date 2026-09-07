@@ -56,6 +56,8 @@ export interface LessonNote {
   /** Quoted source text the note refers to (record zone), verbatim. */
   quote: string | null
   at: string
+  /** C11b/C6: pinned notes ride first inside their zone (additive, v2-safe). */
+  pinned?: boolean
 }
 
 /** One logged friction event. */
@@ -861,6 +863,30 @@ export function deleteNote(state: LearningState, lessonId: string, noteId: strin
     throw new Error(`lookatstudy-plugin: note ${JSON.stringify(noteId)} not found on lesson ${JSON.stringify(lessonId)}`)
   }
   ref.lesson.notes.splice(index, 1)
+}
+
+/** Edit a note's body text in place (C6 learner comment editing). */
+export function editNote(state: LearningState, lessonId: string, noteId: string, text: string): LessonNote {
+  const ref = findLesson(state, lessonId)
+  const note = ref.lesson.notes.find(n => n.id === noteId)
+  if (note === undefined) {
+    throw new Error(`lookatstudy-plugin: note ${JSON.stringify(noteId)} not found on lesson ${JSON.stringify(lessonId)}`)
+  }
+  const trimmed = text.trim()
+  if (trimmed === '') throw new Error('lookatstudy-plugin: note text cannot be empty')
+  note.text = trimmed
+  return note
+}
+
+/** Pin or unpin a note (pinned notes sort first within their zone). */
+export function pinNote(state: LearningState, lessonId: string, noteId: string, pinned: boolean): LessonNote {
+  const ref = findLesson(state, lessonId)
+  const note = ref.lesson.notes.find(n => n.id === noteId)
+  if (note === undefined) {
+    throw new Error(`lookatstudy-plugin: note ${JSON.stringify(noteId)} not found on lesson ${JSON.stringify(lessonId)}`)
+  }
+  note.pinned = pinned
+  return note
 }
 
 /**

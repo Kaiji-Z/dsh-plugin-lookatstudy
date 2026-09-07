@@ -255,6 +255,37 @@ test('the C-track chrome freezes: FAB, stop button, code header, decided badges 
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-qcard-opt\.picked\{[^}]*border-color:var\(--accent\)/, 'the pre-submit pick highlight')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-codehead\{/, 'code blocks carry the lang+copy header')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-propbanner\.decided\.accepted/, 'accepted proposals close the loop')
+
+test('the C15 placement folds: tooltip clamps into the viewport, ConfirmCard flips when clipped (P11b)', async () => {
+  const { clampTip } = await import('../src/client/tooltip.tsx')
+  const { anchorPlacement } = await import('../src/client/confirmcard.tsx')
+  // clampTip: interior points pass through, edges clamp with an 8px gutter
+  assert.deepEqual(clampTip(100, 100, 120, 40, 1280, 800), { x: 100, y: 100 })
+  assert.deepEqual(clampTip(0, 0, 120, 40, 1280, 800), { x: 8, y: 8 })
+  assert.deepEqual(clampTip(1200, 780, 120, 40, 1280, 800), { x: 1152, y: 752 }, 'overflow clamps to vw-w-8 / vh-h-8')
+  // anchorPlacement: the card hugs the trigger's top-right, 8px below the bottom
+  assert.deepEqual(anchorPlacement({ left: 400, top: 300, right: 500, bottom: 340 }, 1280, 800), { left: 280, top: 348 })
+  // flips left when the right edge would overflow (right + w + 12 > vw)
+  assert.deepEqual(anchorPlacement({ left: 1000, top: 300, right: 1100, bottom: 340 }, 1280, 800), { left: 780, top: 348 })
+  // flips up when the bottom would overflow (bottom + h + 12 > vh)
+  assert.deepEqual(anchorPlacement({ left: 400, top: 700, right: 500, bottom: 740 }, 1280, 800), { left: 280, top: 596 })
+  // never escapes the 8px gutter
+  assert.deepEqual(anchorPlacement({ left: 0, top: 0, right: 10, bottom: 10 }, 1280, 800), { left: 8, top: 18 })
+})
+
+test('the P11b chrome freezes: reasoning fold, tool chips, karaoke marks, tooltip, confirm card, zone heads (C14/C15/C6)', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-reasoning\{[^}]*border:1px solid var\(--border-faint\)/, 'reasoning rides a collapsible card')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-toolchip\.loading i\{[^}]*animation:lks-typing-dot/, 'loading chips pulse')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-toolchip\.error\{[^}]*color:var\(--warning-light\)/, 'error chips read warning')
+  assert.match(UPSTREAM_CSS, /\.lks-ui mark\.lks-reading\{[^}]*rgb\(var\(--accent-rgb\)\/0\.25\)/, 'the karaoke sentence highlight')
+  assert.match(UPSTREAM_CSS, /@keyframes lks-flash-fade/, 'the note-locate flash fades out')
+  assert.match(UPSTREAM_CSS, /\.lks-tip\{[^}]*position:fixed/, 'GlobalTooltip rides above everything')
+  assert.match(UPSTREAM_CSS, /\.lks-confirmcard\.danger/, 'ConfirmCard carries the danger variant')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-note\.pinned\{[^}]*rgb\(var\(--gold-rgb\)\//, 'pinned notes tint gold')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-note-edit textarea/, 'the inline note editor')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-zoneh\{[^}]*cursor:pointer/, 'zone heads are collapsible buttons')
+})
 })
 
 test('the lookatstudy locale dictionaries keep zh/en parity and translate with fallback', async () => {

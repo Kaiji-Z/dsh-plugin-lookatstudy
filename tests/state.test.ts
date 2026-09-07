@@ -18,6 +18,7 @@ import {
   courseSummaries,
   deleteCourse,
   deleteNote,
+  editNote,
   dueReviews,
   emptyState,
   findCourse,
@@ -26,6 +27,7 @@ import {
   learnerSnapshot,
   loadState,
   nextLesson,
+  pinNote,
   proposeMastery,
   recordAnswer,
   recordReview,
@@ -74,6 +76,21 @@ test('deleteNote removes one entry; ids stay collision-free across deletions; un
   assert.throws(() => deleteNote(state, lessonId, 'ghost'), /not found/, 'unknown note id fails loud')
   assert.throws(() => deleteNote(state, 'ghost:0:0', first.id), /unknown course/, 'unknown lesson fails loud')
   assert.equal(findLesson(state, lessonId).lesson.notes.length, 3, 'failed deletions leave the notes untouched')
+})
+test('editNote rewrites trimmed non-empty bodies; pinNote flags without touching content (C6)', () => {
+  const { state } = importedFixture()
+  const courseId = state.courses[0]!.id
+  const lessonId = `${courseId}:0:0`
+  const note = addNote(state, lessonId, 'understand', 'a', 'body a', 'ai', null, T0)
+  const edited = editNote(state, lessonId, note.id, '  rewritten  ')
+  assert.equal(edited.text, 'rewritten', 'the edit trims surrounding whitespace')
+  assert.equal(findLesson(state, lessonId).lesson.notes[0]!.text, 'rewritten')
+  assert.throws(() => editNote(state, lessonId, note.id, '   '), /cannot be empty/, 'blank-only edits fail loud')
+  assert.throws(() => editNote(state, lessonId, 'ghost', 'x'), /not found/)
+  assert.equal(pinNote(state, lessonId, note.id, true).pinned, true)
+  assert.equal(pinNote(state, lessonId, note.id, false).pinned, false, 'unpin clears back to false')
+  assert.throws(() => pinNote(state, lessonId, 'ghost', true), /not found/)
+  assert.equal(findLesson(state, lessonId).lesson.notes[0]!.text, 'rewritten', 'pinning never rewrites content')
 })
 
 test('import gates the path: first study lesson available, rest locked, exams free', () => {

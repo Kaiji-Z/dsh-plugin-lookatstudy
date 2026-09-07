@@ -461,4 +461,45 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-codehead + .lks-shiki pre{border-radius:0 0 10px 10px;margin:0}
 /* C9: the review action row */
 .lks-ui .lks14-reviewrow{display:flex;gap:8px;align-items:center}
+
+/* ══════════ P11b (C-track closure): chat parts, notes closure, tooltip, confirm ══════════ */
+/* C14: the collapsible reasoning block */
+.lks-ui .lks14-reasoning{border:1px solid var(--border-faint);border-radius:10px;padding:4px 10px;font-size:12px;color:var(--ink-faint)}
+.lks-ui .lks14-reasoning summary{cursor:pointer;font-weight:600;color:var(--ink-muted);user-select:none}
+.lks-ui .lks14-reasoning[open] summary{margin-bottom:4px}
+/* C14: the tool-call chip states */
+.lks-ui .lks14-toolchip{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;font-size:12px;font-weight:600;
+  padding:3px 10px;border-radius:999px;background:rgb(var(--ink-rgb)/0.05);color:var(--ink-muted)}
+.lks-ui .lks14-toolchip.loading i{width:5px;height:5px;border-radius:999px;background:var(--accent);display:inline-block;animation:lks-typing-dot 1.2s ease-in-out infinite}
+.lks-ui .lks14-toolchip.done{color:var(--ink-faint)}
+.lks-ui .lks14-toolchip.done::first-letter{color:var(--brand)}
+.lks-ui .lks14-toolchip.error{color:var(--warning-light)}
+/* C11: per-message audio row + karaoke mark */
+.lks-ui .lks14-msgaudio{display:flex;align-items:center;gap:8px;margin-top:-12px;padding:0 4px}
+.lks-ui .lks14-msgaudio-n{font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+.lks-ui mark.lks-reading{background:rgb(var(--accent-rgb)/0.25);color:inherit;border-radius:3px;padding:0 1px}
+/* C6: note-source flash */
+.lks-ui mark.lks-flash{background:rgb(var(--gold-rgb)/0.35);color:inherit;border-radius:3px;padding:0 1px;animation:lks-flash-fade 2.4s ease-out forwards}
+@keyframes lks-flash-fade{0%,60%{background:rgb(var(--gold-rgb)/0.45)}100%{background:transparent}}
+/* C6: zone head becomes the collapse toggle */
+.lks-ui .lks14-zoneh{display:flex;align-items:center;gap:8px;background:none;border:none;font:inherit;cursor:pointer;text-align:left;padding:0}
+.lks-ui .lks14-zonecount{font-size:10.5px;font-weight:700;color:var(--brand);background:rgb(var(--brand-rgb)/0.15);border-radius:999px;padding:1px 7px}
+.lks-ui .lks14-zonecaret{color:var(--ink-faint);font-size:10px}
+/* C6: note actions + pinned + edit */
+.lks-ui .lks-note-act{background:none;border:none;color:var(--ink-faint);cursor:pointer;padding:2px;display:inline-flex}
+.lks-ui .lks-note-act:hover{color:var(--ink)}
+.lks-ui .lks-note.pinned{border-color:rgb(var(--gold-rgb)/0.4);background:rgb(var(--gold-rgb)/0.04)}
+.lks-ui .lks-note.pinned .lks-note-act:first-of-type{color:var(--gold)}
+.lks-ui .lks-note-edit textarea{width:100%;margin:4px 0}
+/* C15: GlobalTooltip */
+.lks-tip{position:fixed;z-index:2147483000;max-width:260px;background:var(--surface-0);color:var(--ink-strong);
+  border:1px solid var(--border);border-radius:8px;padding:5px 9px;font-size:11.5px;line-height:1.5;pointer-events:none;
+  box-shadow:0 4px 12px -2px rgb(var(--shadow-rgb)/0.14),0 1px 3px -1px rgb(var(--shadow-rgb)/0.08)}
+/* C15: ConfirmCard */
+.lks-confirmcard{position:fixed;z-index:2147483000;width:220px;background:var(--surface-0);border:1px solid var(--border);
+  border-radius:12px;padding:10px 12px;box-shadow:0 8px 24px -4px rgb(var(--shadow-rgb)/0.18),0 2px 6px -2px rgb(var(--shadow-rgb)/0.12);
+  animation:lks-confirm-enter 160ms var(--ease-out-back)}
+.lks-confirmcard.danger{border-color:rgb(var(--warning-rgb)/0.4)}
+.lks-confirmcard-msg{font-size:12.5px;color:var(--ink);line-height:1.5;margin-bottom:8px}
+.lks-confirmcard-row{display:flex;gap:8px;justify-content:flex-end}
 `
