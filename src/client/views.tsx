@@ -188,3 +188,20 @@ export function pickRandomDue<T>(items: readonly T[]): T | null {
   if (items.length === 0) return null
   return items[Math.floor(Math.random() * items.length)] ?? null
 }
+
+/**
+ * Display-side section-title humanizer (0.19 critique round): import-design
+ * section ids arrive as repo-folder slugs ("0-course-setup", "1-Intro") —
+ * strip the leading episode number, hyphen/underscore runs become spaces.
+ * Keys, anchors, and ids stay raw; this is presentation only. Never returns
+ * an empty string (a title that humanizes to nothing keeps its raw form).
+ */
+export function humanizeSectionTitle(raw: string): string {
+  const t = raw
+    .trim()
+    .replace(/^\d+[.\-_ ]+/, '')
+    .replace(/[\-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return t === '' ? raw.trim() : t
+}

@@ -8,7 +8,7 @@
 import { createElement, type CSSProperties, type ReactNode } from 'react'
 import { IconBookFill16, IconCrownFill16, IconGoalOutline16, IconLoaderArc16, IconLockFill16, IconStarFill16 } from './icons.tsx'
 import { tr } from './locale.ts'
-import { statusTitle } from './views.tsx'
+import { humanizeSectionTitle, statusTitle } from './views.tsx'
 
 /** The rail lesson projection (a structural slice of StudyData's section lessons). */
 export interface MapLesson {
@@ -71,7 +71,7 @@ export function ListSectionView({ section, examAllowed, open, onToggle, onJump, 
       onClick: onToggle,
     },
     createElement('span', { className: 'lks-railsec-num' }, String(section.index + 1)),
-    createElement('span', { className: 'lks-railsec-title' }, section.title),
+    createElement('span', { className: 'lks-railsec-title' }, humanizeSectionTitle(section.title)),
     createElement('span', { className: 'lks-railsec-count' }, `${String(done)}/${String(lessons.length)}`),
     createElement('span', { className: 'lks-railsec-caret' }, open ? '▾' : '▸')),
     open

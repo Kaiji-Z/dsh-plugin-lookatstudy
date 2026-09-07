@@ -221,6 +221,19 @@ test('the B-track skeleton: floating rail chrome, swapped widths, de-carded assi
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-notebody\{margin:0 auto;max-width:960px/, 'notebook content centers at 960px')
 })
 
+test('humanizeSectionTitle strips episode slugs for display only (0.19)', async () => {
+  const { humanizeSectionTitle } = await import('../src/client/views.tsx')
+  assert.equal(humanizeSectionTitle('0-course-setup'), 'course setup')
+  assert.equal(humanizeSectionTitle('1-Intro'), 'Intro')
+  assert.equal(humanizeSectionTitle('2-Symbolic'), 'Symbolic')
+  assert.equal(humanizeSectionTitle('X-Extras'), 'X Extras')
+  assert.equal(humanizeSectionTitle('seed-practice'), 'seed practice')
+  assert.equal(humanizeSectionTitle('12.附录'), '附录', 'dot-separated episode numbers strip too')
+  assert.equal(humanizeSectionTitle('第一节'), '第一节', 'CJK titles pass through untouched')
+  assert.equal(humanizeSectionTitle('---'), '---', 'a title that humanizes to nothing keeps its raw form')
+  assert.equal(humanizeSectionTitle('  3 -Spaced  Out  '), 'Spaced Out', 'runs collapse and trim')
+})
+
 test('the C-track interaction folds: sticky-follow, swipe, settle tiers, random due (P11a)', async () => {
   const views = await import('../src/client/views.tsx')
   // sticky-follow: 80px tolerance, chase only near the bottom (distance = h - top - ch)

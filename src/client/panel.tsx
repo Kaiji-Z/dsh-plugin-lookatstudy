@@ -2341,7 +2341,7 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
                   createElement('span', { className: 'lks14-zonecount' }, String(zoneNotes.length)),
                   createElement('span', { className: 'lks14-zonecaret' }, open ? '▾' : '▸')),
                   ...(open ? zoneNotes.map(n => createElement('div', { key: n.id, className: `lks-note${n.pinned ? ' pinned' : ''}` },
-                    createElement('span', { className: 'lks-note-src' }, n.source),
+                    createElement('span', { className: 'lks-note-src' }, tr('note.src.' + n.source)),
                     createElement('button', {
                       className: 'lks-note-act',
                       title: n.pinned ? tr('note.unpin') : tr('note.pin'),
