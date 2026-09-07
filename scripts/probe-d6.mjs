@@ -66,11 +66,13 @@ const backToStudy = await page.evaluate(() => document.querySelectorAll('.lks-ma
 probe('switching back to the study world restores the study sections', backToStudy === studySections, `sections=${backToStudy}`)
 
 // ——— the streaming spinner + rail notice during a live tutor turn ———
-await page.evaluate((id) => {
-  const el = document.querySelector(`[data-node-id="${id}"] button`)
-  el?.click()
-}, L0)
-await page.waitForTimeout(2000)
+// (API-focus a FRESH lesson: 0:0's grown thread makes turn-start outlive the
+// sampling window — the badge only lights at turn/start)
+await fetch(`${base}/lookatstudy/api/focus?token=${token}`, {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ lessonId: 'artificial-intelligence-for-beginners-a-curriculum:1:3' }),
+})
+await page.waitForTimeout(3000)
 await page.fill('.lks14-composertext', '用一句话回答：你好吗？')
 await page.click('.lks-btn-send')
 // while the turn runs: the notice pill + the focus ball's spinner badge

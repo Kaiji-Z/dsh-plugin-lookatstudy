@@ -57,8 +57,10 @@ probe('tabs swap their forms (md textarea ↔ folder path row)', mdForm && folde
 // ——— a real markdown import through the installer screen ———
 await page.click('[data-testid="import-tab-md"]')
 await page.waitForTimeout(300)
-const MD = '# D7 探针课程\n\n## 第一节\n\n### 甲课\n\n内容一。\n\n### 乙课\n\n内容二。\n\n## 第二节\n\n### 丙课\n\n内容三。\n'
-await page.fill('.lks14-importform input.lks14-search', 'D7 probe course')
+// unique per run — course ids are title slugs, a fixed title re-imports
+// idempotently and no new course lands
+const MD = `# D7 探针课程 ${String(Date.now()).slice(-6)}\n\n## 第一节\n\n### 甲课\n\n内容一。\n\n### 乙课\n\n内容二。\n\n## 第二节\n\n### 丙课\n\n内容三。\n`
+await page.fill('.lks14-importform input.lks14-search', `D7 probe course ${String(Date.now()).slice(-6)}`)
 await page.fill('.lks14-importmd', MD)
 await page.click('.lks14-importform .lks14-importbtn')
 
@@ -68,8 +70,10 @@ let sawFetchWorking = false
 let sawFetchDone = false
 let sawElapsed = false
 let sawCancelledOut = false
-for (let i = 0; i < 120; i++) {
-  await page.waitForTimeout(1000)
+// 150ms sampling — the md import (no LLM) can flip fetch working→done and
+// land the course inside a 1s window, hiding the done state from the sampler
+for (let i = 0; i < 800; i++) {
+  await page.waitForTimeout(150)
   const s = await page.evaluate(() => {
     const scr = document.querySelector('[data-testid="import-progress"]')
     if (scr === null) return { present: false }

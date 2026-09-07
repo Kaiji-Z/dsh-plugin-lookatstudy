@@ -34,12 +34,13 @@ await page.click('[data-dsh-lookatstudy-entry]')
 await page.waitForSelector('.lks-ui', { timeout: 30000 })
 await page.waitForTimeout(2500)
 
-// Focus the seeded lesson, open the notebook's notes tab
-await page.evaluate((id) => {
-  const el = document.querySelector(`[data-node-id="${id}"] button`)
-  el?.click()
-}, L1)
-await page.waitForTimeout(2500)
+// Focus the seeded lesson, open the notebook's notes tab (API focus — the
+// bobbing map bubbles race native clicks)
+await fetch(`${base}/lookatstudy/api/focus?token=${token}`, {
+  method: 'POST', headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({ lessonId: L1 }),
+})
+await page.waitForTimeout(3000)
 await page.click('.lks-viewtab[data-testid="notebook-tab-notes"], .lks14-notebook [role="tab"]:has-text("笔记")').catch(() => {})
 // fall back: any tab button whose text is 笔记
 await page.evaluate(() => {
