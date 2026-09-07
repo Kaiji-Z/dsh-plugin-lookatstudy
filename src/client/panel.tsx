@@ -197,13 +197,40 @@ export function studyPanelView(ctx: ClientContext): () => ReactNode {
 type StudyData = ReturnType<typeof useStudy>['data']
 
 function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
-  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession } = useStudy()
+  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, uploadAttachment } = useStudy()
   // D8: the shared CodeBlock's delegated copy wire — one listener for every
   // zone the markdown pipeline feeds (chat, prose, notes).
   useEffect(() => { wireCodeBlockCopy() }, [])
   // P16: the skin follows the host theme store (wirePanelTheme drives it).
   const [theme, setTheme] = useState(panelTheme)
   useEffect(() => subscribePanelTheme(() => { setTheme(panelTheme()) }), [])
+  // E7: the panel font scale — three tiers persisted locally (zoom scales the
+  // px-fixed panel layout in Chromium without rewriting every font rule).
+  const [zoomTier, setZoomTier] = useState<number>(() => {
+    const raw = localStorage.getItem('dsh-plugin-lookatstudy:zoom')
+    const n = raw === null ? NaN : Number(raw)
+    return Number.isFinite(n) ? Math.min(1.1, Math.max(0.9, n)) : 1
+  })
+  const setZoom = (next: number): void => {
+    const clamped = Math.min(1.1, Math.max(0.9, Math.round(next * 10) / 10))
+    setZoomTier(clamped)
+    try { localStorage.setItem('dsh-plugin-lookatstudy:zoom', String(clamped)) } catch { /* storage denied — session-only */ }
+  }
+  // E4: the command palette bus — CourseRail registers its map/review/course
+  // actions here so the palette (mounted at the panel root) can drive them.
+  const paletteBus = useRef<{ courseSelect?: (id: string) => void; reviewOpen?: () => void }>({})
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'
+        && document.documentElement.hasAttribute('data-dsh-lookatstudy-active')) {
+        e.preventDefault()
+        setPaletteOpen(o => !o)
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('keydown', onKey) }
+  }, [])
   const [sendError, setSendError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // C2: the host prompt resolves at queue time, so the real generation signal
@@ -224,8 +251,21 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   }, [setFocus])
   const onExamSession = useCallback((session: ExamSession): void => { examSessionRef.current = session }, [])
   const [rows, setRows] = useState<ReturnType<typeof feedRows>>([])
+  // E1: the bound session's context pressure (projection face; the meter memo
+  // below reads it — declared here, above its consumer, the TDZ trap again).
+  const [pressure, setPressure] = useState<{ projectedTokens?: number; contextWindow?: number } | null>(null)
   // D7: the import tool chips folded for the rail's import watchers/progress.
   const importProgress = useMemo(() => importProgressOf(rows), [rows])
+  // E1: the context meter value — the projection when the host reports it,
+  // otherwise the labeled char estimate over the folded rows.
+  const contextMeter = useMemo<{ pct: number | null; label: string; estimated: boolean }>(() => {
+    if (pressure !== null && pressure.contextWindow !== undefined && pressure.contextWindow > 0 && pressure.projectedTokens !== undefined) {
+      const pct = Math.min(100, Math.round((pressure.projectedTokens / pressure.contextWindow) * 100))
+      return { pct, label: `${String(pressure.projectedTokens)}/${String(pressure.contextWindow)}`, estimated: false }
+    }
+    const chars = rows.reduce((n, r) => n + r.text.length, 0)
+    return { pct: null, label: tr('meter.estimate', { n: String(Math.round(chars / 2.2)) }), estimated: true }
+  }, [pressure, rows])
   const [feedAttached, setFeedAttached] = useState(false)
   const [draft, setDraft] = useState('')
   const [narrowPane, setNarrowPane] = useState<'rail' | 'chat' | 'note'>(pickNarrowPane(null))
@@ -297,6 +337,57 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       if (first !== undefined) guardedSetFocus(first.lessonId)
     } } })
   }, [data?.dueCount, data?.due, setFocus])
+
+  // E1: the context meter source — the bound session's contextPressure
+  // projection (getSnapshot/subscribe off the session face). When the
+  // projection or the window size is absent, the meter falls back to the
+  // labeled char estimate.
+  useEffect(() => {
+    setPressure(null)
+    if (boundId === null) return
+    let disposed = false
+    let off: (() => void) | undefined
+    try {
+      const actx = ctx.sessions.scope(boundId)
+      const face = actx === undefined ? undefined : (ctx.sessions as { sessionOf(a: unknown): { projections?: { faceOf(key: string): { getSnapshot(): unknown; subscribe(l: () => void): () => void } } | undefined } | undefined }).sessionOf(actx)
+      const proj = face?.projections?.faceOf('contextPressure')
+      if (proj !== undefined) {
+        const read = (): void => {
+          const snap = proj.getSnapshot() as { projectedTokens?: number; contextWindow?: number } | undefined
+          if (!disposed && snap !== undefined && typeof snap === 'object') setPressure({ projectedTokens: snap.projectedTokens, contextWindow: snap.contextWindow })
+        }
+        read()
+        off = proj.subscribe(read)
+        return () => { disposed = true; off?.() }
+      }
+    } catch { /* projections absent — the estimate path covers it */ }
+    return () => { disposed = true; off?.() }
+  }, [boundId, ctx.sessions])
+  // E6: the model/effort switcher state — catalog + current selection off the
+  // bound session (modelSelection projection); switching rides the host's
+  // selectModel remote. Feature-degrades to a read-only chip when absent.
+  const [modelFace, setModelFace] = useState<{ provider: string; model: string; reasoningEffort?: string } | null>(null)
+  useEffect(() => {
+    setModelFace(null)
+    if (boundId === null) return
+    let disposed = false
+    let off: (() => void) | undefined
+    try {
+      const actx = ctx.sessions.scope(boundId)
+      const face = actx === undefined ? undefined : (ctx.sessions as { sessionOf(a: unknown): { projections?: { faceOf(key: string): { getSnapshot(): unknown; subscribe(l: () => void): () => void } } | undefined } | undefined }).sessionOf(actx)
+      const proj = face?.projections?.faceOf('modelSelection')
+      if (proj !== undefined) {
+        const read = (): void => {
+          const snap = proj.getSnapshot() as { next?: { provider: string; model: string; reasoningEffort?: string } | null } | undefined
+          if (!disposed && snap !== undefined && typeof snap === 'object' && snap.next !== undefined && snap.next !== null) setModelFace(snap.next)
+        }
+        read()
+        off = proj.subscribe(read)
+        return () => { disposed = true; off?.() }
+      }
+    } catch { /* modelSelection absent — read-only mode */ }
+    return () => { disposed = true; off?.() }
+  }, [boundId, ctx.sessions])
 
   // The tutor chat stream: subscribe to the bound lesson thread's event window.
   // The host only opens a window for the STAGED (current) session, so when the
@@ -480,7 +571,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       // D7: the import watchers ride the turn state + the import tool chips.
       turnActive: feedGen,
       importProgress,
-      stop }),
+      stop,
+      // E4: the command palette's rail-side actions register here.
+      paletteBus }),
     createElement('div', { className: 'lks14-righthalf' },
       createElement('div', { className: 'lks14-appheader' },
         createElement('span', { className: 'lks-hdr-title' }, lesson?.courseTitle ?? tr('tab.label')),
@@ -491,15 +584,48 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
           createElement('span', { className: 'lks-hdr-glyph' }, createElement(IconFlameFill16, { size: 14 })),
           String(progress?.streak ?? 0)),
         createElement('span', { className: 'lks-hdr-stat', 'data-tooltip': tr('header.level') }, `Lv${String(progress?.level ?? 1)}`),
+        // E6: the model/effort face — chip shows the bound thread's model;
+        // click opens the catalog picker (host selectModel under the hood).
+        createElement(ModelFaceChip, {
+          sessionId: boundId,
+          current: modelFace,
+          selectModel: (ctx as { remote?: { session?: { selectModel?: (req: Record<string, unknown>) => Promise<unknown>; modelCatalog?: () => Promise<unknown> } } }).remote?.session,
+        }),
+        // E7: the font scale pair — three tiers (0.9 / 1 / 1.1), persisted.
+        createElement('span', { className: 'lks-hdr-zoom' },
+          createElement('button', {
+            className: 'lks-hdr-zoom-btn', 'aria-label': tr('zoom.out'),
+            'data-tooltip': tr('zoom.out'),
+            disabled: zoomTier <= 0.9,
+            onClick: () => { setZoom(zoomTier - 0.1) },
+          }, 'A−'),
+          createElement('span', { className: 'lks-hdr-zoom-val' }, `${String(Math.round(zoomTier * 100))}%`),
+          createElement('button', {
+            className: 'lks-hdr-zoom-btn', 'aria-label': tr('zoom.in'),
+            'data-tooltip': tr('zoom.in'),
+            disabled: zoomTier >= 1.1,
+            onClick: () => { setZoom(zoomTier + 0.1) },
+          }, 'A+')),
       ),
       createElement('div', { className: 'lks14-row' },
-        createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent: setCompanionEvent }),
+        createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent: setCompanionEvent, onThreadJump: (id: string) => { setNarrowPane('chat'); void guardedSetFocus(id) }, contextMeter, uploadAttachment }),
         createElement(NotebookPane, { data, deleteNote, send, companionEvent: setCompanionEvent, onExamSession, examPaused: examLeave !== null }),
       ),
     ),
   )
-  return createElement('div', { className: 'lks14 lks-ui', 'data-lks-panel': '', 'data-lks-theme': theme },
+  return createElement('div', { className: 'lks14 lks-ui', 'data-lks-panel': '', 'data-lks-theme': theme, style: { zoom: String(zoomTier) } },
     createElement(GlobalTooltip),
+    paletteOpen
+      ? createElement(CommandPalette, {
+        searchLessons,
+        courses: data?.courses.map(c => ({ id: c.courseId, title: c.title })) ?? [],
+        onClose: () => { setPaletteOpen(false) },
+        onLesson: (id: string) => { setPaletteOpen(false); setNarrowPane('chat'); void guardedSetFocus(id) },
+        onCourse: (id: string) => { setPaletteOpen(false); paletteBus.current.courseSelect?.(id) },
+        onReview: () => { setPaletteOpen(false); paletteBus.current.reviewOpen?.() },
+        onStudy: () => { setPaletteOpen(false); setNarrowPane('chat'); void send(tr('prompt.start')) },
+      })
+      : null,
     createElement(Companion, { mood: companion.mood, onPoke: () => {
       setCompanionEvent('poke')
       showStudyToast(tr('companion.poked'), { severity: 'success' })
@@ -522,6 +648,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       onConfirm: () => {
         const action = examLeave.pending
         setExamLeave(null)
+        // P17 (the P12 legacy race): force the feed rebind to re-derive from
+        // the lessonSessions map instead of the stale local binding.
+        localBound.current = null
         const session = examSessionRef.current
         examSessionRef.current = { active: false, terminate: null }
         if (session.active && session.terminate !== null) {
@@ -532,6 +661,141 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       },
     }) : null,
     createElement(StudyToastStack))
+}
+
+/**
+ * E4: the panel-scoped command palette (upstream's Cmd+K surface, plugin
+ * edition). Own DOM listener (the host has no hotkey registration — P0's one
+ * gap), captured only while the panel takeover is active. Rows: lesson
+ * search-and-jump (the dashboard search API), course switch, review, start
+ * studying — all funneling the panel's own actions.
+ */
+function CommandPalette({ searchLessons, courses, onClose, onLesson, onCourse, onReview, onStudy }: {
+  searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>
+  courses: ReadonlyArray<{ id: string; title: string }>
+  onClose: () => void
+  onLesson: (lessonId: string) => void
+  onCourse: (courseId: string) => void
+  onReview: () => void
+  onStudy: () => void
+}): ReactNode {
+  const [query, setQuery] = useState('')
+  const [lessons, setLessons] = useState<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>([])
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  useEffect(() => { inputRef.current?.focus() }, [])
+  useEffect(() => {
+    const q = query.trim()
+    if (q === '') { setLessons([]); return }
+    let disposed = false
+    const t = setTimeout(() => {
+      void searchLessons(q).then(rows => { if (!disposed) setLessons(rows.slice(0, 6)) }, () => { /* search degraded */ })
+    }, 180)
+    return () => { disposed = true; clearTimeout(t) }
+  }, [query, searchLessons])
+  const q = query.trim().toLowerCase()
+  const courseRows = courses.filter(c => q === '' || c.title.toLowerCase().includes(q)).slice(0, 3)
+  const actions: Array<{ id: 'review' | 'study'; label: string; run: () => void }> = [
+    { id: 'review', label: tr('palette.review'), run: onReview },
+    { id: 'study', label: tr('palette.study'), run: onStudy },
+  ].filter(a => q === '' || a.label.toLowerCase().includes(q))
+  const first = lessons[0]
+  const onKey = (e: ReactKeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Escape') onClose()
+    if (e.key === 'Enter') {
+      if (first !== undefined) onLesson(first.lessonId)
+      else if (courseRows[0] !== undefined) onCourse(courseRows[0].id)
+      else if (actions[0] !== undefined) actions[0].run()
+    }
+  }
+  return createElement('div', { className: 'lks14-palette', 'data-testid': 'command-palette', role: 'dialog', 'aria-label': tr('palette.label') },
+    createElement('div', { className: 'lks14-palette-backdrop', onClick: onClose }),
+    createElement('div', { className: 'lks14-palette-card' },
+      createElement('input', {
+        ref: inputRef,
+        className: 'lks14-palette-input',
+        placeholder: tr('palette.placeholder'),
+        value: query,
+        onChange: (e: { target: { value: string } }) => { setQuery(e.target.value) },
+        onKeyDown: onKey,
+      }),
+      createElement('div', { className: 'lks14-palette-list' },
+        lessons.map(l => createElement('button', {
+          key: l.lessonId, className: 'lks14-palette-row', onClick: () => { onLesson(l.lessonId) },
+        },
+          createElement('span', { className: 'lks14-palette-kind' }, tr('palette.lessons')),
+          createElement('span', { className: 'lks14-palette-text' }, l.lessonTitle,
+            createElement('span', { className: 'lks14-palette-sub' }, l.snippet.slice(0, 60))))),
+        courseRows.map(c => createElement('button', {
+          key: c.id, className: 'lks14-palette-row', onClick: () => { onCourse(c.id) },
+        },
+          createElement('span', { className: 'lks14-palette-kind' }, tr('palette.courses')),
+          createElement('span', { className: 'lks14-palette-text' }, c.title))),
+        actions.map(a => createElement('button', {
+          key: a.id, className: 'lks14-palette-row', onClick: a.run,
+        },
+          createElement('span', { className: 'lks14-palette-kind' }, '⌘K'),
+          createElement('span', { className: 'lks14-palette-text' }, a.label))),
+        lessons.length === 0 && courseRows.length === 0 && actions.length === 0
+          ? createElement('div', { className: 'lks14-palette-empty' }, tr('palette.empty'))
+          : null)))
+}
+
+/**
+ * E6 (upstream model switcher, plugin edition): the chip reads the bound
+ * thread's modelSelection projection; opening it fetches the host catalog
+ * (providers → models → efforts) and picking calls selectModel on the host —
+ * the SAME face the host's own picker uses. Degrades to a read-only chip
+ * when either face is absent (P0's recorded degradation).
+ */
+function ModelFaceChip({ sessionId, current, selectModel }: {
+  sessionId: string | null
+  current: { provider: string; model: string; reasoningEffort?: string } | null
+  selectModel: { selectModel?: (req: Record<string, unknown>) => Promise<unknown>; modelCatalog?: () => Promise<unknown> } | undefined
+}): ReactNode {
+  const [open, setOpen] = useState(false)
+  const [groups, setGroups] = useState<Array<{ id: string; name: string; models: Array<{ id: string; name: string; effort?: string }> }> | null>(null)
+  const [busy, setBusy] = useState(false)
+  const catalogReachable = selectModel?.modelCatalog !== undefined && selectModel?.selectModel !== undefined && sessionId !== null
+  const label = current === null ? tr('model.unknown') : `${current.model}${current.reasoningEffort !== undefined && current.reasoningEffort !== '' ? ` · ${current.reasoningEffort}` : ''}`
+  useEffect(() => { if (!open) setGroups(null) }, [open])
+  const load = (): void => {
+    if (groups !== null || selectModel?.modelCatalog === undefined) return
+    void selectModel.modelCatalog().then(cat => {
+      const c = cat as { groups?: Array<{ id?: string; name?: string; models?: Array<{ id?: string; name?: string; reasoning?: { efforts?: Array<{ id?: string }>, defaultEffort?: string } }> }> }
+      setGroups((c.groups ?? []).map(g => ({
+        id: g.id ?? '?', name: g.name ?? g.id ?? '?',
+        models: (g.models ?? []).map(m => ({ id: m.id ?? '?', name: m.name ?? m.id ?? '?', effort: m.reasoning?.defaultEffort ?? m.reasoning?.efforts?.[0]?.id })),
+      })))
+    }, () => { setGroups([]) })
+  }
+  const pick = (provider: string, model: string, effort: string | undefined): void => {
+    if (selectModel?.selectModel === undefined || sessionId === null) return
+    setBusy(true)
+    void selectModel.selectModel({ sessionId, provider, model, reasoningEffort: effort }).then(() => {
+      setOpen(false)
+      showStudyToast(tr('model.switched', { model }), { severity: 'success' })
+    }, () => { showStudyToast(tr('model.switchFailed'), { severity: 'error' }) }).finally(() => { setBusy(false) })
+  }
+  return createElement('span', { className: 'lks-modelface' },
+    createElement('button', {
+      className: 'lks-modelface-chip',
+      'data-testid': 'model-face-chip',
+      'data-tooltip': current === null ? tr('model.unknown') : `${current.provider} / ${current.model}`,
+      disabled: !catalogReachable,
+      'aria-disabled': catalogReachable ? undefined : true,
+      onClick: () => { setOpen(o => !o); load() },
+    }, createElement(IconBoltFill16, { size: 12 }), label),
+    open
+      ? createElement('div', { className: 'lks-modelface-pop', role: 'menu', 'data-testid': 'model-face-pop' },
+        (groups ?? []).map(g => createElement('div', { key: g.id, className: 'lks-modelface-group' },
+          createElement('div', { className: 'lks-modelface-gname' }, g.name),
+          ...g.models.map(m => createElement('button', {
+            key: m.id,
+            className: `lks-modelface-model${current !== null && current.model === m.id ? ' on' : ''}`,
+            disabled: busy,
+            onClick: () => { pick(g.id, m.id, m.effort) },
+          }, m.name)))))
+      : null)
 }
 
 /** P6: the panel's toast stack (upstream Toast port) — severity capsules,
@@ -602,7 +866,7 @@ export function setPanelShell(shell: { suppressHandBack(fn: () => void): void } 
 }
 
 /** 左栏:course picker, tree, review box, import. */
-function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, onBlankTap, streamingLessonId, turnActive, importProgress, stop }: {
+function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, onBlankTap, streamingLessonId, turnActive, importProgress, stop, paletteBus }: {
   data: StudyData
   activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
@@ -621,6 +885,8 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   importProgress: { fetch: { state: string }; apply: { state: string } }
   /** D7: stops the running turn (the import cancel). */
   stop: () => void
+  /** E4: the command palette registers its rail-side actions here. */
+  paletteBus: { current: { courseSelect?: (id: string) => void; reviewOpen?: () => void } }
 }): ReactNode {
   const [selectedCourse, setSelectedCourse] = useState('')
   const [query, setQuery] = useState('')
@@ -660,6 +926,9 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   // TDZ trap has bitten here; a stale practice selection on a course without
   // one would strand the rail on an empty view).
   useEffect(() => { setWorld('study') }, [courseId])
+  // E4: the palette's rail-side actions (course switch + review overlay).
+  paletteBus.current.courseSelect = (id: string) => { setSelectedCourse(id); setPanel('map') }
+  paletteBus.current.reviewOpen = () => { setReviewOpen(true) }
   // D7: the import job watcher — success is the course-count poll (a new id
   // appears), failure is the turn ending with nothing new; cancel stops the
   // turn. sawTurn rides the prop transitions (queue latency means the turn
@@ -1232,7 +1501,7 @@ export function epubFolderPath(path: string): string {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent, onThreadJump, contextMeter, uploadAttachment }: {
   data: StudyData
   lesson: StudyData['lesson']
   rows: ReturnType<typeof feedRows>
@@ -1247,6 +1516,12 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   setMode: (mode: 'direct' | 'guide' | 'practice') => Promise<void>
   narrowPane: 'rail' | 'chat' | 'note'
   companionEvent: (event: 'talk-start' | 'talk-end' | 'celebrate' | 'encourage' | 'decay' | 'poke') => void
+  /** E5: jump to another lesson's thread pill (focus change rebinds the feed). */
+  onThreadJump: (lessonId: string) => void
+  /** E1: the context meter value (projection-backed, or the labeled estimate). */
+  contextMeter: { pct: number | null; label: string; estimated: boolean }
+  /** E3: land one attachment in the study workspace (returns its path). */
+  uploadAttachment: (name: string, dataBase64: string) => Promise<string>
 }): ReactNode {
   // C1 sticky-follow: follow new rows only while the reader sits at the bottom
   // (80px tolerance); scrolling up detaches, the FAB comes back.
@@ -1394,12 +1669,42 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         })
         : createElement(ArtifactCard, { artifact: artifact as ArtifactRow, send }))
   }
+  // E5: the thread switcher rows — lessonSessions joined to lesson titles
+  // (every lesson that ever minted a thread gets a pill).
+  const threadPills: Array<{ id: string; title: string; current: boolean }> = []
+  if (data !== null) {
+    const titles = new Map<string, string>()
+    for (const c of data.courses) for (const s of c.sections) for (const l of s.lessons) titles.set(l.id, l.title)
+    for (const [lessonId, sessionId] of Object.entries(data.lessonSessions)) {
+      if (sessionId === undefined) continue
+      const title = titles.get(lessonId)
+      if (title === undefined) continue
+      threadPills.push({ id: lessonId, title, current: lesson !== null && lesson.lessonId === lessonId })
+    }
+  }
   const lastAssistant = rowsView.reduce((acc, row, i) => row.role === 'assistant' ? i : acc, -1)
   const [error, setError] = useState<string | null>(null)
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
   }
   const starters = lesson?.starters ?? []
+  // E3: the attachment intake — one file at a time lands verbatim in the study
+  // workspace (dashboard route), then the outgoing message carries the path
+  // the tutor reads. Chunked base64 keeps big files off the arg-size cliff.
+  const attachInputRef = useRef<HTMLInputElement | null>(null)
+  const attachFile = (file: File): void => {
+    void file.arrayBuffer().then(buf => {
+      const bytes = new Uint8Array(buf)
+      let bin = ''
+      const CHUNK = 0x8000
+      for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+      return uploadAttachment(file.name, btoa(bin))
+    }).then(path => {
+      send(tr('attach.sent', { name: file.name, path }))
+    }, () => {
+      showStudyToast(tr('attach.fail'), { severity: 'error' })
+    })
+  }
   const onComposerKey = (e: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -1446,7 +1751,20 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     // (ThreadSwitcher empty-state style); the mode pills live in the composer.
     lesson !== null || !dormant
       ? createElement('div', { className: 'lks14-lessonrow' },
-        lesson !== null ? createElement('span', null, lesson.title) : createElement('span', null, tr('col.tutor')))
+        lesson !== null ? createElement('span', null, lesson.title) : createElement('span', null, tr('col.tutor')),
+        // E5: the thread switcher — one pill per lesson with a minted thread;
+        // the current one marks itself, others jump (focus rebinds the feed).
+        threadPills.length > 0
+          ? createElement('span', { className: 'lks14-threadpills', role: 'tablist', 'aria-label': tr('threads.label') },
+            ...threadPills.map(p => createElement('button', {
+              key: p.id,
+              className: `lks14-threadpill${p.current ? ' on' : ''}`,
+              role: 'tab',
+              'aria-selected': String(p.current),
+              'data-tooltip': p.title,
+              onClick: () => { if (!p.current) onThreadJump(p.id) },
+            }, p.title)))
+          : null)
       : null,
     createElement('div', {
       className: 'lks14-stream',
@@ -1505,7 +1823,21 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         }, s.label)))
       : null,
     createElement('div', { className: 'lks14-composer' },
-      createElement('div', { className: 'lks14-composer-card' },
+      // E1: the context meter — slim bar above the composer (projection-backed
+      // pct + token pair; the estimate is labeled as such).
+      createElement('div', { className: 'lks14-ctxmeter', 'data-testid': 'context-meter', 'data-estimated': String(contextMeter.estimated), title: tr('meter.label') },
+        createElement('span', { className: 'lks14-ctxmeter-bar' },
+          createElement('i', { style: { width: `${String(contextMeter.pct ?? 0)}%` }, className: contextMeter.pct !== null && contextMeter.pct > 80 ? 'hot' : undefined })),
+        createElement('span', { className: 'lks14-ctxmeter-label' }, contextMeter.estimated ? contextMeter.label : `${String(contextMeter.pct ?? 0)}% · ${contextMeter.label}`)),
+      createElement('div', {
+        className: 'lks14-composer-card',
+        // E3: dropped files ride the same intake as the paperclip.
+        onDragOver: (e: import('react').DragEvent<HTMLDivElement>) => { if (e.dataTransfer?.types.includes('Files') === true) e.preventDefault() },
+        onDrop: (e: import('react').DragEvent<HTMLDivElement>) => {
+          const file = e.dataTransfer?.files[0]
+          if (file !== undefined && file !== null) { e.preventDefault(); attachFile(file) }
+        },
+      },
         // B4: the soul pills are the composer's first row (upstream ChatComposer).
         createElement('div', { className: 'lks14-soulrow' },
           createElement('span', { className: 'lks14-soullabel' }, tr('mode.label')),
@@ -1526,6 +1858,29 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           disabled: dormant,
           onChange: (e: { target: { value: string } }) => { setDraft(e.target.value) },
           onKeyDown: onComposerKey,
+          // E3: pasted files ride the attachment intake (text pastes pass through).
+          onPaste: (e: import('react').ClipboardEvent<HTMLTextAreaElement>) => {
+            const files = e.clipboardData?.files
+            if (files !== undefined && files.length > 0) { e.preventDefault(); void attachFile(files[0]!) }
+          },
+        }),
+        // E3: the paperclip — one click, any learning file ≤20MiB.
+        createElement('button', {
+          className: 'lks-btn-attach',
+          'aria-label': tr('attach.label'),
+          'data-tooltip': tr('attach.label'),
+          disabled: dormant,
+          onClick: () => { attachInputRef.current?.click() },
+        }, createElement(IconPinFill16, { size: 14 })),
+        createElement('input', {
+          ref: attachInputRef,
+          type: 'file',
+          className: 'lks14-importfile',
+          onChange: (e: { target: HTMLInputElement & { files: FileList | null } }) => {
+            const file = e.target.files?.[0]
+            if (file !== undefined && file !== null) void attachFile(file)
+            e.target.value = ''
+          },
         }),
         // C2: send ↔ stop (upstream's 3D pair — stop cancels the host turn).
         busy

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 /**
@@ -150,6 +150,8 @@ export interface WorkbenchState {
   /** Whether the study surface (tools + tutor persona) is currently exposed. */
   active: boolean
   mode: string
+  /** E2: the history-budget directive flag (settings toggle). */
+  historyBudget: boolean
   courses: WorkbenchCourse[]
   focusLessonId: string | null
   lesson: WorkbenchLesson | null
@@ -180,6 +182,7 @@ export interface WorkbenchState {
  * @returns the page's data contract.
  */
 export function workbenchState(state: LearningState, now: Date): WorkbenchState {
+  const historyBudget = state.historyBudget === true
   const focusId = state.focus?.lessonId ?? null
   const dueIds = new Set(dueReviews(state, undefined, now).map(d => d.lessonId))
   const courses: WorkbenchCourse[] = state.courses.map((course) => {
@@ -261,6 +264,7 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
   return {
     active: state.active,
     mode: state.mode,
+    historyBudget,
     courses,
     focusLessonId: focusId,
     lesson,
@@ -669,6 +673,41 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         deps.store.get().mode = body.mode
         deps.store.save()
         sendJson(res, 200, { ok: true, mode: body.mode })
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/budget') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        deps.store.get().historyBudget = body.on === true
+        deps.store.save()
+        sendJson(res, 200, { ok: true, on: body.on === true })
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/attachment') {
+        // E3 (upstream composer attachments): the intake lands verbatim in the
+        // study workspace (attachments/), the tutor reads it from there.
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        const name = typeof body.name === 'string' ? body.name.trim() : ''
+        const data = typeof body.dataBase64 === 'string' ? body.dataBase64 : ''
+        if (name === '' || data === '' || name.length > 200 || /[\/:*?"<>|]/.test(name)) {
+          sendJson(res, 400, { ok: false, error: 'name and dataBase64 required (fs-safe name, max 200 chars)' })
+          return
+        }
+        const buf = Buffer.from(data, 'base64')
+        if (buf.length === 0 || buf.length > 20 * 1024 * 1024) {
+          sendJson(res, 400, { ok: false, error: 'attachment must be 1B..20MiB' })
+          return
+        }
+        try {
+          const dir = join(deps.studyAreaPath, 'attachments')
+          mkdirSync(dir, { recursive: true })
+          const safe = `${Date.now().toString(36)}-${name.replaceAll(/[\/:*?"<>|]/g, '_')}`
+          writeFileSync(join(dir, safe), buf)
+          sendJson(res, 200, { ok: true, path: `attachments/${safe}`, bytes: buf.length })
+        } catch (error) {
+          sendJson(res, 500, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
         return
       }
       sendJson(res, 404, { ok: false, error: 'not found' })

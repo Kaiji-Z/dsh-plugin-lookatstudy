@@ -108,13 +108,13 @@ P11b：
 
 ### P17 · 替换宿主能力（宿主只留模型后端）
 
-- [ ] E1 ContextMeter（上下文用量条：宿主有用量 API 用之；缺→会话事件字符量估算，标注估算口径）
-- [ ] E2 v0.27 历史预算裁剪（面板侧配置 + tutor 提示词指令化；裁剪执行在导师层）
-- [ ] E3 composer 附件（图片粘贴/拖入/选择→study 工作区落盘 + 导师可见路径；宿主 intake 缺则走 dashboard 路由）
-- [ ] E4 CommandPalette（Cmd+K 面板内版：课程/课时搜索+跳转、开始复习、切课、开始学习；宿主快捷键冲突则面板聚焦时捕获）
-- [ ] E5 线程切换器（lessonSessions 会话列表 pill 行：当前课时线程 + 已开线程跳转，宿主 sessions API 驱动）
-- [ ] E6 模型/effort 切换面（宿主有 API→完整 UI；缺→只读显示当前模型 + 缺口记录）
-- [ ] E7 字号 A−/A+（面板根字号三档持久化）
+- [x] E1 ContextMeter ✅：绑定会话的 contextPressure projection（faceOf getSnapshot/subscribe）→ composer 上方细条（百分比+tok 对，>80% 变 warning 色）；projection/窗口缺→折叠行字符量 ÷2.2 估算并标注「(按事件字符估算)」。
+- [x] E2 历史预算 ✅：state.historyBudget（additive v2-safe）+ settings.section 开关（POST /api/budget）+ snapshot 尾部指令（surface.ts：会话变长时导师主动概括旧轮次——裁剪执行在导师层）。
+- [x] E3 composer 附件 ✅：回形针/粘贴/拖入三入口 → dashboard POST /api/attachment（fs-safe 名、≤20MiB、verbatim 落 study-area/attachments/）→ 外发消息携带工作区路径（导师 cwd 即 study-area 可读）；路径穿越名拒绝（探针实测）。
+- [x] E4 CommandPalette ✅：面板 takeover 激活时 Ctrl/Cmd+K（自有 DOM 监听=P0 缺口降级）；行=课时（dashboard 搜索 180ms 防抖）/课程（切课经 paletteBus）/开始复习/开始学习；Esc/背景关、Enter 取首行。
+- [x] E5 线程切换器 ✅：lessonrow 右侧 pill 行（lessonSessions×课时标题 join；当前标 on、点击跳课=focus 换绑 feed——既有 stage/attach 机制驱动）。
+- [x] E6 模型/effort 面 ✅：chip 读 modelSelection projection（provider/model·effort）；点开拉 modelCatalog（groups→models→defaultEffort）→ 点选走宿主 selectModel（同宿主自家选择器一面）；面缺→只读 chip（inject 补 remote+remote.session——live 抓虫：cordis 注入校验）。
+- [x] E7 字号 A−/A+ ✅：面板根 zoom 三档 0.9/1/1.1（Chromium 布局级缩放，px 固定布局免重写）持久化 localStorage；A−/%/A+ 三件套带禁用态。含 P12 遗留守卫竞态加固：guard 确认后 localBound 清空强制重绑自 lessonSessions 映射。实测：client-node +1（295 tests，verify PASS + 7 needles，audit 0 light）+ 探针 probe-p17 8/8（附件落盘+穿越拒绝、预算 flag 往返、meter 渲染、chip 在场、6 pill 1 当前、Cmd+K 开合、zoom 1→1.1 持久化）。
 
 ### P18 · 终审发版
 

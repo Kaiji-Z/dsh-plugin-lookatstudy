@@ -29,7 +29,7 @@ type ToolViewProps = ToolViewPropsFace
 export { feedRows } from './session-feed.ts'
 export type { ChatRow } from './views.tsx'
 
-export const inject = ['slots', 'workspaces', 'sessions', 'locale', 'theme']
+export const inject = ['slots', 'workspaces', 'sessions', 'locale', 'theme', 'remote', 'remote.session']
 
 /**
  * Register the study surfaces: styles + locale once; the sidebar-entry panel

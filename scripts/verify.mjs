@@ -239,6 +239,14 @@ gate('bundle', () => {
     [client, "data-lks-theme='light'", 'the light token override block'],
     [client, 'map-rail-scope', 'the rail dark-lock'],
     [client, '--shiki-light', 'the shiki light flip'],
+    // 0.18.0 P17: host-capability replacements
+    [client, 'lks14-ctxmeter', 'the context meter'],
+    [client, 'lks14-threadpill', 'the thread switcher pills'],
+    [client, 'lks14-palette', 'the command palette'],
+    [client, 'lks-modelface', 'the model face chip'],
+    [client, 'lks-hdr-zoom', 'the font-scale pair'],
+    [client, 'lks-btn-attach', 'the composer attach button'],
+    [host, 'historyBudget', 'the budget flag + directive host-side'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [

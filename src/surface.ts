@@ -135,6 +135,9 @@ export function snapshotSectionText(state: LearningState): string {
   if (memory.length > 0) lines.push(`记忆: ${memory.join(' | ')}`)
   if (snap.dueCount > 0) lines.push(`今日待复习: ${snap.dueCount} 项`)
   if (snap.pendingProposal !== null) lines.push(`待决提案 ${snap.pendingProposal.id}: ${snap.pendingProposal.rationale}(等学习者表态)`)
+  // E2 (upstream v0.27 history-budget): the panel-side flag instructs the
+  // tutor layer to trim — summarize older turns when the thread grows.
+  if (state.historyBudget === true) lines.push('历史预算已开启:当会话变长时,主动概括旧轮次的要点并基于概要继续,避免逐字复读历史。')
   return lines.join('\n')
 }
 

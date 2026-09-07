@@ -767,4 +767,58 @@ export const UPSTREAM_CSS = `
 /* the light scrollbar (dark thumb is var(--border) — too faint on white) */
 .lks-ui[data-lks-theme='light'] ::-webkit-scrollbar-thumb{background:rgb(0 0 0/0.18)}
 .lks-ui[data-lks-theme='light'] ::-webkit-scrollbar-thumb:hover{background:rgb(0 0 0/0.28)}
+
+/* ── P17 E4/E5/E7: command palette, thread pills, font scale ── */
+.lks-ui .lks14-palette{position:absolute;inset:0;z-index:2147482000;display:flex;align-items:flex-start;justify-content:center;padding-top:14vh}
+.lks-ui .lks14-palette-backdrop{position:absolute;inset:0;background:rgb(var(--shadow-rgb)/0.45)}
+.lks-ui .lks14-palette-card{position:relative;width:min(520px,86%);background:var(--surface-0);border:1px solid var(--border);border-radius:14px;box-shadow:0 24px 64px -12px rgb(var(--shadow-rgb)/0.5);overflow:hidden;animation:lks-confirm-enter 160ms var(--ease-out-back)}
+.lks-ui .lks14-palette-input{width:100%;border:none;border-bottom:1px solid var(--border-faint);background:none;color:var(--ink);font:inherit;font-size:14px;padding:13px 16px;outline:none}
+.lks-ui .lks14-palette-input::placeholder{color:var(--ink-faint)}
+.lks-ui .lks14-palette-list{max-height:46vh;overflow-y:auto;padding:6px}
+.lks-ui .lks14-palette-row{display:flex;align-items:center;gap:10px;width:100%;border:none;background:none;color:var(--ink);font:inherit;font-size:12.5px;padding:9px 10px;border-radius:9px;cursor:pointer;text-align:left}
+.lks-ui .lks14-palette-row:hover,.lks-ui .lks14-palette-row:focus-visible{background:var(--surface-2);outline:none}
+.lks-ui .lks14-palette-kind{flex:none;font-size:10px;font-weight:800;color:var(--accent);border:1px solid rgb(var(--accent-rgb)/0.35);border-radius:5px;padding:2px 5px}
+.lks-ui .lks14-palette-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.lks-ui .lks14-palette-sub{font-size:10.5px;color:var(--ink-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-ui .lks14-palette-empty{padding:18px;text-align:center;color:var(--ink-faint);font-size:12px}
+/* E5: the thread pills under the lesson row */
+.lks-ui .lks14-lessonrow{display:flex;align-items:center;gap:8px;min-width:0}
+.lks-ui .lks14-lessonrow>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-ui .lks14-threadpills{display:flex;gap:4px;margin-left:auto;overflow-x:auto;max-width:55%;scrollbar-width:none}
+.lks-ui .lks14-threadpill{flex:none;border:1px solid var(--border-faint);background:var(--surface-1);color:var(--ink-muted);font:inherit;font-size:10.5px;padding:2.5px 8px;border-radius:999px;cursor:pointer;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:all .15s}
+.lks-ui .lks14-threadpill:hover{color:var(--ink);border-color:var(--border)}
+.lks-ui .lks14-threadpill.on{background:color-mix(in srgb,var(--brand) 16%,transparent);border-color:rgb(var(--brand-rgb)/0.4);color:var(--brand)}
+.lks-ui .lks14-threadpill:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
+/* E7: the font-scale pair in the app header */
+.lks-ui .lks-hdr-zoom{display:flex;align-items:center;gap:4px;margin-left:4px}
+.lks-ui .lks-hdr-zoom-btn{border:1px solid var(--border-faint);background:var(--surface-1);color:var(--ink-muted);font:inherit;font-size:10px;font-weight:700;border-radius:6px;padding:2px 6px;cursor:pointer;transition:all .15s}
+.lks-ui .lks-hdr-zoom-btn:hover:not(:disabled){color:var(--ink);border-color:var(--border)}
+.lks-ui .lks-hdr-zoom-btn:disabled{opacity:.35;cursor:not-allowed}
+.lks-ui .lks-hdr-zoom-btn:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
+.lks-ui .lks-hdr-zoom-val{font-size:10px;color:var(--ink-faint);min-width:32px;text-align:center}
+
+/* E1: the context meter above the composer */
+.lks-ui .lks14-ctxmeter{display:flex;align-items:center;gap:8px;padding:0 4px 6px;font-size:10px;color:var(--ink-faint)}
+.lks-ui .lks14-ctxmeter-bar{flex:1;height:4px;border-radius:999px;background:rgb(var(--ink-rgb)/0.08);overflow:hidden}
+.lks-ui .lks14-ctxmeter-bar i{display:block;height:100%;border-radius:999px;background:var(--brand);transition:width .3s var(--ease-out-expo)}
+.lks-ui .lks14-ctxmeter-bar i.hot{background:var(--warning)}
+.lks-ui .lks14-ctxmeter-label{flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* E6: the model face chip + catalog popover */
+.lks-ui .lks-modelface{position:relative;display:flex}
+.lks-ui .lks-modelface-chip{display:flex;align-items:center;gap:4px;border:1px solid var(--border-faint);background:var(--surface-1);color:var(--ink-muted);font:inherit;font-size:10px;font-weight:700;border-radius:999px;padding:2.5px 8px;cursor:pointer;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:all .15s}
+.lks-ui .lks-modelface-chip:hover:not(:disabled){color:var(--ink);border-color:var(--border)}
+.lks-ui .lks-modelface-chip:disabled{cursor:not-allowed;opacity:.75}
+.lks-ui .lks-modelface-chip:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
+.lks-ui .lks-modelface-pop{position:absolute;top:calc(100% + 6px);right:0;width:240px;max-height:260px;overflow-y:auto;background:var(--surface-0);border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 40px -10px rgb(var(--shadow-rgb)/0.4);padding:6px;z-index:2147481000}
+.lks-ui .lks-modelface-group{margin-bottom:4px}
+.lks-ui .lks-modelface-gname{font-size:10px;font-weight:800;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em;padding:4px 6px 2px}
+.lks-ui .lks-modelface-model{display:block;width:100%;text-align:left;border:none;background:none;color:var(--ink);font:inherit;font-size:12px;padding:6px 8px;border-radius:8px;cursor:pointer}
+.lks-ui .lks-modelface-model:hover,.lks-ui .lks-modelface-model:focus-visible{background:var(--surface-2);outline:none}
+.lks-ui .lks-modelface-model.on{color:var(--brand);font-weight:700}
+
+/* E3: the composer's attach button */
+.lks-ui .lks-btn-attach{flex:none;align-self:flex-end;border:none;background:var(--surface-1);color:var(--ink-muted);width:32px;height:32px;border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
+.lks-ui .lks-btn-attach:hover:not(:disabled){color:var(--ink);background:var(--surface-2)}
+.lks-ui .lks-btn-attach:disabled{opacity:.4;cursor:not-allowed}
+.lks-ui .lks-btn-attach:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
 `

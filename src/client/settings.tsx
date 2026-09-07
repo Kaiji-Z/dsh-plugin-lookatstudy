@@ -27,7 +27,7 @@ const MODES: ReadonlyArray<{ id: 'direct' | 'guide' | 'practice'; labelKey: stri
  * unused — every control stays on the page.
  */
 export function StudySettingsSection(): ReactNode {
-  const { data, setMode, activate } = useStudy()
+  const { data, setMode, activate, setHistoryBudget } = useStudy()
   const [error, setError] = useState<string | null>(null)
   const [voice, setVoice] = useState(storedTtsVoice)
   const [companion, setCompanion] = useState(storedCompanionForm)
@@ -57,6 +57,17 @@ export function StudySettingsSection(): ReactNode {
           onClick: () => { if (data !== null) fire(activate(!data.active)) },
         }, data?.active === true ? tr('settings.turnOff') : tr('settings.turnOn')),
         createElement('span', { className: 'lks-set-state' }, data?.active === true ? tr('settings.on') : tr('settings.off')),
+      ),
+    ),
+    createElement('section', { className: 'lks-set-row' },
+      createElement('h3', null, tr('settings.budget')),
+      createElement('p', { className: 'lks-set-hint' }, tr('settings.budget.hint')),
+      createElement('div', null,
+        createElement('button', {
+          className: `lks-btn ${data?.historyBudget === true ? 'ghost' : 'primary'}`,
+          'data-testid': 'budget-toggle',
+          onClick: () => { if (data !== null) fire(setHistoryBudget(!(data.historyBudget === true))) },
+        }, data?.historyBudget === true ? tr('settings.budget.off') : tr('settings.budget.on')),
       ),
     ),
     createElement('section', { className: 'lks-set-row' },

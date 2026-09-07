@@ -196,6 +196,9 @@ export interface LearningState {
   active: boolean
   /** Active tutoring soul. */
   mode: StudyMode
+  /** E2: history-budget trimming directive (the tutor layer executes the trim;
+   *  additive in 0.18.0 — v2 files without it load as off). */
+  historyBudget?: boolean
   /** Lesson the learner last opened (snapshot focus), or null. */
   focus: { lessonId: string } | null
   /** Cross-course style memory. */

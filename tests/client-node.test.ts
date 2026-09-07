@@ -432,3 +432,20 @@ test('markmap is fully retired: zero residue across src/ (view, CDN, vendor, loc
   walk(join(import.meta.dirname, '..', 'src'))
   assert.deepEqual(hits, [], 'markmap/mindmap must not appear anywhere in src/ (retired upstream v0.26.0; the ELK concept map is the surviving diagram view)')
 })
+
+// ——— P17: the host-capability replacement folds ———
+
+test('E1/E6: the workbench state carries the budget flag; the surface directive rides the snapshot', async () => {
+  const { workbenchState } = await import('../src/dashboard.ts')
+  const { snapshotSectionText } = await import('../src/surface.ts')
+  const { emptyState, importCourse } = await import('../src/state.ts')
+  const state = emptyState()
+  state.active = true
+  importCourse(state, { title: '预算测试', source: 'markdown', sourceRef: 'test:budget', createdAt: '2026-09-07T00:00:00Z', sections: [{ title: '一', lessons: [{ title: '甲', anchor: null, body: '正文' }] }] })
+  state.focus = { lessonId: state.courses[0]!.sections[0]!.lessons[0]!.id }
+  assert.equal(workbenchState(state, new Date()).historyBudget, false, 'absent flag reads false')
+  state.historyBudget = true
+  assert.ok(snapshotSectionText(state).includes('历史预算已开启'), 'the directive rides the snapshot tail when on')
+  state.historyBudget = false
+  assert.ok(!snapshotSectionText(state).includes('历史预算'), 'off → no directive')
+})

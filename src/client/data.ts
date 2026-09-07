@@ -13,6 +13,8 @@ import { useSyncExternalStore } from 'react'
 export interface StudyState {
   readonly active: boolean
   readonly mode: 'direct' | 'guide' | 'practice'
+  /** E2: the history-budget directive flag. */
+  readonly historyBudget?: boolean
   readonly courses: ReadonlyArray<{
     readonly courseId: string
     readonly title: string
@@ -207,6 +209,27 @@ class StudyStore {
       body: JSON.stringify({ mode }),
     })
     this.refresh()
+  }
+
+  /** E2: toggle the history-budget directive (the tutor layer executes the trim). */
+  async setHistoryBudget(on: boolean): Promise<void> {
+    await fetchJson('/lookatstudy/api/budget', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ on }),
+    })
+    this.refresh()
+  }
+
+  /** E3: land one attachment verbatim in the study workspace; returns the workspace-relative path. */
+  async uploadAttachment(name: string, dataBase64: string): Promise<string> {
+    const body = await fetchJson('/lookatstudy/api/attachment', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name, dataBase64 }),
+    }) as { path?: string }
+    if (body === null || typeof body !== 'object' || typeof body.path !== 'string') throw new Error('attachment upload failed')
+    return body.path
   }
 
   /**
@@ -419,6 +442,8 @@ export function useStudy(): {
   data: StudyState | null
   activate: (active: boolean) => Promise<void>
   setMode: (mode: StudyState['mode']) => Promise<void>
+  setHistoryBudget: (on: boolean) => Promise<void>
+  uploadAttachment: (name: string, dataBase64: string) => Promise<string>
   setFocus: (lessonId: string) => Promise<void>
   searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>
   deleteCourse: (courseId: string) => Promise<void>
@@ -440,6 +465,8 @@ export function useStudy(): {
     data,
     activate: studyStore.activate.bind(studyStore),
     setMode: studyStore.setMode.bind(studyStore),
+    setHistoryBudget: studyStore.setHistoryBudget.bind(studyStore),
+    uploadAttachment: studyStore.uploadAttachment.bind(studyStore),
     setFocus: studyStore.setFocus.bind(studyStore),
     searchLessons: studyStore.searchLessons.bind(studyStore),
     deleteCourse: studyStore.deleteCourse.bind(studyStore),
