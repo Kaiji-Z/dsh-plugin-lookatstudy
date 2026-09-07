@@ -255,6 +255,7 @@ test('the C-track chrome freezes: FAB, stop button, code header, decided badges 
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-qcard-opt\.picked\{[^}]*border-color:var\(--accent\)/, 'the pre-submit pick highlight')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-codehead\{/, 'code blocks carry the lang+copy header')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-propbanner\.decided\.accepted/, 'accepted proposals close the loop')
+})
 
 test('the C15 placement folds: tooltip clamps into the viewport, ConfirmCard flips when clipped (P11b)', async () => {
   const { clampTip } = await import('../src/client/tooltip.tsx')
@@ -285,7 +286,6 @@ test('the P11b chrome freezes: reasoning fold, tool chips, karaoke marks, toolti
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-note\.pinned\{[^}]*rgb\(var\(--gold-rgb\)\//, 'pinned notes tint gold')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-note-edit textarea/, 'the inline note editor')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-zoneh\{[^}]*cursor:pointer/, 'zone heads are collapsible buttons')
-})
 })
 
 test('the lookatstudy locale dictionaries keep zh/en parity and translate with fallback', async () => {
