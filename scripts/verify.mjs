@@ -56,7 +56,8 @@ gate('bundle', () => {
     [client, 'feedRows', 'event-window → chat-rows fold (session-feed)'],
     [client, 'lesson-session', 'per-lesson thread binding'],
     [client, '/lookatstudy/api/active', 'activation route wired into the client'],
-    [client, 'flex:0 0 240px', 'fixed rail column, chat takes the rest'],
+    [client, 'flex:0 0 300px', 'upstream 300px rail column'],
+    [client, 'clamp(480px,45%,800px)', 'upstream chat clamp column (row-relative)'],
     [client, 'lks14-composer', 'the chat pane owns its composer (host composer untouched)'],
     [client, 'M2 3.2C3.2', 'sidebar entry icon (open-book glyph)'],
     // rail/tree contracts that survived the refactor
@@ -150,6 +151,12 @@ gate('bundle', () => {
     [client, '::-webkit-scrollbar', 'scoped dark scrollbar'],
     [client, '--cm-c0-fill', 'concept-map palette tokens'],
     [client, 'IconArrowUpFill16', 'SVG send glyph (emoji retired)'],
+    // 0.17.0 P10b (B-track): the upstream rail frame + column skeletons
+    [client, 'lks14-railtrack', 'map/import sliding panes'],
+    [client, 'lks14-railtop', 'floating tab capsule + glass title card'],
+    [client, 'lks14-emptycard', 'the empty-state card with 3D CTA'],
+    [client, 'lks14-soulrow', 'mode pills ride the composer capsule'],
+    [client, 'lks14-railcourse', 'course rows in the import pane'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [

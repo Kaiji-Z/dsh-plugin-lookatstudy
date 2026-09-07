@@ -378,8 +378,12 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
     setSectionOverrides(cur => ({ ...cur, [title]: next }))
   }
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [showImport, setShowImport] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // B1: the upstream rail frame — a map/import tab capsule over two sliding
+  // panes; search and review open as full-rail overlays from the title card.
+  const [panel, setPanel] = useState<'map' | 'import'>('map')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [reviewOpen, setReviewOpen] = useState(false)
   const reportError = (err: unknown): void => { setError(err instanceof Error ? err.message : String(err)) }
   useEffect(() => {
     if (!confirmDelete) return
@@ -412,99 +416,72 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
     return () => { cancelled = true; clearTimeout(timer) }
   }, [query, selectedCourse, data, searchLessons])
 
-  const body: ReactNode = data === null
-    ? createElement('div', { className: 'lks14-empty' }, tr('loading'))
-    : data.courses.length === 0
-      ? createElement('div', { className: 'lks14-empty' },
-        tr('rail.empty.title'), createElement('br'),
-        createElement('button', {
-          className: 'lks-btn primary',
-          style: { margin: '10px 0' },
-          onClick: () => { send(tr('prompt.import', { url: 'https://github.com/microsoft/AI-For-Beginners' })) },
-        }, createElement(IconDownloadOutline16, null), tr('rail.empty.demo')),
-        createElement(ImportRow, { send }),
-      )
-      : (() => {
-        const courseId = data.courses.some(c => c.courseId === selectedCourse)
-          ? selectedCourse
-          : data.courses[0]!.courseId
-        const course = data.courses.find(c => c.courseId === courseId)!
-        return createElement('div', { className: `lks-map lks-sky-${pickSky(courseId)}` },
-          createElement('div', { className: 'lks14-railhead' },
-            data.courses.length > 1
-              ? createElement('select', {
-                className: 'lks-set-select',
-                value: courseId,
-                onChange: (e: { target: { value: string } }) => { setSelectedCourse(e.target.value); setConfirmDelete(false) },
-              }, ...data.courses.map(c => createElement('option', { key: c.courseId, value: c.courseId }, c.title)))
-              : createElement('div', { className: 'lks14-railtitle', title: course.title }, course.title),
-            createElement('button', {
-              className: `lks-btn ${confirmDelete ? 'primary' : 'ghost'}`,
-              title: confirmDelete ? tr('rail.delete.title.confirm') : tr('rail.delete'),
-              onClick: (e: { stopPropagation: () => void }) => {
-                e.stopPropagation()
-                if (!confirmDelete) { setConfirmDelete(true); return }
-                setConfirmDelete(false)
-                deleteCourse(courseId).then(() => { setSelectedCourse('') }, reportError)
-              },
-            }, confirmDelete ? tr('rail.delete.confirm') : createElement(IconTrashOutline16, { size: 14 })),
-          ),
-          createElement('div', { className: 'lks14-railsub' }, tr('rail.mastered', { mastered: course.mastered, total: course.total })),
+  const courseId = data !== null && data.courses.length > 0
+    ? (data.courses.some(c => c.courseId === selectedCourse) ? selectedCourse : data.courses[0]!.courseId)
+    : null
+  const course = data?.courses.find(c => c.courseId === courseId) ?? null
+
+  // The floating topbar: tab capsule + (map pane) the glass title card.
+  const topbar: ReactNode = data === null ? null : createElement('div', { className: 'lks14-railtop' },
+    createElement('div', { className: 'lks-railtabs' },
+      ...(['map', 'import'] as const).map(tab => createElement('button', {
+        key: tab,
+        className: `lks-railtab${panel === tab ? ' on' : ''}`,
+        'aria-pressed': String(panel === tab),
+        onClick: () => { setPanel(tab) },
+      }, tr(tab === 'map' ? 'map.tab.map' : 'map.tab.import')))),
+    panel === 'map' && course !== null
+      ? createElement('div', { className: 'lks14-railhead' },
+        createElement('div', { className: 'lks14-railcard-row' },
+          data.courses.length > 1
+            ? createElement('select', {
+              className: 'lks-set-select',
+              value: courseId ?? '',
+              onChange: (e: { target: { value: string } }) => { setSelectedCourse(e.target.value); setConfirmDelete(false) },
+            }, ...data.courses.map(c => createElement('option', { key: c.courseId, value: c.courseId }, c.title)))
+            : createElement('div', { className: 'lks14-railtitle', title: course.title }, course.title),
+          createElement('button', {
+            className: `lks-btn ${confirmDelete ? 'primary' : 'ghost'}`,
+            title: confirmDelete ? tr('rail.delete.title.confirm') : tr('rail.delete'),
+            onClick: (e: { stopPropagation: () => void }) => {
+              e.stopPropagation()
+              if (!confirmDelete) { setConfirmDelete(true); return }
+              setConfirmDelete(false)
+              deleteCourse(courseId ?? '').then(() => { setSelectedCourse('') }, reportError)
+            },
+          }, confirmDelete ? tr('rail.delete.confirm') : createElement(IconTrashOutline16, { size: 14 })),
+        ),
+        createElement('div', { className: 'lks14-railcard-row' },
           createElement('div', {
             className: `lks14-masterybar${course.avgMasteryPct === 100 ? ' gold' : ''}`,
             title: course.avgMasteryPct === null ? tr('rail.avg.none') : tr('rail.avg', { pct: course.avgMasteryPct }),
           }, createElement('i', { style: { transform: `scaleX(${(course.avgMasteryPct ?? 0) / 100})` } })),
-          createElement('input', {
-            className: 'lks14-search',
-            type: 'search',
-            placeholder: tr('rail.search'),
-            value: query,
-            onChange: (e: { target: { value: string } }) => { setQuery(e.target.value) },
-            onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
-              if (e.key === 'Escape') { setQuery(''); setSearchRows([]) }
-              if (e.key !== 'Enter' || query.trim() === '') return
-              const first = searchRows[0]
-              if (first !== undefined) {
-                setQuery('')
-                setSearchRows([])
-                void setFocus(first.lessonId).catch(reportError)
-              }
-            },
-          }),
-          searchRows.length > 0
-            ? createElement('div', { className: 'lks14-searchpanel' },
-              ...searchRows.map(row => createElement('button', {
-                key: row.lessonId,
-                className: 'lks14-searchrow',
-                title: tr('rail.search.jump'),
-                onClick: () => {
-                  setQuery('')
-                  setSearchRows([])
-                  void setFocus(row.lessonId).catch(reportError)
-                },
-              },
-                createElement('span', { className: 'lks14-searchrow-title' }, row.title),
-                row.courseTitle !== '' ? createElement('span', { className: 'lks14-searchrow-course' }, row.courseTitle) : null,
-                row.snippet !== '' ? createElement('span', { className: 'lks14-searchrow-snip' }, row.snippet) : null)))
-            : null,
-          data.dueCount > 0
-            ? createElement('div', { className: 'lks14-duebox' },
-              createElement(IconRefreshOutline16, { size: 13 }), tr('rail.due', { count: data.dueCount }),
-              ...data.due.map(d => createElement('button', {
-                key: d.lessonId,
-                className: 'lks14-dueitem',
-                title: tr('review.jump'),
-                onClick: () => { void setFocus(d.lessonId).catch(reportError) },
-              },
-                createElement('span', null, d.lessonTitle),
-                d.overdueDays > 0 ? createElement('span', { className: 'lks14-over' }, tr('rail.due.over', { days: d.overdueDays })) : null)),
-              createElement('button', {
-                className: 'lks-btn ghost',
-                style: { marginTop: '6px' },
-                onClick: () => { send(tr('prompt.review')) },
-              }, tr('rail.due.start')),
-            )
-            : null,
+          createElement('span', { className: 'lks14-railpct' }, `${String(course.avgMasteryPct ?? 0)}%`),
+        ),
+        createElement('div', { className: 'lks14-railcard-row' },
+          createElement('button', {
+            className: 'lks-railpill',
+            title: tr('rail.search'),
+            onClick: () => { setSearchOpen(true) },
+          }, createElement(IconGlobeOutline14, { size: 13 }), tr('map.search.label')),
+          createElement('button', {
+            className: `lks-railpill${data.dueCount > 0 ? ' due' : ''}`,
+            title: data.dueCount > 0 ? tr('rail.due', { count: data.dueCount }) : tr('map.review.label'),
+            onClick: () => { setReviewOpen(true) },
+          }, createElement(IconBookFill16, { size: 13 }), tr('map.review.label'),
+            data.dueCount > 0 ? createElement('span', { className: 'lks-railpill-n' }, String(data.dueCount)) : null),
+        ),
+      )
+      : null,
+  )
+
+  // The map pane: sections under the floating chrome (pt reserves its height).
+  const mapPane: ReactNode = data === null
+    ? createElement('div', { className: 'lks14-empty' }, tr('loading'))
+    : course === null
+      ? null
+      : createElement('div', { className: 'lks14-railscroll' },
+        createElement('div', { className: 'lks-mapsec-list' },
           ...course.sections.flatMap(section => {
             const examAllowed = examOpen(section.lessons)
             const lessons = section.lessons.filter(l => query.trim() === '' || titleMatches(l.title, query) || l.focus)
@@ -520,18 +497,117 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
               // the state-side attempt runs host-side, zero LLM traffic.
               onJump: (id: string) => { void setFocus(id).catch(reportError) },
             })]
-          }),
-          createElement('button', {
-            className: 'lks-btn ghost',
-            style: { marginTop: '10px' },
-            onClick: () => { setShowImport(!showImport) },
-          }, showImport ? tr('rail.import.close') : null, tr('rail.import.toggle')),
-          showImport ? createElement(ImportRow, { send }) : null,
-        )
-      })()
-  return createElement('div', { className: 'lks14-col lks14-rail' },
-    createElement('div', { className: 'lks14-colhead' }, tr('col.rail')),
-    body,
+          })))
+
+  // The import pane: course rows (multi-course), the URL row, the demo course.
+  const importPane: ReactNode = data === null ? null : createElement('div', { className: 'lks14-railpane-import' },
+    data.courses.length > 1
+      ? createElement('div', { className: 'lks14-raillist' },
+        ...data.courses.map(c => createElement('button', {
+          key: c.courseId,
+          className: `lks14-railcourse${c.courseId === courseId ? ' on' : ''}`,
+          onClick: () => { setSelectedCourse(c.courseId); setPanel('map') },
+        },
+          createElement('span', { className: 'lks14-railcourse-title' }, c.title),
+          createElement('span', { className: 'lks14-railcourse-sub' }, tr('rail.mastered', { mastered: c.mastered, total: c.total })),
+        )))
+      : null,
+    data.courses.length === 0
+      ? createElement('div', { className: 'lks14-empty' }, tr('rail.empty.title'))
+      : null,
+    createElement('button', {
+      className: 'lks-btn ghost lks14-raildemo',
+      onClick: () => { send(tr('prompt.import', { url: 'https://github.com/microsoft/AI-For-Beginners' })) },
+    }, createElement(IconDownloadOutline16, null), tr('rail.empty.demo')),
+    createElement(ImportRow, { send }),
+  )
+
+  // Search overlay: pill opens it; Esc/Enter/click-through close or jump.
+  const searchOverlay: ReactNode = searchOpen && data !== null
+    ? createElement('div', { className: 'lks-railoverlay' },
+      createElement('div', { className: 'lks-railoverlay-head' },
+        createElement('input', {
+          className: 'lks14-search',
+          type: 'search',
+          placeholder: tr('rail.search'),
+          value: query,
+          autoFocus: true,
+          onChange: (e: { target: { value: string } }) => { setQuery(e.target.value) },
+          onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
+            if (e.key === 'Escape') { setQuery(''); setSearchRows([]); setSearchOpen(false) }
+            if (e.key !== 'Enter' || query.trim() === '') return
+            const first = searchRows[0]
+            if (first !== undefined) {
+              setQuery('')
+              setSearchRows([])
+              setSearchOpen(false)
+              void setFocus(first.lessonId).catch(reportError)
+            }
+          },
+        }),
+        createElement('button', {
+          className: 'lks-btn ghost',
+          onClick: () => { setQuery(''); setSearchRows([]); setSearchOpen(false) },
+        }, tr('map.overlay.close'))),
+      searchRows.length > 0
+        ? createElement('div', { className: 'lks14-searchpanel' },
+          ...searchRows.map(row => createElement('button', {
+            key: row.lessonId,
+            className: 'lks14-searchrow',
+            title: tr('rail.search.jump'),
+            onClick: () => {
+              setQuery('')
+              setSearchRows([])
+              setSearchOpen(false)
+              void setFocus(row.lessonId).catch(reportError)
+            },
+          },
+            createElement('span', { className: 'lks14-searchrow-title' }, row.title),
+            row.courseTitle !== '' ? createElement('span', { className: 'lks14-searchrow-course' }, row.courseTitle) : null,
+            row.snippet !== '' ? createElement('span', { className: 'lks14-searchrow-snip' }, row.snippet) : null)))
+        : null)
+    : null
+
+  // Review overlay: the due list + start-review action (upstream's review entry).
+  const reviewOverlay: ReactNode = reviewOpen && data !== null
+    ? createElement('div', { className: 'lks-railoverlay' },
+      createElement('div', { className: 'lks-railoverlay-head' },
+        createElement('span', { className: 'lks14-railtitle' }, data.dueCount > 0 ? tr('rail.due', { count: data.dueCount }) : tr('map.review.label')),
+        createElement('button', {
+          className: 'lks-btn ghost',
+          onClick: () => { setReviewOpen(false) },
+        }, tr('map.overlay.close'))),
+      ...data.due.map(d => createElement('button', {
+        key: d.lessonId,
+        className: 'lks14-dueitem',
+        title: tr('review.jump'),
+        onClick: () => { void setFocus(d.lessonId).catch(reportError) },
+      },
+        createElement('span', null, d.lessonTitle),
+        d.overdueDays > 0 ? createElement('span', { className: 'lks14-over' }, tr('rail.due.over', { days: d.overdueDays })) : null)),
+      data.dueCount > 0
+        ? createElement('button', {
+          className: 'lks-btn primary',
+          onClick: () => { setReviewOpen(false); send(tr('prompt.review')) },
+        }, tr('rail.due.start'))
+        : createElement('div', { className: 'lks14-empty' }, tr('rail.due.none')))
+    : null
+
+  // Upstream: no course → the import pane is the home pane.
+  const effectivePanel = data !== null && data.courses.length === 0 ? 'import' : panel
+  return createElement('div', { className: `lks14-col lks14-rail${courseId !== null ? ` lks-sky-${pickSky(courseId)}` : ''}` },
+    topbar,
+    createElement('div', { className: 'lks14-railbody' },
+      createElement('div', {
+        className: 'lks14-railtrack',
+        style: { transform: effectivePanel === 'map' ? 'translateX(0)' : 'translateX(-50%)' },
+      },
+        createElement('div', { className: 'lks14-railpane' }, mapPane),
+        createElement('div', { className: 'lks14-railpane' }, importPane),
+      ),
+    ),
+    searchOverlay,
+    reviewOverlay,
     createElement('div', { className: 'lks-propcard-err' }, error),
   )
 }
@@ -614,28 +690,28 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             onClick: () => { send(tr('proposal.decline.msg', { lesson: proposal.lessonTitle })) },
           }, tr('proposal.decline')))
       : null,
-    createElement('div', { className: 'lks14-colhead' },
-      tr('col.tutor'),
-      lesson !== null ? createElement('span', { className: 'lks14-chatlesson' }, lesson.title) : null,
-      createElement('span', { className: 'lks14-pills' },
-        ...MODES.map(mode => createElement('button', {
-          key: mode.id,
-          className: `lks14-pill${data?.mode === mode.id ? ' on' : ''}`,
-          'aria-pressed': String(data?.mode === mode.id),
-          'aria-disabled': dormant || undefined,
-          title: dormant ? tr('tutor.dormant') : tr(mode.hintKey),
-          onClick: () => { if (!dormant) fire(setMode(mode.id)) },
-        }, tr(mode.labelKey))),
-      ),
-    ),
+    // B4: upstream has no per-column header — a thin current-lesson row instead
+    // (ThreadSwitcher empty-state style); the mode pills live in the composer.
+    lesson !== null || !dormant
+      ? createElement('div', { className: 'lks14-lessonrow' },
+        lesson !== null ? createElement('span', null, lesson.title) : createElement('span', null, tr('col.tutor')))
+      : null,
     createElement('div', {
       className: 'lks14-stream',
       ref: streamEl,
       'data-lks-feed': rows.length > 0 ? `rows:${String(rows.length)}` : bound ? (feedAttached ? 'attached-empty' : 'waiting') : 'no-thread',
     },
       rows.length === 0
-        ? createElement('div', { className: 'lks14-empty' },
-          dormant ? tr('tutor.dormant') : tr('tutor.empty'), createElement('br'), tr('tutor.empty.hint'))
+        ? createElement('div', { className: 'lks14-emptycard' },
+          createElement('div', { className: 'lks14-emptycard-title' }, dormant ? tr('tutor.dormant') : tr('tutor.empty')),
+          createElement('div', { className: 'lks14-emptycard-hint' }, tr('tutor.empty.hint')),
+          !dormant
+            ? createElement('button', {
+              className: 'lks-btn primary',
+              title: tr('chat.start.hint'),
+              onClick: () => { send(starters[0]?.message ?? tr('prompt.start')) },
+            }, tr('chat.start'))
+            : null)
         : rows.map((row, i) => chatRow(row, !dormant && i === lastAssistant ? { send } : undefined)),
       rows.length > 0 && rows[rows.length - 1]!.role === 'user'
         ? createElement('div', { className: 'lks14-thinking' }, createElement('i', null), createElement('i', null), createElement('i', null))
@@ -655,17 +731,32 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     ...(lesson?.artifacts ?? [])
       .filter(a => a.artifactType !== 'quiz')
       .map(a => createElement(ArtifactCard, { key: a.id, artifact: a as ArtifactRow, send })),
-    createElement('div', { className: 'lks14-starters' },
-      ...starters.map(s => createElement('button', {
-        key: s.label,
-        className: 'lks14-starter',
-        'aria-disabled': dormant || undefined,
-        title: dormant ? tr('tutor.dormant') : s.message,
-        onClick: () => { if (!dormant) send(s.message) },
-      }, s.label)),
-    ),
+    // B7: starters appear only after the conversation starts (upstream gates
+    // them on messages>0 — the empty state carries the CTA instead).
+    rows.length > 0
+      ? createElement('div', { className: 'lks14-starters' },
+        ...starters.map(s => createElement('button', {
+          key: s.label,
+          className: 'lks14-starter',
+          'aria-disabled': dormant || undefined,
+          title: dormant ? tr('tutor.dormant') : s.message,
+          onClick: () => { if (!dormant) send(s.message) },
+        }, s.label)))
+      : null,
     createElement('div', { className: 'lks14-composer' },
       createElement('div', { className: 'lks14-composer-card' },
+        // B4: the soul pills are the composer's first row (upstream ChatComposer).
+        createElement('div', { className: 'lks14-soulrow' },
+          createElement('span', { className: 'lks14-soullabel' }, tr('mode.label')),
+          createElement('span', { className: 'lks14-pills' },
+            ...MODES.map(mode => createElement('button', {
+              key: mode.id,
+              className: `lks14-pill${data?.mode === mode.id ? ' on' : ''}`,
+              'aria-pressed': String(data?.mode === mode.id),
+              'aria-disabled': dormant || undefined,
+              title: dormant ? tr('tutor.dormant') : tr(mode.hintKey),
+              onClick: () => { if (!dormant) fire(setMode(mode.id)) },
+            }, mode.id === 'direct' ? createElement(IconBoltFill16, { size: 12 }) : mode.id === 'guide' ? createElement(IconGoalOutline16, { size: 12 }) : createElement(IconBookFill16, { size: 12 }), tr(mode.labelKey))))),
         createElement('textarea', {
           className: 'lks14-composertext',
           placeholder: busy ? tr('composer.busy') : tr('tutor.empty.hint'),
@@ -906,12 +997,6 @@ function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyD
   const body: ReactNode = lesson === null
     ? createElement('div', { className: 'lks14-empty' }, tr('bb.empty'), createElement('br'), tr('bb.empty.hint'))
     : createElement('div', { className: 'lks14-notebody' },
-      createElement('div', { className: 'lks14-lessonhead' },
-        createElement('h2', null, lesson.title),
-        createElement('div', { className: 'lks14-meta' },
-          `${lesson.courseTitle} · ${statusTitle('study', lesson.status)}`
-          + (lesson.masteryPct === null ? '' : ` · ${tr('bb.mastery', { pct: lesson.masteryPct })}`)),
-      ),
       createElement('div', { className: 'lks14-viewtabs' },
         createElement('button', { className: `lks14-viewtab${tab === 'teach' ? ' on' : ''}`, 'aria-pressed': String(tab === 'teach'), onClick: () => { setTab('teach') } }, tr('viewtab.teach')),
         createElement('button', { className: `lks14-viewtab${tab === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(tab === 'cmap'), title: tr('viewtab.cmap.title'), onClick: () => { setTab('cmap') } }, createElement(IconGlobeOutline14, { size: 13 }), tr('viewtab.cmap')),
@@ -927,6 +1012,15 @@ function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyD
           },
         }, tr('bb.notes'), unseen.length > 0 ? createElement('span', { className: 'lks-viewtab-badge' }, String(unseen.length)) : null),
       ),
+      // B5: the lesson head sits under the tab capsule (upstream ContentTab kicker)
+      tab !== 'notes'
+        ? createElement('div', { className: 'lks14-lessonhead' },
+          createElement('h2', null, lesson.title),
+          createElement('div', { className: 'lks14-meta' },
+            `${lesson.courseTitle} · ${statusTitle('study', lesson.status)}`
+            + (lesson.masteryPct === null ? '' : ` · ${tr('bb.mastery', { pct: lesson.masteryPct })}`)),
+        )
+        : null,
       tab === 'teach'
         ? createElement('div', null,
           lesson.due ? createElement('div', { className: 'lks-ratecard', 'data-lks-rate': lesson.lessonId },
@@ -1046,7 +1140,6 @@ function NotebookPane({ data, deleteNote, send, companionEvent }: { data: StudyD
             ),
       )
   return createElement('div', { className: 'lks14-col lks14-note' },
-    createElement('div', { className: 'lks14-colhead' }, tr('col.bb')),
     body,
     createElement('div', { className: 'lks-propcard-err' }, error),
   )

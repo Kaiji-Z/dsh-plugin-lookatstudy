@@ -373,4 +373,62 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-searchrow{border-bottom-color:var(--border)}
 .lks-ui .lks14-searchrow-title{color:var(--ink-strong)}
 .lks-ui .lks14-searchrow-course{color:var(--ink-faint)}
+
+/* ══════════ B-track (P10b): the upstream rail frame + column skeletons ══════════ */
+/* the floating topbar (absolute over the scrolling panes) */
+.lks-ui .lks14-railtop{position:absolute;top:0;left:0;right:0;z-index:40;padding:8px;pointer-events:none}
+.lks-ui .lks-railtabs,.lks-ui .lks14-railhead{pointer-events:auto}
+.lks-ui .lks-railtabs{display:flex;padding:4px;border-radius:10px;gap:4px;margin-bottom:8px;
+  background:rgb(var(--surface-rail-rgb)/0.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.lks-ui .lks-railtab{flex:1;display:flex;align-items:center;justify-content:center;padding:6px 0;border-radius:8px;
+  font-size:12.5px;font-weight:700;color:rgb(255 255 255/0.5)}
+.lks-ui .lks-railtab.on{background:rgb(var(--brand-rgb)/0.2);color:var(--brand)}
+/* the glass title card: title row / mastery row / entry pills row */
+.lks-ui .lks14-railhead{display:flex;flex-direction:column;gap:6px}
+.lks-ui .lks14-railcard-row{display:flex;align-items:center;gap:8px}
+.lks-ui .lks14-railpct{flex:none;font-size:12px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,0.6)}
+.lks-ui .lks14-masterybar{flex:1}
+.lks-ui .lks-railpill{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;
+  background:rgb(255 255 255/0.05);box-shadow:inset 0 0 0 1px rgb(255 255 255/0.1);color:rgb(var(--ink-rgb)/0.6);font-size:11px;font-weight:700}
+.lks-ui .lks-railpill:hover{background:rgb(255 255 255/0.1)}
+.lks-ui .lks-railpill.due{background:rgb(var(--review-rgb)/0.2);box-shadow:inset 0 0 0 1px rgb(var(--review-rgb)/0.3);color:var(--review)}
+.lks-ui .lks-railpill-n{font-weight:800;font-variant-numeric:tabular-nums}
+/* the sliding two-pane body */
+.lks-ui .lks14-railbody{position:absolute;inset:0;overflow:hidden;z-index:10}
+.lks-ui .lks14-railtrack{display:flex;height:100%;width:200%;transition:transform .3s var(--ease-out-expo)}
+.lks-ui .lks14-railpane{width:50%;height:100%;position:relative}
+.lks-ui .lks14-railscroll{height:100%;overflow-y:auto;overflow-x:hidden;padding:196px 8px 16px}
+.lks-ui .lks-mapsec-list{display:flex;flex-direction:column;gap:24px}
+.lks-ui .lks-mapsec{padding:12px 8px 0}
+.lks-ui .lks14-railpane-import{height:100%;overflow-y:auto;padding:64px 12px 12px}
+.lks-ui .lks14-raillist{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.lks-ui .lks14-railcourse{text-align:left;padding:10px 12px;border-radius:12px;background:rgb(255 255 255/0.05);display:flex;flex-direction:column;gap:2px}
+.lks-ui .lks14-railcourse:hover{background:rgb(255 255 255/0.1)}
+.lks-ui .lks14-railcourse.on{background:rgb(var(--brand-rgb)/0.12);box-shadow:inset 0 0 0 1px rgb(var(--brand-rgb)/0.4)}
+.lks-ui .lks14-railcourse-title{font-size:13px;font-weight:700;color:var(--ink-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-ui .lks14-railcourse.on .lks14-railcourse-title{color:var(--brand)}
+.lks-ui .lks14-railcourse-sub{font-size:10.5px;color:rgb(var(--ink-rgb)/0.4)}
+.lks-ui .lks14-raildemo{margin-bottom:10px}
+/* the full-rail overlays (search / review) */
+.lks-ui .lks-railoverlay{position:absolute;inset:0;z-index:50;display:flex;flex-direction:column;gap:8px;padding:12px;overflow-y:auto;
+  background:rgb(var(--surface-rail-rgb)/0.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.lks-ui .lks-railoverlay-head{display:flex;gap:8px;align-items:center}
+.lks-ui .lks-railoverlay-head .lks14-search{flex:1}
+/* chat: thin current-lesson row (ThreadSwitcher empty-state voice) */
+.lks-ui .lks14-lessonrow{flex:none;padding:6px 14px;font-size:12px;font-weight:700;color:var(--ink-muted);opacity:.75}
+/* composer: the soul pills ride the capsule's first row */
+.lks-ui .lks14-soulrow{display:flex;align-items:center;gap:6px;padding:0 2px 6px}
+.lks-ui .lks14-soullabel{flex:none;font-size:11px;color:var(--ink-faint)}
+/* B6: assistant text is full-width prose (no card); user bubbles right-align */
+.lks-ui .lks14-msg-assistant{background:none;border:none;box-shadow:none;border-radius:0;padding:0;max-width:80ch;font-size:.9375rem}
+.lks-ui .lks14-msg-assistant.streaming{border:none;opacity:.85}
+.lks-ui .lks14-msg-user{align-self:flex-end;max-width:85%}
+/* B8: the empty state is a centered card with a 3D CTA */
+.lks-ui .lks14-emptycard{margin:auto;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:24px;max-width:320px}
+.lks-ui .lks14-emptycard-title{font-size:1rem;font-weight:800;color:var(--ink-strong)}
+.lks-ui .lks14-emptycard-hint{font-size:.825rem;color:var(--ink-muted);line-height:1.6}
+/* B5: notebook tab capsule + 960px reading column */
+.lks-ui .lks14-notebody{margin:0 auto;max-width:960px;width:100%;padding:12px 20px 24px;box-sizing:border-box}
+.lks-ui .lks14-viewtabs{background:rgb(var(--ink-rgb)/0.08);border-radius:999px;padding:3px;align-self:flex-start}
+.lks-ui .lks14-readbar{position:sticky;top:0;z-index:20;background:var(--surface-2);border-radius:10px}
 `

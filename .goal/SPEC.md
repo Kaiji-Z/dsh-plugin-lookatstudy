@@ -46,14 +46,14 @@
 
 ### B 轨 · 布局骨架（P10b，对齐上游 App.tsx/MapRail 骨架）
 
-- [ ] B1 rail 300px；天幕升 rail 全高（.lks14-rail 承载）；砍掉 课程/导师/黑板 三条 colhead；悬浮玻璃 tab 胶囊（地图/导入双面板横滑）+ 悬浮标题卡（标题/掌握条+%/搜索 pill/复习 pill+due 数/删课）；内容区独立滚动 + pt-48 顶部预留
-- [ ] B2 地图章节 space-y-6（24px）+ py-3/px-2 节奏
-- [ ] B3 宽度对调：聊天 `clamp(480px,36vw,800px)`、黑板 `flex-1 min-width:440px`
-- [ ] B4 模式药丸（风格：直讲/引导/实战 + 图标）移入 composer 胶囊第一行；导师列头位置改为细行显示当前课时（ThreadSwitcher 空态样式）
-- [ ] B5 黑板 tab 胶囊化（px-3 pt-3 pb-1）+ 内容 max-w-960 居中 + p-5；朗读条改 sticky 圆钮
-- [ ] B6 assistant 消息全文无卡排版（上游 ChatStream：prose max-w-80ch，无气泡卡）；user 右对齐 max-w-85% 圆角气泡保留
-- [ ] B7 starters 单行横滚 + `rows.length>0` 门控；空会话显示摘要卡 +「开始学习」3D CTA（发 starters[0]/专用提示词）
-- [ ] B8 聊天流 px-5 py-6 space-y-6；空态卡化（居中问候+摘要+CTA）
+- [x] B1 rail 300px；天幕升 rail 全高（.lks14-rail 承载）；砍掉 课程/导师/黑板 三条 colhead；悬浮玻璃 tab 胶囊（地图/导入双面板横滑）+ 悬浮标题卡（标题/掌握条+%/搜索 pill/复习 pill+due 数/删课）；内容区独立滚动 + pt-48 顶部预留
+- [x] B2 地图章节 space-y-6（24px）+ py-3/px-2 节奏
+- [x] B3 宽度对调：聊天 `clamp(480px,36vw,800px)`、黑板 `flex-1 min-width:440px`
+- [x] B4 模式药丸（风格：直讲/引导/实战 + 图标）移入 composer 胶囊第一行；导师列头位置改为细行显示当前课时（ThreadSwitcher 空态样式）
+- [x] B5 黑板 tab 胶囊化（px-3 pt-3 pb-1）+ 内容 max-w-960 居中 + p-5；朗读条改 sticky 圆钮
+- [x] B6 assistant 消息全文无卡排版（上游 ChatStream：prose max-w-80ch，无气泡卡）；user 右对齐 max-w-85% 圆角气泡保留
+- [x] B7 starters 单行横滚 + `rows.length>0` 门控；空会话显示摘要卡 +「开始学习」3D CTA（发 starters[0]/专用提示词）
+- [x] B8 聊天流 px-5 py-6 space-y-6；空态卡化（居中问候+摘要+CTA）
 
 ### C 轨 · 交互逻辑（P11a 快赢 + P11b 闭环）
 
@@ -140,3 +140,9 @@ P11b：
 - A1-A10 全部落地：upstream-theme.ts A-track 块（token 补全/孤岛覆盖/六个上游动画/toast 上游值/滚动条/prose 链接）、emoji→SVG（bolt/flame/arrow-up/close/maximize 五处）、scripts/audit-ui.mjs 审计门。
 - 审计探针抓到真 bug：UA `button{color:buttontext}`（黑）——修复为 `.lks-ui button{color:inherit;background-color:transparent;border-color:transparent}`（低特异性，组件规则全胜）。
 - 实测：249 tests + verify PASS + audit suspect=0 (exit 0)。
+
+### P10b 完成记录（2026-09-07）
+
+- B1-B8 全部落地：rail 300px + 全高天幕 + 悬浮 tab 胶囊（地图/导入横滑 translateX）+ 玻璃标题卡（标题/掌握条+%/搜索 pill/复习 pill+due 数/删课）；三条 colhead 全删；搜索/复习改全栏 overlay；宽度模型 chat `clamp(480px,45%,800px)`（行相对百分比——vw 基准在宿主容器内失真，实测 row 980 时 vw 版互踩最小宽）+ note flex 吃余量 min-440；模式药丸入 composer 首行（风格：+图标）；lesson 细行替代导师列头；notebody 960px 居中；assistant 全文无卡（B6 按上游）；starters 门控 rows>0 + 空态卡+3D CTA；readbar sticky。
+- 实测：250 tests + verify PASS + audit suspect=0 + 结构探针（colheads=0/rail 300/chat 480/note 500/tab 滑动/overlay 开合全过）。
+- 遗留到后续轨：空态摘要卡内容增强（上游含课程摘要）并入 C 轨；readbar 圆钮化并入 P11b。

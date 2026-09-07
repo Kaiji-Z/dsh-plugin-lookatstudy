@@ -191,6 +191,24 @@ test('the audit gate script exists with an exit-code contract', async () => {
   assert.match(src, /sat\(/, 'saturated brand hues are exempt by design')
 })
 
+test('the B-track skeleton: floating rail chrome, swapped widths, de-carded assistant (P10b)', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  // the rail frame: floating topbar over sliding panes, sky on the rail itself
+  assert.match(STUDY_CSS, /\.lks14-rail\{flex:0 0 300px/, 'the rail is upstream 300px with its own panes')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railtop\{position:absolute/, 'the tab capsule + title card float over the scrolling map')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railtrack\{[^}]*width:200%/, 'map/import panes slide horizontally')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railscroll\{[^}]*padding:196px/, 'the scroller reserves the floating chrome height (pt-48)')
+  assert.doesNotMatch(STUDY_CSS, /\.lks14-colhead\{/, 'the 课程/导师/黑板 column header rows are gone (upstream has none)')
+  // B3: the width logic swap
+  assert.match(STUDY_CSS, /\.lks14-chat\{flex:0 0 auto;width:clamp\(480px,45%,800px\)/, 'chat is the clamp column (row-relative %, fixed, never squeezed)')
+  assert.match(STUDY_CSS, /\.lks14-note\{flex:1 1 auto;min-width:440px/, 'the notebook takes the remaining width')
+  // B6: assistant prose is cardless
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-msg-assistant\{background:none/, 'assistant text is full-width prose, not a bubble card')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-msg-user\{align-self:flex-end;max-width:85%\}/, 'user bubbles right-align at 85%')
+  // B5: the 960px reading column
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-notebody\{margin:0 auto;max-width:960px/, 'notebook content centers at 960px')
+})
+
 test('the lookatstudy locale dictionaries keep zh/en parity and translate with fallback', async () => {
   const { ZH, EN, makeT } = await import('../src/client/locale.ts')
   const zhKeys = Object.keys(ZH).sort()
