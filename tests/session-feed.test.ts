@@ -155,3 +155,68 @@ test('the stop watermark disarms the host cancel wedge-open turn (C2 live catch)
   assert.equal(feedTurnActive(win([]), 3), false)
   assert.equal(feedLastSeq(undefined), 0)
 })
+
+// ——— D4: in-stream artifact hydration + the sediment backlog ———
+
+import { hydrateArtifactRows, sedimentBacklog, type ArtifactLike } from '../src/client/session-feed.ts'
+
+function quizArtifact(id: string, title: string, count: number): ArtifactLike {
+  return { id, artifactType: 'quiz', title, data: { questions: Array.from({ length: count }, () => ({ prompt: 'p', options: ['a', 'b'], answer: 0, explanation: 'e' })) } }
+}
+
+test('D4: a settled study_generate_quiz result keeps its rendered text and hydrates onto the matching artifact', () => {
+  const rows = feedRows(win([
+    entry({ type: 'user/message', seq: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '来张练习卡' }] } }),
+    entry({ type: 'tool/call', seq: 2, data: { callId: 'q1', tool: { name: 'study_generate_quiz' } } }),
+    entry({ type: 'tool/result', seq: 3, data: { message: { source: { kind: 'tool', callId: 'q1' }, content: [{ type: 'tool-result', toolCallId: 'q1', content: [{ type: 'text', text: 'Practice card (3 questions): 梯度下降练习' }] }] } } }),
+  ]))
+  assert.equal(rows[1]!.resultText, 'Practice card (3 questions): 梯度下降练习', 'the render text survives the fold (the payload join key)')
+  const artifacts = [quizArtifact('quiz-aaa', '其他卡', 2), quizArtifact('quiz-bbb', '梯度下降练习', 3)]
+  const hydrated = hydrateArtifactRows(rows, artifacts)
+  assert.deepEqual(hydrated.map(r => r.role), ['user', 'artifact'])
+  assert.equal(hydrated[1]!.artifactId, 'quiz-bbb', 'title + question count join (not the latest-of-type fallback)')
+  assert.equal(hydrated[1]!.artifactType, 'quiz')
+})
+
+test('D4: hydration falls back to the latest unclaimed artifact of the type and never double-claims', () => {
+  const mk = (id: string): FeedEntry[] => ([
+    entry({ type: 'tool/call', seq: 1, data: { callId: id, tool: { name: 'study_pose_guess' } } }),
+    entry({ type: 'tool/result', seq: 2, data: { message: { source: { kind: 'tool', callId: id }, content: [{ type: 'tool-result', toolCallId: id, content: [{ type: 'text', text: `Guess posed: prompt-${id}` }] }] } } }),
+  ])
+  const rows = feedRows(win([...mk('g1'), ...mk('g2')]))
+  const artifacts: ArtifactLike[] = [
+    { id: 'guess-1', artifactType: 'guess', title: 'guess', data: { prompt: 'other' } },
+    { id: 'guess-2', artifactType: 'guess', title: 'guess', data: { prompt: 'prompt-g2' } },
+  ]
+  const hydrated = hydrateArtifactRows(rows, artifacts)
+  assert.deepEqual(hydrated.map(r => [r.role, r.artifactId]), [['artifact', 'guess-2'], ['artifact', 'guess-1']],
+    'g1 has no prompt match → latest-unclaimed fallback takes guess-2; g2 then falls to guess-1; one artifact per row')
+})
+
+test('D4: unmatched, loading, failed, and non-artifact rows keep their chip', () => {
+  const rows = feedRows(win([
+    entry({ type: 'tool/call', seq: 1, data: { callId: 'loading', tool: { name: 'study_generate_quiz' } } }),
+    entry({ type: 'tool/call', seq: 2, data: { callId: 'failed', tool: { name: 'study_generate_quiz' } } }),
+    entry({ type: 'tool/result', seq: 3, data: { message: { source: { kind: 'tool', callId: 'failed' }, content: [], isError: true } } }),
+    entry({ type: 'tool/call', seq: 4, data: { callId: 'plain', tool: { name: 'study_lesson' } } }),
+    entry({ type: 'tool/result', seq: 5, data: { message: { source: { kind: 'tool', callId: 'plain' }, content: [{ type: 'tool-result', toolCallId: 'plain', content: [{ type: 'text', text: 'lesson' }] }] } } }),
+    entry({ type: 'tool/call', seq: 6, data: { callId: 'lagging', tool: { name: 'study_compare_table' } } }),
+    entry({ type: 'tool/result', seq: 7, data: { message: { source: { kind: 'tool', callId: 'lagging' }, content: [{ type: 'tool-result', toolCallId: 'lagging', content: [{ type: 'text', text: 'Compare table: X (2 rows)' }] }] } } }),
+  ]))
+  const hydrated = hydrateArtifactRows(rows, []) // empty artifacts = the state poll lagging
+  assert.deepEqual(hydrated.map(r => [r.role, r.toolState]),
+    [['tool', 'loading'], ['tool', 'error'], ['tool', 'done'], ['tool', 'done']],
+    'no artifacts → every chip stands in (hydration re-runs when the poll lands)')
+  assert.equal(hydrated[1]!.resultText, undefined, 'failed results carry no render text')
+  assert.equal(hydrated[2]!.resultText, 'lesson')
+})
+
+test('D4: the sediment backlog drops inline-rendered artifacts and orders unseen first (stable)', () => {
+  const a1 = quizArtifact('quiz-1', '一', 2)
+  const a2 = quizArtifact('quiz-2', '二', 2)
+  const a3 = { id: 'cmp-1', artifactType: 'compare_table', title: '对比', data: {} } as ArtifactLike
+  const backlog = sedimentBacklog([a1, a2, a3], new Set(['quiz-2']), ['cmp-1'])
+  assert.deepEqual(backlog.map(a => a.id), ['cmp-1', 'quiz-1'],
+    'inline quiz-2 drops out; unseen cmp-1 sorts ahead of seen quiz-1')
+  assert.deepEqual(sedimentBacklog([a1], new Set(), []).map(a => a.id), ['quiz-1'])
+})

@@ -13,7 +13,7 @@
  * @module dsh-plugin-lookatstudy/client/panel
  */
 
-import { createElement, useCallback, useEffect, useRef, useState } from 'react'
+import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
@@ -27,7 +27,7 @@ import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
 import { renderLessonConceptMap } from './diagrams.ts'
 import { speechSentencesOf } from '../vendor/speech-text.ts'
 import { speakMathInSentence } from '../vendor/math-speech.ts'
-import { feedRows, feedLastSeq, feedTurnActive } from './session-feed.ts'
+import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog } from './session-feed.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { QuizCard, type QuizData } from './quizcard.tsx'
@@ -1071,7 +1071,35 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     setMsgAudio(null)
     document.querySelectorAll('mark.lks-reading').forEach(m => { m.replaceWith(...m.childNodes) })
   }
-  const lastAssistant = rows.reduce((acc, row, i) => row.role === 'assistant' ? i : acc, -1)
+  // D4: settled artifact-tool rows hydrate into inline cards (pure — re-runs
+  // when the window rows or the state feed's artifacts change, so the state
+  // poll landing after the journal still hydrates). The backlog stack under
+  // the stream keeps what this window hasn't rendered, unseen first.
+  const rowsView = useMemo(() => hydrateArtifactRows(rows, lesson?.artifacts), [rows, lesson?.artifacts])
+  const inlineIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const row of rowsView) if (row.role === 'artifact' && row.artifactId !== undefined) ids.add(row.artifactId)
+    return ids
+  }, [rowsView])
+  const backlog = useMemo(() => lesson !== null ? sedimentBacklog(lesson.artifacts, inlineIds, unseenArtifacts(lesson.lessonId, lesson.artifacts)) : [], [lesson, inlineIds])
+  const inlineArtifactCard = (row: typeof rowsView[number]): ReactNode => {
+    if (lesson === null || row.artifactId === undefined) return null
+    const artifact = lesson.artifacts.find(a => a.id === row.artifactId)
+    // The state feed fell behind the fold — the chip stands in until it lands.
+    if (artifact === undefined) return chatRow({ ...row, role: 'tool', toolState: 'done' })
+    return createElement('div', { className: 'lks14-inline-artifact' },
+      artifact.artifactType === 'quiz'
+        ? createElement(QuizCard, {
+          lessonId: lesson.lessonId,
+          artifactId: artifact.id,
+          data: artifact.data as unknown as QuizData,
+          masteryPct: lesson.masteryPct,
+          send,
+          onFinished: (allCorrect: boolean) => { companionEvent(allCorrect ? 'celebrate' : 'encourage') },
+        })
+        : createElement(ArtifactCard, { artifact: artifact as ArtifactRow, send }))
+  }
+  const lastAssistant = rowsView.reduce((acc, row, i) => row.role === 'assistant' ? i : acc, -1)
   const [error, setError] = useState<string | null>(null)
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
@@ -1142,27 +1170,31 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
               onClick: () => { send(starters[0]?.message ?? tr('prompt.start')) },
             }, tr('chat.start'))
             : null)
-        : rows.map((row, i) => chatRow(row,
-          !dormant && i === lastAssistant ? { send } : undefined,
-          row.role === 'assistant'
-            ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, onPlay: playMessage, onStop: stopMessage }
-            : undefined)),
-      rows.length > 0 && rows[rows.length - 1]!.role === 'user'
+        : rowsView.map((row, i) => row.role === 'artifact'
+          ? inlineArtifactCard(row)
+          : chatRow(row,
+            !dormant && i === lastAssistant ? { send } : undefined,
+            row.role === 'assistant'
+              ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, onPlay: playMessage, onStop: stopMessage }
+              : undefined)),
+      rowsView.length > 0 && rowsView[rowsView.length - 1]!.role === 'user'
         ? createElement('div', { className: 'lks14-thinking' }, createElement('i', null), createElement('i', null), createElement('i', null))
         : null,
     ),
-    ...(lesson?.artifacts ?? [])
+    // D4: the sediment backlog — artifacts this window hasn't rendered inline,
+    // unseen first (the stream owns the live thread; this is the backlog).
+    ...backlog
       .filter(a => a.artifactType === 'quiz')
       .map(a => createElement(QuizCard, {
         key: a.id,
-        lessonId: lesson.lessonId,
+        lessonId: lesson!.lessonId,
         artifactId: a.id,
         data: a.data as unknown as QuizData,
-        masteryPct: lesson.masteryPct,
+        masteryPct: lesson!.masteryPct,
         send,
         onFinished: (allCorrect: boolean) => { companionEvent(allCorrect ? 'celebrate' : 'encourage') },
       })),
-    ...(lesson?.artifacts ?? [])
+    ...backlog
       .filter(a => a.artifactType !== 'quiz')
       .map(a => createElement(ArtifactCard, { key: a.id, artifact: a as ArtifactRow, send })),
     // B7: starters appear only after the conversation starts (upstream gates

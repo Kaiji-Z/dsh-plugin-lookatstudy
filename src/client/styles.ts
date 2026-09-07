@@ -87,6 +87,7 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14-pill:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
 .lks14-pill.on{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
 .lks14-stream{flex:1;overflow-y:auto;padding:20px 20px 24px;display:flex;flex-direction:column;gap:24px}
+.lks14-inline-artifact{align-self:stretch;max-width:100%;margin:2px 0}
 .lks14-msg{max-width:92%;line-height:1.65;font-size:13.5px}
 .lks14-msg-user{align-self:flex-end;background:var(--dsw-alias-bg-layer-2);border-radius:12px 12px 3px 12px;padding:7px 11px;white-space:pre-wrap}
 .lks14-msg-assistant{align-self:flex-start;background:var(--dsw-alias-bg-layer-1);border-radius:12px 12px 12px 3px;padding:8px 12px}

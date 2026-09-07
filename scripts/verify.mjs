@@ -208,6 +208,11 @@ gate('bundle', () => {
     [client, 'weatherPhysFor', 'the weather physics table'],
     [client, 'attachSky', 'the vendored sky painter'],
     [client, 'attachOrbWeather', 'the vendored orb weather painter'],
+    // 0.18.0 D4: in-stream artifact hydration + the sediment backlog
+    [client, 'hydrateArtifactRows', 'the artifact row hydrator'],
+    [client, 'sedimentBacklog', 'the sediment backlog fold'],
+    [client, 'lks14-inline-artifact', 'the inline artifact wrapper'],
+    [client, 'ARTIFACT_TOOLS', 'the artifact tool map'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]
   const forbidden = [

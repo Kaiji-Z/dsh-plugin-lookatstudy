@@ -13,10 +13,15 @@ import { tr, type StudyT } from './locale.ts'
 /** One rendered tutor chat row (fed by session-feed's fold). */
 export interface ChatRow {
   readonly key: string
-  readonly role: 'user' | 'assistant' | 'error' | 'streaming' | 'thinking' | 'reasoning' | 'tool'
+  readonly role: 'user' | 'assistant' | 'error' | 'streaming' | 'thinking' | 'reasoning' | 'tool' | 'artifact'
   readonly text: string
   /** tool rows only: the chip's state (loading → done/error). */
   readonly toolState?: 'loading' | 'done' | 'error'
+  /** settled tool rows only: the rendered result text (D4 hydration input). */
+  readonly resultText?: string
+  /** artifact rows only (D4): the matched sediment artifact. */
+  readonly artifactId?: string
+  readonly artifactType?: string
 }
 
 /** Small inline error surface for failed write actions (shared with settings). */

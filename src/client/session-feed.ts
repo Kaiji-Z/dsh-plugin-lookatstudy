@@ -17,7 +17,7 @@ export interface FeedEvent {
   readonly seq: number
   readonly data?: {
     readonly content?: readonly { readonly type?: string; readonly text?: string }[]
-    readonly message?: { readonly content?: readonly { readonly kind?: string; readonly type?: string; readonly text?: string }[]; readonly blocks?: readonly { readonly kind?: string; readonly text?: string }[] }
+    readonly message?: { readonly content?: readonly { readonly kind?: string; readonly type?: string; readonly text?: string; readonly content?: readonly { readonly type?: string; readonly text?: string }[] }[]; readonly blocks?: readonly { readonly kind?: string; readonly text?: string }[]; readonly isError?: boolean; readonly source?: { readonly callId?: string } }
     readonly chunk?: { readonly type?: string; readonly text?: string }
     readonly attemptId?: string
     readonly source?: { readonly kind?: string }
@@ -102,6 +102,126 @@ export function feedLastSeq(window: FeedWindow | undefined): number {
 }
 
 /**
+ * The artifact-emitting tools (D4): a settled result row for one of these
+ * hydrates into an inline artifact card (the structured payload itself never
+ * rides the journal — only the one-line render — so the state feed's
+ * lesson.artifacts is the payload source and the render text is the join key).
+ */
+export const ARTIFACT_TOOLS: Readonly<Record<string, string>> = {
+  study_generate_quiz: 'quiz',
+  study_pose_guess: 'guess',
+  study_compare_table: 'compare_table',
+  study_draw_diagram: 'diagram',
+  study_code_walkthrough: 'code_walkthrough',
+}
+
+/** The rendered text of a tool/result event (live shape: tool-result blocks wrapping text blocks; legacy arm: data.content). */
+function resultRenderedText(event: FeedEvent): string {
+  const message = event.data?.message
+  const blocks = message?.content ?? message?.blocks ?? []
+  const parts: string[] = []
+  for (const block of blocks) {
+    const inner = block.content
+    if (inner !== undefined) {
+      for (const part of inner) if ((part.type ?? 'text') === 'text' && part.text !== undefined && part.text !== '') parts.push(part.text)
+    } else if ((block.kind ?? block.type) === 'text' && block.text !== undefined && block.text !== '') {
+      parts.push(block.text)
+    }
+  }
+  if (parts.length === 0) {
+    const content = event.data?.content
+    if (content !== undefined) {
+      for (const part of content) if ((part.type ?? 'text') === 'text' && part.text !== undefined && part.text !== '') parts.push(part.text)
+    }
+  }
+  return parts.join('\n\n').trim()
+}
+
+/** Structural slice of a state-feed artifact (the hydration payload source). */
+export interface ArtifactLike {
+  readonly id: string
+  readonly artifactType: string
+  readonly title: string
+  readonly data?: Record<string, unknown>
+}
+
+/** The title (+question count for quizzes) a tool's render text carries, per artifact type. */
+function parseRendered(type: string, text: string): { title: string | null; count: number | null } {
+  if (type === 'quiz') {
+    const m = /^Practice card \((\d+) questions\): ([\s\S]*)$/.exec(text)
+    if (m === null) return { title: null, count: null }
+    const count = Number(m[1])
+    let title: string = m[2] ?? ''
+    title = title.replace(/ \(already recorded\)$/, '')
+    title = title.replace(/ — warnings: [\s\S]*$/, '')
+    return { title, count }
+  }
+  const arm = type === 'compare_table'
+    ? /^Compare table: ([\s\S]*) \(\d+ rows\)$/.exec(text)
+    : type === 'diagram'
+      ? /^Diagram: ([\s\S]*) \([a-z-]+\)$/.exec(text)
+      : type === 'code_walkthrough'
+        ? /^Code walkthrough: ([\s\S]*) \(\d+ segments\)$/.exec(text)
+        : type === 'guess'
+          ? /^Guess posed: ([\s\S]*)$/.exec(text)
+          : null
+  return { title: arm !== null ? (arm[1] ?? '') : null, count: null }
+}
+
+/**
+ * Replace settled artifact-tool chip rows with inline artifact rows (D4): the
+ * journal carries only the one-line render, so each result joins to a
+ * state-feed artifact by type + rendered title (question count for quizzes,
+ * prompt for guesses), falling back to the latest unclaimed artifact of the
+ * type; one artifact hydrates at most one row (re-sends render `created:false`
+ * with the same content hash). Unmatched rows keep their chip — the state
+ * poll may lag the journal, and hydration re-runs on every poll.
+ * Pure; the panel re-runs it on either input changing.
+ */
+export function hydrateArtifactRows(rows: readonly ChatRow[], artifacts?: readonly ArtifactLike[]): ChatRow[] {
+  if (artifacts === undefined || artifacts.length === 0) return [...rows]
+  const claimed = new Set<string>()
+  const out: ChatRow[] = []
+  for (const row of rows) {
+    const type = row.role === 'tool' && row.toolState === 'done' && row.resultText !== undefined
+      ? ARTIFACT_TOOLS[row.text]
+      : undefined
+    if (type === undefined) { out.push(row); continue }
+    const parsed = parseRendered(type, row.resultText)
+    const unclaimed = artifacts.filter(a => a.artifactType === type && !claimed.has(a.id))
+    let match: ArtifactLike | undefined
+    if (parsed.title !== null) {
+      match = unclaimed.find(a => a.title === parsed.title
+        || (type === 'guess' && typeof a.data?.prompt === 'string' && a.data.prompt === parsed.title))
+      if (match === undefined && type === 'quiz' && parsed.count !== null) {
+        match = unclaimed.find(a => {
+          const qs = a.data?.questions
+          return Array.isArray(qs) && qs.length === parsed.count && a.title === parsed.title
+        })
+      }
+    }
+    if (match === undefined) match = unclaimed[unclaimed.length - 1]
+    if (match === undefined) { out.push(row); continue }
+    claimed.add(match.id)
+    out.push({ key: row.key, role: 'artifact', text: match.title, artifactId: match.id, artifactType: type })
+  }
+  return out
+}
+
+/**
+ * The sediment backlog under the stream (D4): the lesson's artifacts minus the
+ * ones already rendered inline in this window, unseen ones first — the stack
+ * is the not-yet-seen backlog while the stream owns the live thread.
+ * Pure (stable sort).
+ */
+export function sedimentBacklog(artifacts: readonly ArtifactLike[], inlineIds: ReadonlySet<string>, unseen: readonly string[] = []): ArtifactLike[] {
+  const u = new Set(unseen)
+  return artifacts
+    .filter(a => !inlineIds.has(a.id))
+    .sort((a, b) => Number(u.has(b.id)) - Number(u.has(a.id)))
+}
+
+/**
  * Fold one event-window snapshot into ordered chat rows. The transient
  * `text-delta` chunks of the most recent attempt accumulate into a single
  * streaming row (the durable `assistant/message` replaces it on settlement).
@@ -153,7 +273,9 @@ export function feedRows(window: FeedWindow | undefined): ChatRow[] {
           const idx = rows.findIndex(r => r.key === `t${rid}` && r.role === 'tool')
           if (idx >= 0) {
             const failed = event.data?.message?.isError === true || event.data?.error !== undefined
-            rows[idx] = { ...rows[idx]!, toolState: failed ? 'error' : 'done' }
+            // D4: keep the rendered text — artifact-tool results hydrate into
+            // inline cards (the structured payload lives in the state feed).
+            rows[idx] = { ...rows[idx]!, toolState: failed ? 'error' : 'done', resultText: failed ? undefined : resultRenderedText(event) }
           }
         }
       }
