@@ -757,6 +757,14 @@ export const UPSTREAM_CSS = `
 .lks-ui[data-lks-theme='light'] .lks-stream-note{background:rgb(255 255 255/0.92)}
 .lks-ui[data-lks-theme='light'] .lks14-importprog{background:rgb(255 255 255/0.85);border-color:var(--border-faint)}
 .lks-ui[data-lks-theme='light'] .lks14-railcourse{background:rgb(0 0 0/0.03);box-shadow:inset 0 0 0 1px var(--border-faint)}
+.lks-ui[data-lks-theme='light'] .lks14-importprog-note,.lks-ui[data-lks-theme='light'] .lks14-importprog-src{color:var(--ink-muted)}
+.lks-ui[data-lks-theme='light'] .lks14-importprog-cancel{color:var(--ink-muted)}
+.lks-ui[data-lks-theme='light'] .lks14-importprog-cancel:hover{color:var(--warning-dark)}
+.lks-ui[data-lks-theme='light'] .lks14-importprog-step.done .lks14-importprog-text{color:var(--ink-muted)}
+.lks-ui[data-lks-theme='light'] .lks14-importprog-step.working .lks14-importprog-text{color:var(--ink-strong)}
+.lks-ui[data-lks-theme='light'] .lks14-importprog-step.pending .lks14-importprog-text{color:var(--ink-faint)}
+.lks-ui[data-lks-theme='light'] .lks14-importprog-step.pending .lks14-importprog-dots{border-color:var(--border)}
+.lks-ui[data-lks-theme='light'] .lks14-importprog-elapsed{color:var(--ink-muted)}
 /* ambient glyph motion sleeps under reduced-motion (A7 never had a guard) */
 @media (prefers-reduced-motion: reduce){
   .lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph svg,.lks-ui .lks-hdr-xp .lks-hdr-glyph,.lks-ui .lks-hdr-streak .lks-hdr-glyph{animation:none}
