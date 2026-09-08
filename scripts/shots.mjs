@@ -41,6 +41,10 @@ await fetch(`${base}/lookatstudy/api/focus?token=${token}`, {
   body: JSON.stringify({ lessonId: L0 }),
 })
 await page.waitForTimeout(4000)
+// KaTeX/mermaid ride CDNs — wait until the notebook's formulas actually render
+// (the overview shot otherwise catches the raw $$…$$ source)
+await page.waitForSelector('.lks14-note .katex', { timeout: 20000 }).catch(() => {})
+await page.waitForTimeout(1200)
 const panel = await rectOf('.lks14')
 if (panel === null) throw new Error('panel not found')
 await page.screenshot({ path: 'docs/media/overview.png', clip: panel })

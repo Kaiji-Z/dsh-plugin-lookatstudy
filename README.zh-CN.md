@@ -11,10 +11,12 @@
 </p>
 <p align="center"><b>「学习」面板</b> — 1:1 复刻 LookatStudy 的 UI（面板实时跟随宿主的深浅色切换）：悬浮的 XP/连击应用头、三栏表面阶梯（课程栏 / 导师 / 黑板，按色阶递进）、3D 按压式按钮、对话中的打字动画；从侧栏的「学习」行打开。</p>
 
-| 课程栏 | 讲解 | 🕸 概念图 |
-|---|---|---|
-| <img src="docs/media/course-rail.png" width="100%" alt="课程栏列表"> | <img src="docs/media/blackboard-lesson.png" width="100%" alt="讲解课程页"> | <img src="docs/media/concept-map.png" width="100%" alt="概念图"> |
-| **课程栏** — 课程树收敛为安静的列表（有意偏离上游的游戏化地图）：可折叠的章节头带完成/总数，课时行携带状态角标（锁定 / 可学 / 进行中 / 已掌握皇冠 / 紫色考试），行内掌握度进度条、到期徽标、流式转圈，每种状态都有悬停解释；聚焦行品牌色描边。 | **讲解** — 服务端消毒后的 Markdown 按需富渲染：KaTeX 公式、语法高亮代码（共享的复制按钮代码块）、mermaid 图带可缩放画布舞台（CDN 加载，离线静默降级）。 | **🕸 概念图** — 本课的知识组件排布成 draw.io 风格的概念图（内置 ELK 布局，无外部服务）。 |
+<p align="center">
+  <img src="docs/media/course-rail.png" alt="课程栏列表" height="440">
+  <img src="docs/media/blackboard-lesson.png" alt="讲解课程页" height="440">
+  <img src="docs/media/concept-map.png" alt="概念图" height="440">
+</p>
+<p align="center"><b>课程栏</b> — 课程树收敛为安静的列表：状态角标、行内掌握度条、到期徽标，处处有悬停说明 &nbsp;·&nbsp; <b>讲解</b> — 服务端消毒后的 Markdown 按需富渲染：KaTeX、语法高亮代码、mermaid &nbsp;·&nbsp; <b>🕸 概念图</b> — 本课知识组件排成概念图，弱项琥珀色标出。</p>
 
 ## 安装
 
