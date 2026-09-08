@@ -11,11 +11,21 @@ Turn any markdown document, local folder, or GitHub learning repository into a g
 </p>
 <p align="center"><b>The 学习 panel</b> — LookatStudy's UI 1:1 in the host's light theme (the panel follows the host's dark/light switch live): the floating XP/streak app header, the three-column surface ladder (rail / chat / notebook, depth by color step), 3D push-down buttons, and the chat's typing dots; opened from the sidebar's 学习 row.</p>
 
-| 图 | 说明 |
-|---|---|
-| <img src="docs/media/course-rail.png" width="300" alt="Course rail list"> | **课程栏** — the course tree as a quiet list (a deliberate deviation from upstream's gamified map): collapsible section heads with done/total counts, lesson rows carrying the status glyph (locked / available / in-progress / mastered crown / purple exam), inline mastery bars, due badges, streaming spinners, and hover tooltips that explain every state; the focused row is brand-edged. |
-| <img src="docs/media/blackboard-lesson.png" width="500" alt="讲解 lesson page"> | **讲解** — server-sanitized markdown rendered rich on demand: KaTeX formulas, syntax-highlighted code (shared copy-to-clipboard blocks), mermaid diagrams with a zoomable canvas stage (CDN loaders, silent degrade offline), and the bilingual interleave when a translation exists. |
-| <img src="docs/media/concept-map.png" width="500" alt="Concept map"> | **🕸 概念图** — the lesson's knowledge components laid out as a draw.io-style concept graph (bundled ELK layout, no external service); weak concepts (mastery <70%) glow amber. |
+<table>
+  <tr><th width="46%" align="left">图</th><th align="left">说明</th></tr>
+  <tr>
+    <td><img src="docs/media/course-rail.png" width="100%" alt="Course rail list"></td>
+    <td valign="top"><b>课程栏</b> — the course tree as a quiet list (a deliberate deviation from upstream's gamified map): collapsible section heads with done/total counts, lesson rows carrying the status glyph (locked / available / in-progress / mastered crown / purple exam), inline mastery bars, due badges, streaming spinners, and hover tooltips that explain every state; the focused row is brand-edged.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/blackboard-lesson.png" width="100%" alt="讲解 lesson page"></td>
+    <td valign="top"><b>讲解</b> — server-sanitized markdown rendered rich on demand: KaTeX formulas, syntax-highlighted code (shared copy-to-clipboard blocks), mermaid diagrams with a zoomable canvas stage (CDN loaders, silent degrade offline), and the bilingual interleave when a translation exists.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/media/concept-map.png" width="100%" alt="Concept map"></td>
+    <td valign="top"><b>🕸 概念图</b> — the lesson's knowledge components laid out as a draw.io-style concept graph (bundled ELK layout, no external service); weak concepts (mastery &lt;70%) glow amber.</td>
+  </tr>
+</table>
 
 ## Install
 
