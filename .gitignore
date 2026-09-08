@@ -14,3 +14,5 @@ livetest-align-err.log
 livetest-state.json
 .playwright-mcp/
 p10b-shot.png
+critiqueB*.png
+recritiqueA*.png
