@@ -1788,7 +1788,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             row.role === 'assistant'
               ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, onPlay: playMessage, onStop: stopMessage }
               : undefined)),
-      rowsView.length > 0 && rowsView[rowsView.length - 1]!.role === 'user' && (busy || feedGen)
+      rowsView.length > 0 && rowsView[rowsView.length - 1]!.role === 'user' && busy
         ? createElement('div', { className: 'lks14-thinking' }, createElement('i', null), createElement('i', null), createElement('i', null))
         : null,
     ),
