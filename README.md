@@ -1,22 +1,10 @@
-# dsh-plugin-lookatstudy
-
-**English** | [简体中文](README.zh-CN.md)
-
-Turn any markdown document, local folder, or GitHub learning repository into a guided course inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — your dsh agent becomes a full AI tutor with the interaction design of [LookatStudy](https://github.com/Kaiji-Z/LookatStudy): per-concept knowledge tracking, mastery-driven progression, spaced repetition, mastery proposals, friction awareness, learner memory, a Cornell notebook, an in-chat proposal card, exam mode with star grades, XP & streak, bilingual lessons, read-aloud (Edge TTS with a system-voice fallback), and a rich blackboard (KaTeX math, syntax-highlighted code, mermaid diagrams, mindmap & concept-map views). Learning engine modules are vendored from LookatStudy (MIT).
-
 ## Screenshots
 
-<p align="center">
-  <img src="docs/media/overview.png" alt="The three-column study panel (light theme)" width="100%">
-</p>
-<p align="center"><b>The 学习 panel</b> — LookatStudy's UI 1:1 in the host's light theme (the panel follows the host's dark/light switch live): the floating XP/streak app header, the three-column surface ladder (rail / chat / notebook, depth by color step), 3D push-down buttons, and the chat's typing dots; opened from the sidebar's 学习 row.</p>
-
-<p align="center">
-  <img src="docs/media/course-rail.png" alt="Course rail list" height="440">
-  <img src="docs/media/blackboard-lesson.png" alt="讲解 lesson page" height="440">
-  <img src="docs/media/concept-map.png" alt="Concept map" height="440">
-</p>
-<p align="center"><b>课程栏</b> — the course tree as a quiet list: status glyphs, inline mastery bars, due badges, everything hover-explained &nbsp;·&nbsp; <b>讲解</b> — server-sanitized markdown rendered rich on demand: KaTeX, syntax-highlighted code, mermaid &nbsp;·&nbsp; <b>🕸 概念图</b> — the lesson's knowledge components as a graph, weak ones amber.</p>
+| 图 | 说明 |
+|---|---|
+| <img src="docs/media/course-rail.png" width="280" alt="Course rail list"> | **课程栏** — the course tree as a quiet list (a deliberate deviation from upstream's gamified map): collapsible section heads with done/total counts, lesson rows carrying the status glyph (locked / available / in-progress / mastered crown / purple exam), inline mastery bars, due badges, streaming spinners, and hover tooltips that explain every state; the focused row is brand-edged. |
+| <img src="docs/media/blackboard-lesson.png" width="420" alt="讲解 lesson page"> | **讲解** — server-sanitized markdown rendered rich on demand: KaTeX formulas, syntax-highlighted code (shared copy-to-clipboard blocks), mermaid diagrams with a zoomable canvas stage (CDN loaders, silent degrade offline), and the bilingual interleave when a translation exists. |
+| <img src="docs/media/concept-map.png" width="420" alt="Concept map"> | **🕸 概念图** — the lesson's knowledge components laid out as a draw.io-style concept graph (bundled ELK layout, no external service); weak concepts (mastery <70%) glow amber. |
 
 ## Install
 
