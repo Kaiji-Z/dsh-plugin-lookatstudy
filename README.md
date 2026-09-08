@@ -13,9 +13,9 @@ Turn any markdown document, local folder, or GitHub learning repository into a g
 
 | 图 | 说明 |
 |---|---|
-| <img src="docs/media/course-rail.png" width="280" alt="Course rail list"> | **课程栏** — the course tree as a quiet list (a deliberate deviation from upstream's gamified map): collapsible section heads with done/total counts, lesson rows carrying the status glyph (locked / available / in-progress / mastered crown / purple exam), inline mastery bars, due badges, streaming spinners, and hover tooltips that explain every state; the focused row is brand-edged. |
-| <img src="docs/media/blackboard-lesson.png" width="420" alt="讲解 lesson page"> | **讲解** — server-sanitized markdown rendered rich on demand: KaTeX formulas, syntax-highlighted code (shared copy-to-clipboard blocks), mermaid diagrams with a zoomable canvas stage (CDN loaders, silent degrade offline), and the bilingual interleave when a translation exists. |
-| <img src="docs/media/concept-map.png" width="420" alt="Concept map"> | **🕸 概念图** — the lesson's knowledge components laid out as a draw.io-style concept graph (bundled ELK layout, no external service); weak concepts (mastery <70%) glow amber. |
+| <img src="docs/media/course-rail.png" width="300" alt="Course rail list"> | **课程栏** — the course tree as a quiet list (a deliberate deviation from upstream's gamified map): collapsible section heads with done/total counts, lesson rows carrying the status glyph (locked / available / in-progress / mastered crown / purple exam), inline mastery bars, due badges, streaming spinners, and hover tooltips that explain every state; the focused row is brand-edged. |
+| <img src="docs/media/blackboard-lesson.png" width="500" alt="讲解 lesson page"> | **讲解** — server-sanitized markdown rendered rich on demand: KaTeX formulas, syntax-highlighted code (shared copy-to-clipboard blocks), mermaid diagrams with a zoomable canvas stage (CDN loaders, silent degrade offline), and the bilingual interleave when a translation exists. |
+| <img src="docs/media/concept-map.png" width="500" alt="Concept map"> | **🕸 概念图** — the lesson's knowledge components laid out as a draw.io-style concept graph (bundled ELK layout, no external service); weak concepts (mastery <70%) glow amber. |
 
 ## Install
 
