@@ -1,3 +1,9 @@
+# dsh-plugin-lookatstudy
+
+[English](README.md) | **简体中文**
+
+把任意 Markdown 文档、本地文件夹或 GitHub 学习仓库，变成 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）里的一门引导式课程——你的 dsh 智能体成为一位具备 [LookatStudy](https://github.com/Kaiji-Z/LookatStudy) 交互设计的完整 AI 导师：逐概念的知识追踪、掌握度驱动推进、间隔重复、掌握度提案、卡点感知、学习者记忆、康奈尔笔记、对话内提案卡、星级考试模式、XP 与连击打卡、双语课程、朗读（Edge TTS，离线回退系统语音），以及一块内容丰富的黑板（KaTeX 公式、语法高亮代码、mermaid 图、脑图与概念图视图）。学习引擎模块自 LookatStudy（MIT）vendored 而来。
+
 ## 截图
 
 <p align="center">
