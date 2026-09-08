@@ -216,7 +216,10 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-lessorow-due{flex:none;min-width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;background:var(--review);color:#fff;font-size:10px;font-weight:800;box-shadow:0 0 0 2px var(--surface-1)}
 .lks-ui .lks-lessorow-spin{flex:none;display:flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:999px;background:var(--surface-0);color:var(--accent);box-shadow:0 2px 8px -2px rgb(var(--shadow-rgb)/0.45);pointer-events:none;animation:lks-spin 1s linear infinite}
 /* the floating rail head card (upstream map-header card) */
-.lks-ui .lks14-railhead{background:rgb(var(--surface-rail-rgb)/0.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgb(255 255 255/0.06);border-radius:12px;padding:6px 8px}
+.lks-ui .lks14-railhead{background:rgb(var(--surface-rail-rgb)/0.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgb(255 255 255/0.06);border-radius:12px;padding:5px 7px;align-items:stretch;gap:4px}
+.lks-ui .lks14-railhead.withtabs{padding-top:4px}
+.lks-ui .lks14-railhead.withtabs .lks-railtabs{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0;margin-bottom:0;border-radius:0}
+.lks-ui .lks14-railhead.withtabs .lks-railtab{padding:2px 0}
 .lks-ui .lks14-railtitle{color:#fff;font-weight:800;font-size:.875rem;text-shadow:0 1px 3px rgba(0,0,0,0.6)}
 .lks-ui .lks14-railsub{color:rgb(var(--ink-rgb)/0.6)}
 .lks-ui .lks14-search{background:rgb(0 0 0/0.25);border:1px solid rgb(255 255 255/0.15);color:var(--ink-strong);border-radius:10px}
@@ -316,15 +319,15 @@ export const UPSTREAM_CSS = `
 
 /* ══════════ B-track (P10b): the upstream rail frame + column skeletons ══════════ */
 /* the floating topbar (absolute over the scrolling panes) */
-.lks-ui .lks14-railtop{position:absolute;top:0;left:0;right:0;z-index:40;padding:8px;pointer-events:none}
+.lks-ui .lks14-railtop{position:absolute;top:0;left:0;right:0;z-index:40;padding:6px;pointer-events:none}
 .lks-ui .lks-railtabs,.lks-ui .lks14-railhead{pointer-events:auto}
-.lks-ui .lks-railtabs{display:flex;padding:3px;border-radius:9px;gap:3px;margin-bottom:6px;
+.lks-ui .lks-railtabs{display:flex;padding:2px;border-radius:9px;gap:3px;margin-bottom:4px;
   background:rgb(var(--surface-rail-rgb)/0.55);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
-.lks-ui .lks-railtab{flex:1;display:flex;align-items:center;justify-content:center;padding:4px 0;border-radius:7px;
+.lks-ui .lks-railtab{flex:1;display:flex;align-items:center;justify-content:center;padding:3px 0;border-radius:7px;
   font-size:12px;font-weight:700;color:rgb(255 255 255/0.5)}
 .lks-ui .lks-railtab.on{background:rgb(var(--brand-rgb)/0.2);color:var(--brand)}
 /* the glass title card: title row / mastery row / entry pills row */
-.lks-ui .lks14-railhead{display:flex;flex-direction:column;gap:6px}
+.lks-ui .lks14-railhead{display:flex;flex-direction:column;gap:3px;margin-top:0}
 .lks-ui .lks14-railcard-row{display:flex;align-items:center;gap:8px}
 .lks-ui .lks14-railpct{flex:none;font-size:12px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,0.6)}
 .lks-ui .lks14-masterybar{flex:1}
@@ -337,7 +340,7 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-railbody{position:absolute;inset:0;overflow:hidden;z-index:10}
 .lks-ui .lks14-railtrack{display:flex;height:100%;width:200%;transition:transform .3s var(--ease-out-expo)}
 .lks-ui .lks14-railpane{width:50%;height:100%;position:relative}
-.lks-ui .lks14-railscroll{height:100%;overflow-y:auto;overflow-x:hidden;padding:118px 8px 16px}
+.lks-ui .lks14-railscroll{height:100%;overflow-y:auto;overflow-x:hidden;padding:112px 8px 16px}
 .lks-ui .lks14-railpane-import{height:100%;overflow-y:auto;padding:64px 12px 12px}
 .lks-ui .lks14-raillist{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
 .lks-ui .lks14-railcourse{text-align:left;padding:10px 12px;border-radius:12px;background:rgb(255 255 255/0.05);display:flex;flex-direction:column;gap:2px}
@@ -710,8 +713,9 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-threadlabel{color:var(--ink-faint)}
 /* ── the distilled two-row head (0.19): identity+pct+delete over a hairline
    mastery bar, then search/review/worldswitch sharing one tools row ── */
-.lks-ui .lks14-railcard-row.main{min-width:0}
-.lks-ui .lks14-railcard-row.main .lks-set-select,.lks-ui .lks14-railcard-row.main .lks14-railtitle{flex:1;min-width:0}
+.lks-ui .lks14-railcard-row.main{min-width:0;max-width:100%;overflow:hidden}
+.lks-ui .lks14-railcard-row.main .lks-set-select,.lks-ui .lks14-railcard-row.main .lks14-railtitle{flex:1 1 0;min-width:0;width:auto}
+.lks-ui .lks14-railcard-row.main .lks-set-select{padding:2px 6px;font-size:12px;border-radius:7px}
 .lks-ui .lks14-railcard-row.tools{gap:4px}
 .lks-ui .lks14-railcard-row.tools .lks-railpill{flex:none}
 .lks-ui .lks14-masteryhair{height:3px;border-radius:2px;background:rgb(0 0 0/0.4);overflow:hidden;flex:none;cursor:help}
@@ -751,6 +755,8 @@ export const UPSTREAM_CSS = `
 .lks-ui[data-lks-theme='light'] .lks14-masteryhair{background:rgb(0 0 0/0.1)}
 .lks-ui[data-lks-theme='light'] .lks-worldswitch{background:rgb(0 0 0/0.05)}
 .lks-ui[data-lks-theme='light'] .lks-stream-note{background:rgb(255 255 255/0.92)}
+.lks-ui[data-lks-theme='light'] .lks14-importprog{background:rgb(255 255 255/0.85);border-color:var(--border-faint)}
+.lks-ui[data-lks-theme='light'] .lks14-railcourse{background:rgb(0 0 0/0.03);box-shadow:inset 0 0 0 1px var(--border-faint)}
 /* ambient glyph motion sleeps under reduced-motion (A7 never had a guard) */
 @media (prefers-reduced-motion: reduce){
   .lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph svg,.lks-ui .lks-hdr-xp .lks-hdr-glyph,.lks-ui .lks-hdr-streak .lks-hdr-glyph{animation:none}

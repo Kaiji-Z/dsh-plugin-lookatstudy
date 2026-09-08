@@ -999,17 +999,20 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
     return () => { cancelled = true; clearTimeout(timer) }
   }, [query, selectedCourse, data, searchLessons])
 
-  // The floating topbar: tab capsule + (map pane) the glass title card.
+  // The floating topbar: one glass card — the tab row lives INSIDE the head
+  // (0.19 re-critique: two stacked cards cost ~10px of reserve and read as
+  // chrome-on-chrome); the import pane keeps the bare tab row.
+  const railtabs = createElement('div', { className: 'lks-railtabs' },
+    ...(['map', 'import'] as const).map(tab => createElement('button', {
+      key: tab,
+      className: `lks-railtab${panel === tab ? ' on' : ''}`,
+      'aria-pressed': String(panel === tab),
+      onClick: () => { setPanel(tab) },
+    }, tr(tab === 'map' ? 'map.tab.map' : 'map.tab.import'))))
   const topbar: ReactNode = data === null ? null : createElement('div', { className: 'lks14-railtop' },
-    createElement('div', { className: 'lks-railtabs' },
-      ...(['map', 'import'] as const).map(tab => createElement('button', {
-        key: tab,
-        className: `lks-railtab${panel === tab ? ' on' : ''}`,
-        'aria-pressed': String(panel === tab),
-        onClick: () => { setPanel(tab) },
-      }, tr(tab === 'map' ? 'map.tab.map' : 'map.tab.import')))),
     panel === 'map' && course !== null
-      ? createElement('div', { className: 'lks14-railhead' },
+      ? createElement('div', { className: 'lks14-railhead withtabs' },
+        railtabs,
         // distilled two-row head (0.19 critique round): identity row + tools row,
         // the mastery bar demoted to a hairline between them
         createElement('div', { className: 'lks14-railcard-row main' },
@@ -1068,7 +1071,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             : null,
         ),
       )
-      : null,
+      : railtabs,
   )
 
   // The map pane: sections under the floating chrome (pt reserves its height).
@@ -1785,7 +1788,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             row.role === 'assistant'
               ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, onPlay: playMessage, onStop: stopMessage }
               : undefined)),
-      rowsView.length > 0 && rowsView[rowsView.length - 1]!.role === 'user'
+      rowsView.length > 0 && rowsView[rowsView.length - 1]!.role === 'user' && (busy || feedGen)
         ? createElement('div', { className: 'lks14-thinking' }, createElement('i', null), createElement('i', null), createElement('i', null))
         : null,
     ),
