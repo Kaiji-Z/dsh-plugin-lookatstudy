@@ -1,5 +1,10 @@
 ## Screenshots
 
+<p align="center">
+  <img src="docs/media/overview.png" alt="The three-column study panel (light theme)" width="100%">
+</p>
+<p align="center"><b>The 学习 panel</b> — LookatStudy's UI 1:1 in the host's light theme (the panel follows the host's dark/light switch live): the floating XP/streak app header, the three-column surface ladder (rail / chat / notebook, depth by color step), 3D push-down buttons, and the chat's typing dots; opened from the sidebar's 学习 row.</p>
+
 | 图 | 说明 |
 |---|---|
 | <img src="docs/media/course-rail.png" width="280" alt="Course rail list"> | **课程栏** — the course tree as a quiet list (a deliberate deviation from upstream's gamified map): collapsible section heads with done/total counts, lesson rows carrying the status glyph (locked / available / in-progress / mastered crown / purple exam), inline mastery bars, due badges, streaming spinners, and hover tooltips that explain every state; the focused row is brand-edged. |
