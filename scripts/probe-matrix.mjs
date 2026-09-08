@@ -1,6 +1,5 @@
 /**
- * P18 acceptance-matrix probe — the six items without a dedicated round probe:
- *   item 3  blank-tap whistle → companion celebrates
+ * P18 acceptance-matrix probe — the five items without a dedicated round probe:
  *   item 7  scroll FAB (streaming pulse) + stop button interrupts the turn
  *   item 8  attachment: paperclip → workspace file → tutor references it
  *   item 9  B6 typography: assistant full-width prose (no card), user right-aligned
@@ -54,39 +53,6 @@ await page.waitForSelector('[data-dsh-lookatstudy-entry]', { timeout: 30000 })
 await page.click('[data-dsh-lookatstudy-entry]')
 await page.waitForSelector('.lks-ui', { timeout: 30000 })
 await page.waitForTimeout(2500)
-
-/* ── item 3: blank-tap on the map pane pokes the companion ── */
-await page.waitForSelector('.lks14-railscroll', { timeout: 20000 })
-// the rail mounts empty (0-height) before the data poll lands its sections —
-// scanning then finds no point inside it
-for (let i = 0; i < 24; i++) {
-  const h = await page.evaluate(() => document.querySelector('.lks14-railscroll')?.getBoundingClientRect().height ?? 0)
-  if (h > 200) break
-  await page.waitForTimeout(500)
-}
-{
-  const pt = await page.evaluate(() => {
-    const rail = document.querySelector('.lks14-railscroll')
-    if (rail === null) return null
-    const r = rail.getBoundingClientRect()
-    for (let y = r.top + 10; y < r.bottom - 8 && (r.bottom - r.top) > 40; y += 18) {
-      for (const x of [r.left + 12, r.left + r.width * 0.5, r.right - 12]) {
-        const el = document.elementFromPoint(x, y)
-        if (el !== null && rail.contains(el) && el.closest('button, a, input, textarea, select') === null) return { x: Math.round(x), y: Math.round(y) }
-      }
-    }
-    return null
-  })
-  let celebrated = false
-  if (pt !== null) {
-    await page.mouse.click(pt.x, pt.y)
-    for (let i = 0; i < 10 && !celebrated; i++) {
-      celebrated = await page.locator('.lks-companion.mood-celebrating').count() === 1
-      if (!celebrated) await page.waitForTimeout(150)
-    }
-  }
-  probe('blank-tap whistle summons the companion (celebrating)', pt !== null && celebrated, `pt=${JSON.stringify(pt)}`)
-}
 
 /* ── item 11 first (rides the 0:0 focus): note 回到原文 ── */
 await fetch(`${base}/lookatstudy/api/focus?token=${token}`, {

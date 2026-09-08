@@ -132,8 +132,9 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-pill.on{background:rgb(var(--accent-rgb)/0.12);color:var(--accent-light)}
 
 /* ── notebook: teach prose + view tabs ── */
-.lks-ui .lks14-viewtab{color:var(--ink-muted);border-radius:999px}
-.lks-ui .lks14-viewtab.on{background:rgb(var(--ink-rgb)/0.08);color:var(--ink-strong)}
+.lks-ui .lks14-viewtab{color:var(--ink-muted);border-radius:8px;transition:color .15s,background .15s}
+.lks-ui .lks14-viewtab:hover{color:var(--ink)}
+.lks-ui .lks14-viewtab.on{background:rgb(var(--brand-rgb)/0.16);color:var(--brand)}
 .lks-ui .lks14-prose{color:var(--ink);font-size:.9375rem;line-height:1.65}
 .lks-ui .lks14-prose h1,.lks-ui .lks-note-text h1{font-size:1.25rem;font-weight:800;color:var(--ink-strong)}
 .lks-ui .lks14-prose h2,.lks-ui .lks-note-text h2{font-size:1.1rem;font-weight:700;color:var(--ink-strong);border-bottom:1px solid var(--border);padding-bottom:.3em}
@@ -370,7 +371,7 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-emptycard-hint{font-size:.825rem;color:var(--ink-muted);line-height:1.6}
 /* B5: notebook tab capsule + 960px reading column */
 .lks-ui .lks14-notebody{margin:0 auto;max-width:960px;width:100%;padding:12px 20px 24px;box-sizing:border-box}
-.lks-ui .lks14-viewtabs{background:rgb(var(--ink-rgb)/0.08);border-radius:999px;padding:3px;align-self:flex-start}
+.lks-ui .lks14-viewtabs{background:var(--surface-2);border-radius:10px;padding:3px;align-self:flex-start}
 .lks-ui .lks14-readbar{position:sticky;top:0;z-index:20;background:var(--surface-2);border-radius:10px}
 
 /* ══════════ C-track (P11a): interaction chrome ══════════ */
@@ -425,7 +426,7 @@ export const UPSTREAM_CSS = `
 /* C6: zone head becomes the collapse toggle */
 .lks-ui .lks14-zoneh{display:flex;align-items:center;gap:8px;background:none;border:none;font:inherit;cursor:pointer;text-align:left;padding:0}
 .lks-ui .lks14-zonecount{font-size:10.5px;font-weight:700;color:var(--brand);background:rgb(var(--brand-rgb)/0.15);border-radius:999px;padding:1px 7px}
-.lks-ui .lks14-zonecaret{color:var(--ink-faint);font-size:10px}
+.lks-ui .lks14-zonecaret{color:var(--ink-muted);font-size:11px;line-height:1}
 /* C6: note actions + pinned + edit */
 .lks-ui .lks-note-act{background:none;border:none;color:var(--ink-faint);cursor:pointer;padding:2px;display:inline-flex}
 .lks-ui .lks-note-act:hover{color:var(--ink)}
@@ -670,14 +671,9 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-palette-text{display:flex;flex-direction:column;gap:2px;min-width:0}
 .lks-ui .lks14-palette-sub{font-size:10.5px;color:var(--ink-faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lks-ui .lks14-palette-empty{padding:18px;text-align:center;color:var(--ink-faint);font-size:12px}
-/* E5: the thread pills under the lesson row */
+/* E5: the lesson row carries the labeled thread chip (menu opens on click) */
 .lks-ui .lks14-lessonrow{display:flex;align-items:center;gap:8px;min-width:0}
 .lks-ui .lks14-lessonrow>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lks-ui .lks14-threadpills{display:flex;gap:4px;margin-left:auto;overflow-x:auto;max-width:55%;scrollbar-width:none}
-.lks-ui .lks14-threadpill{flex:none;border:1px solid var(--border-faint);background:var(--surface-1);color:var(--ink-muted);font:inherit;font-size:10.5px;padding:2.5px 8px;border-radius:999px;cursor:pointer;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:all .15s}
-.lks-ui .lks14-threadpill:hover{color:var(--ink);border-color:var(--border)}
-.lks-ui .lks14-threadpill.on{background:color-mix(in srgb,var(--brand) 16%,transparent);border-color:rgb(var(--brand-rgb)/0.4);color:var(--brand)}
-.lks-ui .lks14-threadpill:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
 /* E7: the font-scale pair in the app header */
 .lks-ui .lks-hdr-zoom{display:flex;align-items:center;gap:4px;margin-left:4px}
 .lks-ui .lks-hdr-zoom-btn{border:1px solid var(--border-faint);background:var(--surface-1);color:var(--ink-muted);font:inherit;font-size:10px;font-weight:700;border-radius:6px;padding:2px 6px;cursor:pointer;transition:all .15s}
@@ -710,7 +706,6 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-btn-attach:hover:not(:disabled){color:var(--ink);background:var(--surface-2)}
 .lks-ui .lks-btn-attach:disabled{opacity:.4;cursor:not-allowed}
 .lks-ui .lks-btn-attach:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
-.lks-ui .lks14-threadlabel{color:var(--ink-faint)}
 /* ── the distilled two-row head (0.19): identity+pct+delete over a hairline
    mastery bar, then search/review/worldswitch sharing one tools row ── */
 .lks-ui .lks14-railcard-row.main{min-width:0;max-width:100%;overflow:hidden}
@@ -727,6 +722,29 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-audio-toggle{display:inline-flex;align-items:center;gap:4px}
 .lks-ui .lks-audio-toggle .lks-audio-label{display:none}
 .lks-ui .lks14-msgwrap:hover .lks-audio-toggle .lks-audio-label,.lks-ui .lks-audio-toggle:focus-visible .lks-audio-label{display:inline}
+/* ── the thread switcher as one labeled chip + menu (0.19 owner note) ── */
+.lks-ui .lks14-threadswitch{position:relative;margin-left:auto}
+.lks-ui .lks14-threadchip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border:none;border-radius:999px;background:rgb(var(--ink-rgb)/0.06);color:var(--ink-muted);font:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:color .15s,background .15s;max-width:220px}
+.lks-ui .lks14-threadchip:hover{background:rgb(var(--ink-rgb)/0.1);color:var(--ink)}
+.lks-ui .lks14-threadchip-caret{font-size:9px}
+.lks-ui .lks14-threadmenu{position:absolute;top:calc(100% + 6px);right:0;z-index:60;min-width:240px;max-width:300px;max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;padding:4px;border-radius:10px;background:var(--surface-0);border:1px solid var(--border);box-shadow:0 12px 32px -8px rgb(var(--shadow-rgb)/0.5)}
+.lks-ui .lks14-threadmenu-row{display:flex;align-items:center;gap:7px;width:100%;padding:6px 8px;border:none;border-radius:7px;background:none;font:inherit;font-size:12px;color:var(--ink);cursor:pointer;text-align:left}
+.lks-ui .lks14-threadmenu-row:hover{background:rgb(var(--ink-rgb)/0.06)}
+.lks-ui .lks14-threadmenu-row.on{background:rgb(var(--brand-rgb)/0.1)}
+.lks-ui .lks14-threadmenu-row.on .lks14-threadmenu-title{color:var(--brand);font-weight:700}
+.lks-ui .lks14-threadmenu-dot{flex:none;width:6px;height:6px;border-radius:999px;background:var(--ink-faint)}
+.lks-ui .lks14-threadmenu-row.on .lks14-threadmenu-dot{background:var(--brand)}
+.lks-ui .lks14-threadmenu-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-ui .lks14-threadmenu-now{flex:none;font-size:10px;font-weight:800;color:var(--brand)}
+
+/* ── the context meter lives inside the composer card (0.19 owner note:
+   the floating bar read as a stray element outside the input) ── */
+.lks-ui .lks14-ctxmeter{display:flex;align-items:center;gap:8px;padding:0 2px 4px;font-size:10px;color:var(--ink-faint)}
+.lks-ui .lks14-ctxmeter-bar{flex:1 1 auto;min-width:44px;height:2px;border-radius:1px;background:rgb(0 0 0/0.12);overflow:hidden}
+.lks-ui .lks14-ctxmeter-bar i{display:block;height:100%;background:var(--brand);transform-origin:left;transition:transform .3s var(--ease-out-expo)}
+.lks-ui .lks14-ctxmeter-bar i.hot{background:var(--warning)}
+.lks-ui .lks14-ctxmeter-label{flex:none;font-weight:600;white-space:nowrap;max-width:none}
+
 /* ── light-mode chrome sweep: the rail-head glass family hardcoded dark for
    the map era; the list rail follows the theme, so the chrome reads
    ink-on-surface here too ── */
@@ -765,6 +783,8 @@ export const UPSTREAM_CSS = `
 .lks-ui[data-lks-theme='light'] .lks14-importprog-step.pending .lks14-importprog-text{color:var(--ink-faint)}
 .lks-ui[data-lks-theme='light'] .lks14-importprog-step.pending .lks14-importprog-dots{border-color:var(--border)}
 .lks-ui[data-lks-theme='light'] .lks14-importprog-elapsed{color:var(--ink-muted)}
+.lks-ui[data-lks-theme='light'] .lks14-threadmenu{background:rgb(255 255 255/0.98);border-color:var(--border-faint);box-shadow:0 12px 32px -8px rgb(0 0 0/0.18)}
+.lks-ui[data-lks-theme='light'] .lks14-ctxmeter-bar{background:rgb(0 0 0/0.1)}
 /* ambient glyph motion sleeps under reduced-motion (A7 never had a guard) */
 @media (prefers-reduced-motion: reduce){
   .lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph svg,.lks-ui .lks-hdr-xp .lks-hdr-glyph,.lks-ui .lks-hdr-streak .lks-hdr-glyph{animation:none}

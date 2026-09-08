@@ -347,22 +347,6 @@ test('the lookatstudy locale dictionaries keep zh/en parity and translate with f
   assert.equal(tEn('rail.due'), '{count} due')
 })
 
-test('the companion mood machine and form normalization', async () => {
-  const { nextCompanionMood, normalizeCompanionForm } = await import('../src/client/companion.tsx')
-  // talking latches and only talk-end releases it; momentary events interrupt
-  assert.equal(nextCompanionMood('idle', 'talk-start'), 'talking')
-  assert.equal(nextCompanionMood('talking', 'talk-end'), 'idle')
-  assert.equal(nextCompanionMood('talking', 'decay'), 'talking', 'decay never cuts a live talk')
-  assert.equal(nextCompanionMood('talking', 'celebrate'), 'celebrating', 'a celebration interrupts the talk mood')
-  assert.equal(nextCompanionMood('celebrating', 'decay'), 'idle')
-  assert.equal(nextCompanionMood('encouraging', 'decay'), 'idle')
-  assert.equal(nextCompanionMood('idle', 'decay'), 'idle')
-  assert.equal(nextCompanionMood('idle', 'poke'), 'celebrating', 'a poke is a small celebration')
-  // junk stored forms fall back to ember (upstream's default)
-  assert.equal(normalizeCompanionForm('frost'), 'frost')
-  assert.equal(normalizeCompanionForm('dragon'), 'ember')
-  assert.equal(normalizeCompanionForm(null), 'ember')
-})
 
 test('effectiveOpen: the user toggle overrides the frontier default; pickNarrowPane remembers', async () => {
   const { effectiveOpen, pickNarrowPane } = await import('../src/client/views.tsx')

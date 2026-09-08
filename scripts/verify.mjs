@@ -126,9 +126,6 @@ gate('bundle', () => {
     [client, 'lks14-thinking', 'the pre-text thinking row'],
     [client, 'lks14-switch', 'the narrow-mode pane switcher'],
     [client, 'effectiveOpen', 'user section-collapse overrides'],
-    [client, 'useCompanionMood', 'the companion mood machine (P7)'],
-    [client, 'lks-companion', 'the companion creature'],
-    [client, 'companion.form.ember', 'the five companion forms'],
     // 0.15.0 P6: the panel toast stack (upstream Toast port)
     [client, 'showStudyToast', 'toast entry point'],
     [client, 'SEVERITY_DURATION', 'per-severity toast durations'],
@@ -233,7 +230,7 @@ gate('bundle', () => {
     [client, "data-lks-theme='light'] .lks14-railhead", 'the light chrome sweep'],
     // 0.18.0 P17: host-capability replacements
     [client, 'lks14-ctxmeter', 'the context meter'],
-    [client, 'lks14-threadpill', 'the thread switcher pills'],
+    [client, 'lks14-threadchip', 'the thread switcher chip + menu'],
     [client, 'lks14-palette', 'the command palette'],
     [client, 'lks-modelface', 'the model face chip'],
     [client, 'lks-hdr-zoom', 'the font-scale pair'],

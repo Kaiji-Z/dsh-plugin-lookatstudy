@@ -12,7 +12,7 @@ import { createElement, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { onCelebration, iconFor, particleAlpha, seedBurst, stepParticle, type CelebrationEvent, type CelebrationKind, type Particle } from './celebration.ts'
 
-/** prefers-reduced-motion, live-updating (the companion rides the same rule). */
+/** prefers-reduced-motion, live-updating. */
 export function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(() =>
     typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)

@@ -2,8 +2,6 @@
  * D6 live probe: the world switcher filters the rail list, the streaming
  * lesson row wears the spinner badge + the rail notice (the seasonal env-*
  * filters retired with the 2026-09-08 map pivot).
- * switcher filters sections to the seeded practice world, and a live tutor
- * turn spins the focus ball + shows the rail streaming notice.
  * Usage: node scripts/probe-d6.mjs <token> [--url http://127.0.0.1:3081]
  */
 import { createRequire } from 'node:module'

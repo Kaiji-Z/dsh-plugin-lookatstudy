@@ -55,20 +55,40 @@ await page.click('[data-dsh-lookatstudy-entry]')
 await page.waitForSelector('.lks-ui', { timeout: 30000 })
 await page.waitForTimeout(2500)
 
-// ——— E1: the context meter ———
+// ——— E6: the model chip ———
+const chip = await page.evaluate(() => document.querySelector('[data-testid="model-face-chip"]')?.textContent ?? null)
+probe('E6: the model chip shows the bound thread\'s model', chip !== null && chip.length > 2, `chip="${String(chip).slice(0, 40)}"`)
+
+// ——— E5: the thread chip + menu ———
+const chipLabel = await page.evaluate(() => document.querySelector('.lks14-threadchip')?.textContent ?? null)
+let menuRows = -1
+let menuMarked = false
+if (chipLabel !== null) {
+  await page.click('.lks14-threadchip')
+  await page.waitForTimeout(300)
+  const menu = await page.evaluate(() => ({
+    open: document.querySelector('.lks14-threadmenu') !== null,
+    rows: [...document.querySelectorAll('.lks14-threadmenu-row')].map(r => ({ on: r.classList.contains('on'), now: r.querySelector('.lks14-threadmenu-now') !== null })),
+  }))
+  menuRows = menu.rows.length
+  menuMarked = menu.rows.some(r => r.on && r.now)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(250)
+}
+probe('E5: the thread chip opens a menu that marks the current thread', chipLabel !== null && menuRows >= 1 && menuMarked, `chip="${String(chipLabel).slice(0, 24)}" rows=${menuRows} marked=${menuMarked}`)
+
+// ——— E1: the context meter (gated on rows, so AFTER a thread jump) ———
+if (chipLabel !== null) {
+  await page.click('.lks14-threadchip')
+  await page.waitForTimeout(300)
+  await page.locator('.lks14-threadmenu-row').first().click()
+  await page.waitForTimeout(3000)
+}
 const meter = await page.evaluate(() => {
   const el = document.querySelector('[data-testid="context-meter"]')
   return el === null ? null : { estimated: el.getAttribute('data-estimated'), label: el.querySelector('.lks14-ctxmeter-label')?.textContent ?? '' }
 })
 probe('E1: the context meter rides the composer (projection or labeled estimate)', meter !== null && meter.label !== '', `estimated=${meter?.estimated} label="${meter?.label.slice(0, 40)}"`)
-
-// ——— E6: the model chip ———
-const chip = await page.evaluate(() => document.querySelector('[data-testid="model-face-chip"]')?.textContent ?? null)
-probe('E6: the model chip shows the bound thread\'s model', chip !== null && chip.length > 2, `chip="${String(chip).slice(0, 40)}"`)
-
-// ——— E5: the thread pills ———
-const pills = await page.evaluate(() => [...document.querySelectorAll('.lks14-threadpill')].map(p => ({ on: p.classList.contains('on'), t: (p.textContent ?? '').slice(0, 16) })))
-probe('E5: thread pills render with the current thread marked', pills.length >= 1 && pills.some(p => p.on), `pills=${pills.length} on=${pills.filter(p => p.on).length}`)
 
 // ——— E4: Cmd+K palette ———
 await page.keyboard.press('Control+KeyK')

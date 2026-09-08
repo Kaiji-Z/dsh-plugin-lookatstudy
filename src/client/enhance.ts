@@ -200,6 +200,9 @@ export async function enhanceMath(container: HTMLElement): Promise<number> {
  */
 export function attachCodeHeader(wrap: HTMLElement, lang: string): void {
   if (wrap.parentElement?.querySelector('.lks-codehead') !== null) return
+  // the pipeline's fallback head (plain copy row) is superseded once the
+  // enhanced card carries its own C4 head — keeping both renders an empty card
+  wrap.closest('.lks-codeblock')?.querySelector(':scope > .lks-codeblock-head')?.remove()
   const head = document.createElement('div')
   head.className = 'lks-codehead'
   const label = document.createElement('span')

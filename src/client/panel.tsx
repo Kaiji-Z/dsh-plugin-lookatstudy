@@ -14,7 +14,7 @@
  */
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
+import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
@@ -36,7 +36,6 @@ import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
-import { Companion, useCompanionMood } from './companion.tsx'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError } from './views.tsx'
 import { ListSectionView, sectionWorldOf } from './maprail.tsx'
@@ -279,6 +278,11 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const [draft, setDraft] = useState('')
   const [narrowPane, setNarrowPane] = useState<'rail' | 'chat' | 'note'>(pickNarrowPane(null))
   const lesson = data?.lesson ?? null
+  // P12 upstream arrangement (0.19 owner note): the exam runs in the CENTER
+  // column, not the notebook — an exam-focused lesson swaps the whole chat
+  // surface for the ExamView (the leave guard still routes every focus jump).
+  const examLessonActive = lesson !== null && lesson.kind === 'exam'
+    && examOpen((data?.courses.flatMap(c => c.sections).find(s => s.lessons.some(l => l.id === lesson.lessonId))?.lessons ?? []))
   const localBound = useRef<string | null>(null)
   const streamEl = useRef<HTMLDivElement | null>(null)
   const touchStart = useRef<{ x: number; y: number } | null>(null)
@@ -547,8 +551,6 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [send])
 
-  const companion = useCompanionMood()
-  const setCompanionEvent = companion.emit
   const progress = data?.progress ?? null
   // The upstream v0.6 ladder: rail full-height on surface-rail; the right half
   // = floating app-header + the chat/notebook row (chat surface-1, notebook
@@ -573,8 +575,6 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     createElement(CourseRail, { data, activate, setFocus: guardedSetFocus, searchLessons, deleteCourse, send,
       // C7: a bubble jump on narrow layout lands the learner on the chat pane.
       onJumped: () => { setNarrowPane('chat') },
-      // C13: tapping map blank space pokes the companion (whistle essence).
-      onBlankTap: () => { setCompanionEvent('poke') },
       // D6: the bound thread's turn is live → its ball spins on the map.
       streamingLessonId: feedGen && lesson !== null ? lesson.lessonId : null,
       // D7: the import watchers ride the turn state + the import tool chips.
@@ -617,8 +617,10 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
           }, 'A+')),
       ),
       createElement('div', { className: 'lks14-row' },
-        createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent: setCompanionEvent, onThreadJump: (id: string) => { setNarrowPane('chat'); void guardedSetFocus(id) }, contextMeter, uploadAttachment }),
-        createElement(NotebookPane, { data, deleteNote, send, companionEvent: setCompanionEvent, onExamSession, examPaused: examLeave !== null }),
+        examLessonActive
+          ? createElement(ExamView, { lessonId: lesson!.lessonId, sectionTitle: lesson!.sectionTitle, paused: examLeave !== null, onSessionChange: onExamSession })
+          : createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadJump: (id: string) => { setNarrowPane('chat'); void guardedSetFocus(id) }, contextMeter, uploadAttachment }),
+        createElement(NotebookPane, { data, deleteNote, send }),
       ),
     ),
   )
@@ -635,10 +637,6 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         onStudy: () => { setPaletteOpen(false); setNarrowPane('chat'); void send(tr('prompt.start')) },
       })
       : null,
-    createElement(Companion, { mood: companion.mood, onPoke: () => {
-      setCompanionEvent('poke')
-      showStudyToast(tr('companion.poked'), { severity: 'success' })
-    } }),
     createElement('div', { className: 'lks14-switch' },
       ...(['rail', 'chat', 'note'] as const).map(pane => createElement('button', {
         key: pane,
@@ -875,7 +873,7 @@ export function setPanelShell(shell: { suppressHandBack(fn: () => void): void } 
 }
 
 /** 左栏:course picker, tree, review box, import. */
-function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, onBlankTap, streamingLessonId, turnActive, importProgress, stop, paletteBus }: {
+function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, streamingLessonId, turnActive, importProgress, stop, paletteBus }: {
   data: StudyData
   activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
@@ -884,8 +882,6 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   send: PanelSend
   /** C7: fired after a bubble jump (narrow layout switches to the chat pane). */
   onJumped: () => void
-  /** C13: a tap on map blank space (companion poke). */
-  onBlankTap: () => void
   /** D6: the lesson whose tutor thread is streaming (spinner ball + rail notice). */
   streamingLessonId: string | null
   /** D7: the bound thread's turn is live (the import watchers key off it). */
@@ -961,8 +957,6 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
     }
   }, [data?.courses, importJob, turnActive])
   const course = data?.courses.find(c => c.courseId === courseId) ?? null
-  // C13: blank-tap classification (a >6px move is a drag/scroll, not a whistle).
-  const blankDown = useRef<{ x: number; y: number } | null>(null)
   useEffect(() => {
     if (optFocus !== null && data?.focusLessonId === optFocus) setOptFocus(null)
   }, [data?.focusLessonId, optFocus])
@@ -1082,18 +1076,6 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       : createElement('div', {
         className: 'lks14-railscroll',
         ref: scrollEl,
-        // C13: pointer-down records the fall point; a click that stayed put and
-        // missed every control is a blank tap (the companion whistle).
-        onPointerDown: (e: ReactPointerEvent<HTMLDivElement>) => {
-          blankDown.current = { x: e.clientX, y: e.clientY }
-        },
-        onClick: (e: ReactMouseEvent<HTMLDivElement>) => {
-          const d = blankDown.current
-          blankDown.current = null
-          if (d === null || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 6) return
-          if ((e.target as HTMLElement).closest('button, a, input, textarea, select') !== null) return
-          onBlankTap()
-        },
       },
         createElement('div', { className: 'lks-raillist' },
           // D6 (upstream world switcher): practice sections are free-explore and
@@ -1494,7 +1476,7 @@ export function epubFolderPath(path: string): string {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, companionEvent, onThreadJump, contextMeter, uploadAttachment }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadJump, contextMeter, uploadAttachment }: {
   data: StudyData
   lesson: StudyData['lesson']
   rows: ReturnType<typeof feedRows>
@@ -1508,7 +1490,6 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   stop: () => void
   setMode: (mode: 'direct' | 'guide' | 'practice') => Promise<void>
   narrowPane: 'rail' | 'chat' | 'note'
-  companionEvent: (event: 'talk-start' | 'talk-end' | 'celebrate' | 'encourage' | 'decay' | 'poke') => void
   /** E5: jump to another lesson's thread pill (focus change rebinds the feed). */
   onThreadJump: (lessonId: string) => void
   /** E1: the context meter value (projection-backed, or the labeled estimate). */
@@ -1520,6 +1501,8 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   // (80px tolerance); scrolling up detaches, the FAB comes back.
   const stuck = useRef(true)
   const [showFab, setShowFab] = useState(false)
+  // E5: the thread menu's open state (outside-click + Esc close below)
+  const [threadsOpen, setThreadsOpen] = useState(false)
   const onStreamScroll = (): void => {
     const el = streamEl.current
     if (el === null) return
@@ -1543,6 +1526,19 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     window.addEventListener('keydown', onKey)
     return () => { window.removeEventListener('keydown', onKey) }
   }, [busy, stop])
+
+  // the thread menu closes on Escape or any click outside it
+  useEffect(() => {
+    if (!threadsOpen) return
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') setThreadsOpen(false) }
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as HTMLElement
+      if (t.closest('.lks14-threadswitch') === null) setThreadsOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onDown)
+    return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('pointerdown', onDown) }
+  }, [threadsOpen])
 
   // C11: per-message read-aloud — speak/stop under every assistant reply with
   // n/total progress and a sentence-level karaoke highlight inside the row.
@@ -1584,7 +1580,6 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     const plain = (el.textContent ?? '').trim()
     const sentences = speechSentencesOf(plain)
     if (sentences.length === 0) return
-    companionEvent('talk-start')
     msgReadCtl.current?.stop()
     const voice = storedTtsVoice()
     const prefetch = new Map<string, Promise<Uint8Array>>()
@@ -1629,7 +1624,6 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     void controller.start().catch(() => { setMsgAudio(null) })
   }
   const stopMessage = (): void => {
-    companionEvent('talk-end')
     msgReadCtl.current?.stop()
     setMsgAudio(null)
     document.querySelectorAll('mark.lks-reading').forEach(m => { m.replaceWith(...m.childNodes) })
@@ -1658,7 +1652,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           data: artifact.data as unknown as QuizData,
           masteryPct: lesson.masteryPct,
           send,
-          onFinished: (allCorrect: boolean) => { companionEvent(allCorrect ? 'celebrate' : 'encourage') },
+          onFinished: () => {},
         })
         : createElement(ArtifactCard, { artifact: artifact as ArtifactRow, send }))
   }
@@ -1745,24 +1739,31 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     lesson !== null || !dormant
       ? createElement('div', { className: 'lks14-lessonrow' },
         lesson !== null ? createElement('span', null, lesson.title) : createElement('span', null, tr('col.tutor')),
-        // E5: the thread switcher — one pill per lesson with a minted thread;
-        // the current one marks itself, others jump (focus rebinds the feed).
+        // E5: the thread switcher — ONE labeled chip (0.19 owner note: a bare
+        // pill strip of lesson titles read as mystery buttons); the menu lists
+        // every minted thread, the current one marked, others jump on click.
         threadPills.length > 0
-          ? createElement('span', { className: 'lks14-threadpills', role: 'tablist', 'aria-label': tr('threads.label') },
-            ...threadPills.map(p => createElement('button', {
-              key: p.id,
-              className: `lks14-threadpill${p.current ? ' on' : ''}`,
-              role: 'tab',
-              'aria-selected': String(p.current),
-              'data-tooltip': p.title,
-              onClick: () => { if (!p.current) onThreadJump(p.id) },
-            }, p.title)))
+          ? createElement('div', { className: 'lks14-threadswitch' },
+            createElement('button', {
+              className: 'lks14-threadchip',
+              'aria-expanded': String(threadsOpen),
+              'data-tooltip': tr('threads.label'),
+              onClick: () => { setThreadsOpen(v => !v) },
+            }, tr('threads.open', { n: String(threadPills.length) }), createElement('span', { className: 'lks14-threadchip-caret' }, threadsOpen ? '▾' : '▸')),
+            threadsOpen
+              ? createElement('div', { className: 'lks14-threadmenu', role: 'menu' },
+                ...threadPills.map(p => createElement('button', {
+                  key: p.id,
+                  className: `lks14-threadmenu-row${p.current ? ' on' : ''}`,
+                  role: 'menuitem',
+                  'aria-current': p.current ? 'true' : undefined,
+                  onClick: () => { setThreadsOpen(false); if (!p.current) onThreadJump(p.id) },
+                },
+                  createElement('span', { className: 'lks14-threadmenu-dot', 'aria-hidden': 'true' }),
+                  createElement('span', { className: 'lks14-threadmenu-title' }, p.title),
+                  p.current ? createElement('span', { className: 'lks14-threadmenu-now' }, tr('threads.now')) : null)))
+              : null)
           : null)
-      : null,
-    // critique fix: the thread's owner is VISIBLE — a learner clicking around
-    // the rail must never wonder whose conversation the chat column shows
-    bound && lesson !== null
-      ? createElement('div', { className: 'lks14-threadlabel' }, tr('thread.label', { title: lesson.title }))
       : null,
     createElement('div', {
       className: 'lks14-stream',
@@ -1803,7 +1804,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         data: a.data as unknown as QuizData,
         masteryPct: lesson!.masteryPct,
         send,
-        onFinished: (allCorrect: boolean) => { companionEvent(allCorrect ? 'celebrate' : 'encourage') },
+        onFinished: () => {},
       })),
     ...backlog
       .filter(a => a.artifactType !== 'quiz')
@@ -1823,10 +1824,6 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     createElement('div', { className: 'lks14-composer' },
       // E1: the context meter — slim bar above the composer (projection-backed
       // pct + token pair; the estimate is labeled as such).
-      createElement('div', { className: 'lks14-ctxmeter', 'data-testid': 'context-meter', 'data-estimated': String(contextMeter.estimated), title: tr('meter.label') },
-        createElement('span', { className: 'lks14-ctxmeter-bar' },
-          createElement('i', { style: { transform: `scaleX(${String((contextMeter.pct ?? 0) / 100)})` }, className: contextMeter.pct !== null && contextMeter.pct > 80 ? 'hot' : undefined })),
-        createElement('span', { className: 'lks14-ctxmeter-label' }, contextMeter.estimated ? contextMeter.label : `${String(contextMeter.pct ?? 0)}% · ${contextMeter.label}`)),
       createElement('div', {
         className: 'lks14-composer-card',
         // E3: dropped files ride the same intake as the paperclip.
@@ -1836,6 +1833,15 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           if (file !== undefined && file !== null) { e.preventDefault(); attachFile(file) }
         },
       },
+        // E1: the context meter — a hairline over the card's content, label
+        // right-aligned; hidden entirely while the thread is empty (an estimate
+        // of nothing is noise — 0.19 owner note on the floating bar layout).
+        rows.length > 0
+          ? createElement('div', { className: 'lks14-ctxmeter', 'data-testid': 'context-meter', 'data-estimated': String(contextMeter.estimated), title: tr('meter.label') },
+            createElement('span', { className: 'lks14-ctxmeter-bar' },
+              createElement('i', { style: { transform: `scaleX(${String((contextMeter.pct ?? 0) / 100)})` }, className: contextMeter.pct !== null && contextMeter.pct > 80 ? 'hot' : undefined })),
+            createElement('span', { className: 'lks14-ctxmeter-label' }, contextMeter.estimated ? contextMeter.label : `${String(contextMeter.pct ?? 0)}% · ${contextMeter.label}`))
+          : null,
         // B4: the soul pills are the composer's first row (upstream ChatComposer).
         createElement('div', { className: 'lks14-soulrow' },
           createElement('span', { className: 'lks14-soullabel' }, tr('mode.label')),
@@ -1917,7 +1923,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
 }
 
 /** 右栏:the notebook — 讲解/概念图/笔记 tabs (upstream NotebookPanel arrangement). */
-function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, examPaused }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void>; send: PanelSend; companionEvent: (event: 'talk-start' | 'talk-end' | 'celebrate' | 'encourage' | 'decay' | 'poke') => void; onExamSession: (session: ExamSession) => void; examPaused: boolean }): ReactNode {
+function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote: (lessonId: string, noteId: string) => Promise<void>; send: PanelSend }): ReactNode {
   const lesson = data?.lesson ?? null
   const [tab, setTab] = useState<'teach' | 'cmap' | 'notes' | 'board'>('teach')
   const [error, setError] = useState<string | null>(null)
@@ -1948,21 +1954,6 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(friendlyError(err, 'action')) })
   }
-
-  // P12: exam nodes swap the notebook for the ExamView answering surface
-  // (upstream swaps the whole middle column); the gate mirrors the rail's
-  // examOpen — every sibling study lesson ≥50% mastery. Computed as a VALUE,
-  // never an early return — the hook order must stay unconditional.
-  const examContent: ReactNode = lesson !== null && lesson.kind === 'exam'
-    ? (() => {
-        const section = data?.courses.flatMap(c => c.sections).find(s => s.lessons.some(l => l.id === lesson.lessonId))
-        const allowed = examOpen(section?.lessons ?? [])
-        return allowed
-          ? createElement(ExamView, { lessonId: lesson.lessonId, sectionTitle: lesson.sectionTitle, paused: examPaused, onSessionChange: onExamSession })
-          : createElement('div', { className: 'lks14-empty', style: { padding: '16px 0' } as CSSProperties }, tr('status.exam'))
-      })()
-    : null
-
 
   // Canvas semantics (upstream): artifacts sediment into the notebook — the
   // 笔记 tab wears a badge for unseen ones, a toast announces each arrival
@@ -2061,7 +2052,6 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
 
   const startReading = (): void => {
     if (lesson === null || lesson.speechText.trim() === '') return
-    companionEvent('talk-start')
     readCtl.current?.stop()
     const sentences = speechSentencesOf(lesson.speechText)
     const voice = storedTtsVoice()
@@ -2120,7 +2110,6 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
     void controller.start().catch((err: unknown) => { setReadError(err instanceof Error ? err.message : String(err)) })
   }
   const stopReading = (): void => {
-    companionEvent('talk-end')
     readCtl.current?.stop()
     setRead(null)
   }
@@ -2203,7 +2192,6 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
                     setRateBusy(true)
                     recordReview(lesson.lessonId, Number(q) as 1 | 4 | 5)
                       .then(() => {
-                        companionEvent(Number(q) >= 4 ? 'celebrate' : 'encourage')
                         // P13: SRS 自评高光 — 记得/很熟带自评卡锚点;忘了原地柔红闪。
                         const rateEl = document.querySelector(`[data-lks-rate="${lesson.lessonId}"]`)
                         const rr = Number(q) >= 4 && rateEl !== null ? rateEl.getBoundingClientRect() : null
@@ -2409,10 +2397,8 @@ function NotebookPane({ data, deleteNote, send, companionEvent, onExamSession, e
             ),
       )
   return createElement('div', { className: 'lks14-col lks14-note' },
-    examContent !== null
-      ? createElement('div', { className: 'lks14-notebody' }, examContent)
-      : body,
-    examContent === null && confirmNoteDel !== null
+    body,
+    confirmNoteDel !== null
       ? createElement(ConfirmCard, {
         anchor: confirmNoteDel.rect,
         message: tr('note.delete.confirm'),

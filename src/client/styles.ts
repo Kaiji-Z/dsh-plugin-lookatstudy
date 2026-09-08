@@ -162,19 +162,6 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 
 
 
-/* the companion creature (P7): bottom-right of the panel; gentle bob idle,
-   bounce while talking, pop on celebration; reduced-motion = static (a11y). */
-.lks-companion{position:absolute;right:18px;bottom:14px;z-index:20;width:56px;height:56px;cursor:pointer;filter:drop-shadow(0 4px 10px rgba(0,0,0,.18));animation:lks-comp-bob 3.2s ease-in-out infinite}
-.lks-companion:focus-visible{outline:none;filter:drop-shadow(0 0 0 2px var(--dsw-alias-state-business-primary)) drop-shadow(0 4px 10px rgba(0,0,0,.18))}
-.lks-companion.mood-talking{animation:lks-comp-talk .6s ease-in-out infinite}
-.lks-companion.mood-celebrating{animation:lks-comp-pop .5s cubic-bezier(.34,1.56,.64,1) 3}
-.lks-companion.mood-encouraging{animation:lks-comp-nudge 1.2s ease-in-out 2}
-@keyframes lks-comp-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-@keyframes lks-comp-talk{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-7px) scale(1.06)}}
-@keyframes lks-comp-pop{0%{transform:scale(1)}40%{transform:scale(1.25) rotate(-8deg)}100%{transform:scale(1)}}
-@keyframes lks-comp-nudge{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px) rotate(-4deg)}75%{transform:translateX(5px) rotate(4deg)}}
-@media (prefers-reduced-motion:reduce){.lks-companion{animation:none}}
-
 /* P5: proposal banner (ConfirmCard semantics) + thinking row + narrow switch */
 .lks-propbanner{flex:none;display:flex;align-items:center;gap:8px;margin:8px 12px 0;padding:8px 12px;border-radius:10px;background:var(--dsw-alias-state-business-tertiary);border:1px solid var(--dsw-alias-border-l2);font-size:12.5px;color:var(--dsw-alias-label-primary-bluish)}
 .lks-propbanner .lks-propbanner-why{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -226,7 +213,6 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 
 /* rail search results panel (P4, upstream CourseSearchPanel) */
 .lks14-searchpanel{margin:4px 0 6px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-1);overflow:hidden}
-.lks14-threadlabel{flex:none;padding:8px 20px 0;font-size:11px;font-weight:600;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lks14-searchrow{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;text-align:left;font:inherit;padding:6px 10px;cursor:pointer;border-bottom:1px solid var(--dsw-alias-border-l1)}
 .lks14-searchrow:last-child{border-bottom:none}
 .lks14-searchrow:hover{background:var(--dsw-alias-interactive-bg-hover)}

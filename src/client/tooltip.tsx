@@ -35,11 +35,21 @@ export function GlobalTooltip(): ReactNode {
       setTip({ text, x, y })
     }
 
+    // the tip is position:fixed INSIDE the zoomed .lks-ui subtree — CSS zoom
+    // scales fixed coordinates, so raw clientX/Y drift grows across the panel
+    // (a 1.1 zoom trails the mouse ~100px at the panel's right edge). Divide
+    // by the live zoom and keep the offset tight (0.19 owner note: the tip
+    // sits at the mouse).
+    const panelZoom = (): number => {
+      const z = parseFloat(document.querySelector('.lks-ui')?.style.zoom ?? '1')
+      return Number.isFinite(z) && z > 0 ? z : 1
+    }
     const onMove = (e: PointerEvent): void => {
       if (coarse) return
       const el = target(e)
       if (el === null) { setTip(null); return }
-      show(el, e.clientX + 12, e.clientY + 16)
+      const z = panelZoom()
+      show(el, (e.clientX + 10) / z, (e.clientY + 12) / z)
     }
     const onLeave = (): void => { setTip(null) }
 
@@ -52,7 +62,8 @@ export function GlobalTooltip(): ReactNode {
       pressTimer.current = setTimeout(() => {
         if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < 10) {
           const r = el.getBoundingClientRect()
-          show(el, r.left + r.width / 2 - 80, r.top - 36)
+          const z = panelZoom()
+          show(el, (r.left + r.width / 2 - 80) / z, (r.top - 36) / z)
         }
       }, TIP_LONGPRESS_MS)
     }
@@ -79,5 +90,7 @@ export function GlobalTooltip(): ReactNode {
   }, [])
 
   if (tip === null) return null
-  return createElement('div', { className: 'lks-tip', role: 'tooltip', style: { left: `${String(clampTip(tip.x, tip.y, 200, 40, window.innerWidth, window.innerHeight).x)}px`, top: `${String(clampTip(tip.x, tip.y, 200, 40, window.innerWidth, window.innerHeight).y)}px` } }, tip.text)
+  const z = parseFloat(document.querySelector('.lks-ui')?.style.zoom ?? '1') || 1
+  const clamped = clampTip(tip.x, tip.y, 200, 40, window.innerWidth / z, window.innerHeight / z)
+  return createElement('div', { className: 'lks-tip', role: 'tooltip', style: { left: `${String(clamped.x)}px`, top: `${String(clamped.y)}px` } }, tip.text)
 }

@@ -11,7 +11,6 @@
 import { createElement, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useStudy, TTS_VOICES, storedTtsVoice, storeTtsVoice } from './data.ts'
-import { COMPANION_FORMS, normalizeCompanionForm, storeCompanionForm, storedCompanionForm } from './companion.tsx'
 import { tr } from './locale.ts'
 import { ActionError } from './views.tsx'
 
@@ -30,7 +29,6 @@ export function StudySettingsSection(): ReactNode {
   const { data, setMode, activate, setHistoryBudget } = useStudy()
   const [error, setError] = useState<string | null>(null)
   const [voice, setVoice] = useState(storedTtsVoice)
-  const [companion, setCompanion] = useState(storedCompanionForm)
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
   }
@@ -68,17 +66,6 @@ export function StudySettingsSection(): ReactNode {
           'data-testid': 'budget-toggle',
           onClick: () => { if (data !== null) fire(setHistoryBudget(!(data.historyBudget === true))) },
         }, data?.historyBudget === true ? tr('settings.budget.off') : tr('settings.budget.on')),
-      ),
-    ),
-    createElement('section', { className: 'lks-set-row' },
-      createElement('h3', null, tr('settings.companion')),
-      createElement('p', { className: 'lks-set-hint' }, tr('settings.companion.hint')),
-      createElement('div', null,
-        createElement('select', {
-          className: 'lks-set-select',
-          value: companion,
-          onChange: (e: { target: { value: string } }) => { storeCompanionForm(normalizeCompanionForm(e.target.value)); setCompanion(normalizeCompanionForm(e.target.value)) },
-        }, ...COMPANION_FORMS.map(f => createElement('option', { key: f.id, value: f.id }, tr(f.labelKey)))),
       ),
     ),
     createElement('section', { className: 'lks-set-row' },
