@@ -24,6 +24,7 @@ import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
 import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
+import { ctxSegments, fmtTokens } from './views.tsx'
 import { renderLessonConceptMap } from './diagrams.ts'
 import { speechSentencesOf } from '../vendor/speech-text.ts'
 import { speakMathInSentence } from '../vendor/math-speech.ts'
@@ -262,18 +263,26 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   // E1: the bound session's context pressure (projection face; the meter memo
   // below reads it — declared here, above its consumer, the TDZ trap again).
   const [pressure, setPressure] = useState<{ projectedTokens?: number; contextWindow?: number } | null>(null)
+  // the host's heuristic composition (system/tools/messages) for the ring panel
+  const [breakdown, setBreakdown] = useState<{ systemTokens: number; toolsTokens: number; messageTokens: number } | null>(null)
   // D7: the import tool chips folded for the rail's import watchers/progress.
   const importProgress = useMemo(() => importProgressOf(rows), [rows])
-  // E1: the context meter value — the projection when the host reports it,
-  // otherwise the labeled char estimate over the folded rows.
-  const contextMeter = useMemo<{ pct: number | null; label: string; estimated: boolean }>(() => {
+  // E1: the context meter value — the host projection when the session reports
+  // it, otherwise the labeled char estimate over the folded rows, capped by the
+  // host-RESOLVED real model capacity (data.model, wired through the state
+  // feed from the composition's model faces — never a plugin constant).
+  const contextMeter = useMemo<{ pct: number | null; estimated: boolean; used: number | null; window: number | null }>(() => {
     if (pressure !== null && pressure.contextWindow !== undefined && pressure.contextWindow > 0 && pressure.projectedTokens !== undefined) {
       const pct = Math.min(100, Math.round((pressure.projectedTokens / pressure.contextWindow) * 100))
-      return { pct, label: `${String(pressure.projectedTokens)}/${String(pressure.contextWindow)}`, estimated: false }
+      return { pct, estimated: false, used: pressure.projectedTokens, window: pressure.contextWindow }
     }
-    const chars = rows.reduce((n, r) => n + r.text.length, 0)
-    return { pct: null, label: tr('meter.estimate', { n: String(Math.round(chars / 2.2)) }), estimated: true }
-  }, [pressure, rows])
+    const est = Math.round(rows.reduce((n, r) => n + r.text.length, 0) / 2.2)
+    const window = data?.model?.contextWindow ?? null
+    if (window !== null && window > 0) {
+      return { pct: Math.min(100, Math.round((est / window) * 100)), estimated: true, used: est, window }
+    }
+    return { pct: null, estimated: true, used: est, window: null }
+  }, [pressure, rows, data?.model])
   const [feedAttached, setFeedAttached] = useState(false)
   const [draft, setDraft] = useState('')
   const [narrowPane, setNarrowPane] = useState<'rail' | 'chat' | 'note'>(pickNarrowPane(null))
@@ -364,10 +373,16 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       const actx = ctx.sessions.scope(boundId)
       const face = actx === undefined ? undefined : (ctx.sessions as { sessionOf(a: unknown): { projections?: { faceOf(key: string): { getSnapshot(): unknown; subscribe(l: () => void): () => void } } | undefined } | undefined }).sessionOf(actx)
       const proj = face?.projections?.faceOf('contextPressure')
+      const bproj = face?.projections?.faceOf('contextBreakdown')
       if (proj !== undefined) {
         const read = (): void => {
+          if (disposed) return
           const snap = proj.getSnapshot() as { projectedTokens?: number; contextWindow?: number } | undefined
-          if (!disposed && snap !== undefined && typeof snap === 'object') setPressure({ projectedTokens: snap.projectedTokens, contextWindow: snap.contextWindow })
+          if (snap !== undefined && typeof snap === 'object') setPressure({ projectedTokens: snap.projectedTokens, contextWindow: snap.contextWindow })
+          if (bproj !== undefined) {
+            const bsnap = bproj.getSnapshot() as { systemTokens?: number; toolsTokens?: number; messageTokens?: number } | undefined
+            if (bsnap !== undefined && typeof bsnap === 'object') setBreakdown({ systemTokens: bsnap.systemTokens ?? 0, toolsTokens: bsnap.toolsTokens ?? 0, messageTokens: bsnap.messageTokens ?? 0 })
+          }
         }
         read()
         off = proj.subscribe(read)
@@ -618,8 +633,12 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       ),
       createElement('div', { className: 'lks14-row' },
         examLessonActive
-          ? createElement(ExamView, { lessonId: lesson!.lessonId, sectionTitle: lesson!.sectionTitle, paused: examLeave !== null, onSessionChange: onExamSession })
-          : createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadJump: (id: string) => { setNarrowPane('chat'); void guardedSetFocus(id) }, contextMeter, uploadAttachment }),
+          ? createElement('div', { className: 'lks14-col lks14-chat' },
+            // the wrapper carries the chat column's width/flex identity — the
+            // exam stages are flex children that fill it (unwrapped they
+            // shrink to content and the center column narrows)
+            createElement(ExamView, { lessonId: lesson!.lessonId, sectionTitle: lesson!.sectionTitle, paused: examLeave !== null, onSessionChange: onExamSession }))
+          : createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadJump: (id: string) => { setNarrowPane('chat'); void guardedSetFocus(id) }, contextMeter, contextBreakdown: breakdown, uploadAttachment }),
         createElement(NotebookPane, { data, deleteNote, send }),
       ),
     ),
@@ -1476,7 +1495,7 @@ export function epubFolderPath(path: string): string {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadJump, contextMeter, uploadAttachment }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadJump, contextMeter, contextBreakdown, uploadAttachment }: {
   data: StudyData
   lesson: StudyData['lesson']
   rows: ReturnType<typeof feedRows>
@@ -1493,7 +1512,8 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   /** E5: jump to another lesson's thread pill (focus change rebinds the feed). */
   onThreadJump: (lessonId: string) => void
   /** E1: the context meter value (projection-backed, or the labeled estimate). */
-  contextMeter: { pct: number | null; label: string; estimated: boolean }
+  contextMeter: { pct: number | null; estimated: boolean; used: number | null; window: number | null }
+  contextBreakdown: { systemTokens: number; toolsTokens: number; messageTokens: number } | null
   /** E3: land one attachment in the study workspace (returns its path). */
   uploadAttachment: (name: string, dataBase64: string) => Promise<string>
 }): ReactNode {
@@ -1539,6 +1559,20 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     document.addEventListener('pointerdown', onDown)
     return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('pointerdown', onDown) }
   }, [threadsOpen])
+
+  // the context figures panel closes on Escape or any click outside it
+  const [ctxOpen, setCtxOpen] = useState(false)
+  useEffect(() => {
+    if (!ctxOpen) return
+    const onKey = (e: KeyboardEvent): void => { if (e.key === 'Escape') setCtxOpen(false) }
+    const onDown = (e: MouseEvent): void => {
+      const t = e.target as HTMLElement
+      if (t.closest('.lks14-ctxring-wrap') === null) setCtxOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onDown)
+    return () => { window.removeEventListener('keydown', onKey); document.removeEventListener('pointerdown', onDown) }
+  }, [ctxOpen])
 
   // C11: per-message read-aloud — speak/stop under every assistant reply with
   // n/total progress and a sentence-level karaoke highlight inside the row.
@@ -1833,15 +1867,6 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           if (file !== undefined && file !== null) { e.preventDefault(); attachFile(file) }
         },
       },
-        // E1: the context meter — a hairline over the card's content, label
-        // right-aligned; hidden entirely while the thread is empty (an estimate
-        // of nothing is noise — 0.19 owner note on the floating bar layout).
-        rows.length > 0
-          ? createElement('div', { className: 'lks14-ctxmeter', 'data-testid': 'context-meter', 'data-estimated': String(contextMeter.estimated), title: tr('meter.label') },
-            createElement('span', { className: 'lks14-ctxmeter-bar' },
-              createElement('i', { style: { transform: `scaleX(${String((contextMeter.pct ?? 0) / 100)})` }, className: contextMeter.pct !== null && contextMeter.pct > 80 ? 'hot' : undefined })),
-            createElement('span', { className: 'lks14-ctxmeter-label' }, contextMeter.estimated ? contextMeter.label : `${String(contextMeter.pct ?? 0)}% · ${contextMeter.label}`))
-          : null,
         // B4: the soul pills are the composer's first row (upstream ChatComposer).
         createElement('div', { className: 'lks14-soulrow' },
           createElement('span', { className: 'lks14-soullabel' }, tr('mode.label')),
@@ -1886,6 +1911,49 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             e.target.value = ''
           },
         }),
+        // E1: the context ring — the host composer's occupancy meter: a 14px
+        // ring beside send, hover reads the percentage, click opens the
+        // figures panel (real capacity host-resolved; the estimate flags
+        // itself). Hidden until a capacity is known — a meter of nothing
+        // is noise.
+        contextMeter.pct !== null
+          ? createElement('span', { className: 'lks14-ctxring-wrap', key: 'ctxring' },
+            createElement('button', {
+              className: 'lks14-ctxring',
+              'data-testid': 'context-meter',
+              'data-estimated': String(contextMeter.estimated),
+              'aria-label': tr('meter.aria', { pct: String(contextMeter.pct) }),
+              'data-tooltip': tr('meter.aria', { pct: String(contextMeter.pct) }),
+              'aria-haspopup': 'dialog',
+              'aria-expanded': String(ctxOpen),
+              onClick: () => { setCtxOpen(v => !v) },
+            },
+              createElement('svg', { viewBox: '0 0 14 14', width: 14, height: 14, 'aria-hidden': 'true' },
+                createElement('circle', { className: 'track', cx: 7, cy: 7, r: 5.5 }),
+                createElement('circle', {
+                  className: `fill${contextMeter.pct > 80 ? ' hot' : ''}`,
+                  cx: 7, cy: 7, r: 5.5,
+                  strokeDasharray: `${String(2 * Math.PI * 5.5 * contextMeter.pct / 100)} ${String(2 * Math.PI * 5.5)}`,
+                  transform: 'rotate(-90 7 7)',
+                }))),
+            ctxOpen
+              ? createElement('div', { className: 'lks14-ctxpanel', role: 'dialog', 'aria-label': tr('meter.label') },
+                createElement('div', { className: 'lks14-ctxpanel-head' },
+                  createElement('span', { className: 'lks14-ctxpanel-pct' }, `${String(contextMeter.pct)}%`),
+                  createElement('span', { className: 'lks14-ctxpanel-figs' }, `~${fmtTokens(contextMeter.used ?? 0)} / ${fmtTokens(contextMeter.window ?? 0)}`)),
+                createElement('div', { className: 'lks14-ctxpanel-bar' },
+                  ...ctxSegments(contextMeter.pct, contextBreakdown).map(s => createElement('i', { key: s.key, className: s.cls, style: { width: `${String(s.width)}%` } }))),
+                contextBreakdown !== null
+                  ? createElement('div', { className: 'lks14-ctxpanel-rows' },
+                    createElement('div', { className: 'lks14-ctxpanel-row' }, createElement('span', { className: 'swatch sys', 'aria-hidden': 'true' }), tr('meter.brk.system'), createElement('b', null, `~${fmtTokens(contextBreakdown.systemTokens)}`)),
+                    createElement('div', { className: 'lks14-ctxpanel-row' }, createElement('span', { className: 'swatch tools', 'aria-hidden': 'true' }), tr('meter.brk.tools'), createElement('b', null, `~${fmtTokens(contextBreakdown.toolsTokens)}`)),
+                    createElement('div', { className: 'lks14-ctxpanel-row' }, createElement('span', { className: 'swatch msgs', 'aria-hidden': 'true' }), tr('meter.brk.messages'), createElement('b', null, `~${fmtTokens(contextBreakdown.messageTokens)}`)))
+                  : null,
+                contextMeter.estimated
+                  ? createElement('div', { className: 'lks14-ctxpanel-note' }, tr('meter.estimate.note'))
+                  : null)
+              : null)
+          : null,
         // C2: send ↔ stop (upstream's 3D pair — stop cancels the host turn).
         busy
           ? createElement('button', {

@@ -71,6 +71,28 @@ export function apply(ctx: Context, config: Config): void {
     })
     cmdCtx.effect(() => disposeCommand, 'lookatstudy.studyCommand()')
   })
+  // E1: the tutor model's REAL context capacity, host-side — the composition's
+  // default model resolved through the host's model runtime (the catalog's
+  // provider-owned value, not a plugin constant). The faces are reached the
+  // only way a plugin scope can reach host services — a runtime inject — and
+  // compositions without them keep the resolver null (the meter degrades to
+  // the session projection / the labeled estimate).
+  type HostModelInfo = { id: string; provider: string; contextWindow: number | null }
+  let resolveModelInfo: (() => Promise<HostModelInfo | null>) | null = null
+  ctx.inject(['agentDefaultModel', 'llm'], (modelCtx) => {
+    const faces = modelCtx as {
+      agentDefaultModel: { currentSelection(): { provider: string; model: string } }
+      llm: { resolveModelInfo(provider: string, model: string): Promise<{ id: string; context?: { contextWindow?: number } }> }
+    }
+    resolveModelInfo = async (): Promise<HostModelInfo | null> => {
+      try {
+        const selection = faces.agentDefaultModel.currentSelection()
+        const info = await faces.llm.resolveModelInfo(selection.provider, selection.model)
+        return { id: info.id, provider: selection.provider, contextWindow: info.context?.contextWindow ?? null }
+      } catch { return null }
+    }
+  })
+  const modelInfo = async (): Promise<HostModelInfo | null> => resolveModelInfo === null ? null : resolveModelInfo()
   // The study tab's HTTP API and its dedicated workspace directory exist only
   // in compositions carrying a webserver (web profile); headless assemblies
   // keep the plain tool surface.
@@ -79,7 +101,7 @@ export function apply(ctx: Context, config: Config): void {
     // state file, created eagerly so the client can adopt it as a workspace.
     const studyAreaPath = join(dirname(statePath), 'study-area')
     mkdirSync(studyAreaPath, { recursive: true })
-    const disposeDashboard = registerDashboard(webCtx.webServer, { store, studyAreaPath, statePath, onActiveChange: surface.sync })
+    const disposeDashboard = registerDashboard(webCtx.webServer, { store, studyAreaPath, statePath, onActiveChange: surface.sync, modelInfo })
     webCtx.effect(() => disposeDashboard, 'lookatstudy.dashboard()')
   })
 }

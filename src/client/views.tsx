@@ -206,6 +206,34 @@ export function humanizeSectionTitle(raw: string): string {
   return t === '' ? raw.trim() : t
 }
 
+/** Bar-segment plan for the context figures panel (breakdown-proportioned). */
+export interface CtxSegment { key: string; cls: string; width: number }
+
+/**
+ * Proportion the panel's bar through the host's heuristic composition, in the
+ * segment order system → tools → messages; without a breakdown a single
+ * brand segment carries the whole reading. A zero-width part is dropped.
+ */
+export function ctxSegments(pct: number, breakdown: { systemTokens: number; toolsTokens: number; messageTokens: number } | null): CtxSegment[] {
+  if (pct <= 0) return []
+  const total = breakdown === null ? 0 : breakdown.systemTokens + breakdown.toolsTokens + breakdown.messageTokens
+  if (total <= 0) return [{ key: 'total', cls: '', width: pct }]
+  return ([
+    ['sys', breakdown.systemTokens],
+    ['tools', breakdown.toolsTokens],
+    ['msgs', breakdown.messageTokens],
+  ] as const)
+    .map(([key, tokens]) => ({ key, cls: key, width: pct * tokens / total }))
+    .filter(s => s.width > 0)
+}
+
+/** Compact token figure for the context panel (host formatTokens arrangement). */
+export function fmtTokens(value: number): string {
+  if (value < 1000) return String(value)
+  if (value < 1_000_000) return `${String(Math.round(value / 100) / 10)}K`
+  return `${String(Math.round(value / 100_000) / 10)}M`
+}
+
 /**
  * Panel-facing error text (0.19 critique round): raw err.message (host RPC
  * internals like "prompt rejected: …") never renders in the DOM — the user

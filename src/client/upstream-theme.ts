@@ -682,12 +682,30 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-hdr-zoom-btn:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
 .lks-ui .lks-hdr-zoom-val{font-size:10px;color:var(--ink-faint);min-width:32px;text-align:center}
 
-/* E1: the context meter above the composer */
-.lks-ui .lks14-ctxmeter{display:flex;align-items:center;gap:8px;padding:0 4px 6px;font-size:10px;color:var(--ink-faint)}
-.lks-ui .lks14-ctxmeter-bar{flex:1;height:4px;border-radius:999px;background:rgb(var(--ink-rgb)/0.08);overflow:hidden}
-.lks-ui .lks14-ctxmeter-bar i{display:block;height:100%;border-radius:999px;background:var(--brand);transform-origin:left;transition:transform .3s var(--ease-out-expo)}
-.lks-ui .lks14-ctxmeter-bar i.hot{background:var(--warning)}
-.lks-ui .lks14-ctxmeter-label{flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* E1: the context ring — the host composer's occupancy meter (a 14px ring
+   beside send; hover reads, click opens the figures panel). */
+.lks-ui .lks14-ctxring-wrap{position:relative;display:inline-flex;align-items:center}
+.lks-ui .lks14-ctxring{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:none;border-radius:50%;background:transparent;cursor:pointer;color:var(--ink-faint);transition:color .15s}
+.lks-ui .lks14-ctxring:hover{color:var(--ink-muted)}
+.lks-ui .lks14-ctxring:focus-visible{outline:none;box-shadow:0 0 0 2px var(--business-primary)}
+.lks-ui .lks14-ctxring .track{fill:none;stroke:rgb(var(--ink-rgb)/0.18);stroke-width:2}
+.lks-ui .lks14-ctxring .fill{fill:none;stroke:var(--brand);stroke-width:2;stroke-linecap:round;transition:stroke-dasharray .3s var(--ease-out-expo)}
+.lks-ui .lks14-ctxring .fill.hot{stroke:var(--warning)}
+.lks-ui .lks14-ctxpanel{position:absolute;bottom:calc(100% + 8px);right:0;z-index:30;width:240px;padding:10px 12px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border-faint);box-shadow:0 8px 24px rgb(0 0 0/0.25);font-size:11px;color:var(--ink);text-align:left}
+.lks-ui .lks14-ctxpanel-head{display:flex;align-items:baseline;gap:8px;margin-bottom:7px}
+.lks-ui .lks14-ctxpanel-pct{font-size:15px;font-weight:700;color:var(--ink-strong)}
+.lks-ui .lks14-ctxpanel-figs{margin-left:auto;color:var(--ink-muted);font-variant-numeric:tabular-nums}
+.lks-ui .lks14-ctxpanel-bar{display:flex;height:4px;border-radius:999px;background:rgb(var(--ink-rgb)/0.1);overflow:hidden}
+.lks-ui .lks14-ctxpanel-bar i{display:block;height:100%;background:var(--brand)}
+.lks-ui .lks14-ctxpanel-bar i.tools{background:color-mix(in srgb,var(--brand) 55%,var(--warning))}
+.lks-ui .lks14-ctxpanel-bar i.msgs{background:var(--warning)}
+.lks-ui .lks14-ctxpanel-rows{margin-top:7px;display:flex;flex-direction:column;gap:3px}
+.lks-ui .lks14-ctxpanel-row{display:flex;align-items:center;gap:6px;color:var(--ink-muted)}
+.lks-ui .lks14-ctxpanel-row b{margin-left:auto;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.lks-ui .lks14-ctxpanel-row .swatch{flex:none;width:7px;height:7px;border-radius:2px;background:var(--brand)}
+.lks-ui .lks14-ctxpanel-row .swatch.tools{background:color-mix(in srgb,var(--brand) 55%,var(--warning))}
+.lks-ui .lks14-ctxpanel-row .swatch.msgs{background:var(--warning)}
+.lks-ui .lks14-ctxpanel-note{margin-top:6px;font-size:10px;color:var(--ink-faint)}
 /* E6: the model face chip + catalog popover */
 .lks-ui .lks-modelface{position:relative;display:flex}
 .lks-ui .lks-modelface-chip{display:flex;align-items:center;gap:4px;border:1px solid var(--border-faint);background:var(--surface-1);color:var(--ink-muted);font:inherit;font-size:10px;font-weight:700;border-radius:999px;padding:2.5px 8px;cursor:pointer;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:all .15s}
@@ -737,13 +755,6 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-threadmenu-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lks-ui .lks14-threadmenu-now{flex:none;font-size:10px;font-weight:800;color:var(--brand)}
 
-/* ── the context meter lives inside the composer card (0.19 owner note:
-   the floating bar read as a stray element outside the input) ── */
-.lks-ui .lks14-ctxmeter{display:flex;align-items:center;gap:8px;padding:0 2px 4px;font-size:10px;color:var(--ink-faint)}
-.lks-ui .lks14-ctxmeter-bar{flex:1 1 auto;min-width:44px;height:2px;border-radius:1px;background:rgb(0 0 0/0.12);overflow:hidden}
-.lks-ui .lks14-ctxmeter-bar i{display:block;height:100%;background:var(--brand);transform-origin:left;transition:transform .3s var(--ease-out-expo)}
-.lks-ui .lks14-ctxmeter-bar i.hot{background:var(--warning)}
-.lks-ui .lks14-ctxmeter-label{flex:none;font-weight:600;white-space:nowrap;max-width:none}
 
 /* ── light-mode chrome sweep: the rail-head glass family hardcoded dark for
    the map era; the list rail follows the theme, so the chrome reads
@@ -784,7 +795,7 @@ export const UPSTREAM_CSS = `
 .lks-ui[data-lks-theme='light'] .lks14-importprog-step.pending .lks14-importprog-dots{border-color:var(--border)}
 .lks-ui[data-lks-theme='light'] .lks14-importprog-elapsed{color:var(--ink-muted)}
 .lks-ui[data-lks-theme='light'] .lks14-threadmenu{background:rgb(255 255 255/0.98);border-color:var(--border-faint);box-shadow:0 12px 32px -8px rgb(0 0 0/0.18)}
-.lks-ui[data-lks-theme='light'] .lks14-ctxmeter-bar{background:rgb(0 0 0/0.1)}
+.lks-ui[data-lks-theme='light'] .lks14-ctxpanel{background:rgb(255 255 255/0.98);box-shadow:0 8px 24px rgb(0 0 0/0.12)}
 /* ambient glyph motion sleeps under reduced-motion (A7 never had a guard) */
 @media (prefers-reduced-motion: reduce){
   .lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph svg,.lks-ui .lks-hdr-xp .lks-hdr-glyph,.lks-ui .lks-hdr-streak .lks-hdr-glyph{animation:none}

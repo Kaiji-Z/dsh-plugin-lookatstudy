@@ -229,7 +229,7 @@ gate('bundle', () => {
     [client, '--shiki-light', 'the shiki light flip'],
     [client, "data-lks-theme='light'] .lks14-railhead", 'the light chrome sweep'],
     // 0.18.0 P17: host-capability replacements
-    [client, 'lks14-ctxmeter', 'the context meter'],
+    [client, 'lks14-ctxring', 'the context ring + figures panel'],
     [client, 'lks14-threadchip', 'the thread switcher chip + menu'],
     [client, 'lks14-palette', 'the command palette'],
     [client, 'lks-modelface', 'the model face chip'],

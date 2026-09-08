@@ -8,7 +8,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { quizOptions, sectionDefaultOpen, statusTitle } from '../src/client/views.tsx'
+import { ctxSegments, fmtTokens, quizOptions, sectionDefaultOpen, statusTitle } from '../src/client/views.tsx'
 import { studyStore, type StudyState } from '../src/client/data.ts'
 import { STUDY_CSS } from '../src/client/styles.ts'
 
@@ -467,4 +467,22 @@ test('E1/E6: the workbench state carries the budget flag; the surface directive 
   assert.ok(snapshotSectionText(state).includes('历史预算已开启'), 'the directive rides the snapshot tail when on')
   state.historyBudget = false
   assert.ok(!snapshotSectionText(state).includes('历史预算'), 'off → no directive')
+})
+
+test('the context ring helpers: fmtTokens compacts, ctxSegments proportions the breakdown', () => {
+  assert.equal(fmtTokens(42), '42')
+  assert.equal(fmtTokens(2072), '2.1K')
+  assert.equal(fmtTokens(15856), '15.9K')
+  assert.equal(fmtTokens(128000), '128K')
+  assert.equal(fmtTokens(1_572_864), '1.6M')
+  assert.deepEqual(ctxSegments(0, { systemTokens: 100, toolsTokens: 100, messageTokens: 100 }), [])
+  assert.deepEqual(ctxSegments(23, null), [{ key: 'total', cls: '', width: 23 }])
+  const segs = ctxSegments(50, { systemTokens: 300, toolsTokens: 100, messageTokens: 100 })
+  assert.deepEqual(segs, [
+    { key: 'sys', cls: 'sys', width: 30 },
+    { key: 'tools', cls: 'tools', width: 10 },
+    { key: 'msgs', cls: 'msgs', width: 10 },
+  ])
+  // zero-width parts drop instead of rendering a hairline over empty context
+  assert.deepEqual(ctxSegments(50, { systemTokens: 500, toolsTokens: 0, messageTokens: 0 }), [{ key: 'sys', cls: 'sys', width: 50 }])
 })

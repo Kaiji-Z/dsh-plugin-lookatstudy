@@ -83,6 +83,8 @@ export interface StudyState {
   readonly statePath: string
   /** Plugin version from the running build's package.json (settings About row). */
   readonly version: string
+  /** Host-resolved tutor model facts (the meter's real context capacity). */
+  readonly model: { readonly id: string; readonly contextWindow: number | null } | null
 }
 
 /** ── Exam v2 wire shapes (GET /lookatstudy/api/exam; upstream ExamStatusView). ── */

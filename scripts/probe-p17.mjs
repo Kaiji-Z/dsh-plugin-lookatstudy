@@ -86,9 +86,9 @@ if (chipLabel !== null) {
 }
 const meter = await page.evaluate(() => {
   const el = document.querySelector('[data-testid="context-meter"]')
-  return el === null ? null : { estimated: el.getAttribute('data-estimated'), label: el.querySelector('.lks14-ctxmeter-label')?.textContent ?? '' }
+  return el === null ? null : { estimated: el.getAttribute('data-estimated'), aria: el.getAttribute('aria-label') }
 })
-probe('E1: the context meter rides the composer (projection or labeled estimate)', meter !== null && meter.label !== '', `estimated=${meter?.estimated} label="${meter?.label.slice(0, 40)}"`)
+probe('E1: the context ring rides the composer (projection or capped estimate)', meter !== null && (meter.aria ?? '').includes('%'), `estimated=${meter?.estimated} aria="${String(meter?.aria).slice(0, 40)}"`)
 
 // ——— E4: Cmd+K palette ———
 await page.keyboard.press('Control+KeyK')

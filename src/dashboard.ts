@@ -73,6 +73,8 @@ export interface DashboardDeps {
     /** Overrides synthesis entirely (the cache still short-circuits first). */
     synthesize?: (text: string, voice: string) => Promise<Buffer>
   }
+  /** Host-resolved tutor model facts (the meter's real context capacity). */
+  modelInfo: () => Promise<{ id: string; provider: string; contextWindow: number | null } | null>
 }
 
 /** Structural slice of the dsh `webServer` service, for testability. */
@@ -349,13 +351,23 @@ function readJsonBody(req: RequestLike & { on(event: 'data' | 'end', listener: (
  * @returns the disposer removing every route.
  */
 export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps): () => void {
+  // The model facts resolve through the composition's faces — memoized briefly
+  // so the 3 s state poll never re-queries the model runtime per request.
+  type ModelInfo = Awaited<ReturnType<DashboardDeps['modelInfo']>>
+  let modelCache: { at: number; value: ModelInfo } | null = null
+  const modelInfo = async (): Promise<ModelInfo> => {
+    if (modelCache !== null && Date.now() - modelCache.at < 30_000) return modelCache.value
+    const value = await deps.modelInfo().catch(() => null)
+    modelCache = { at: Date.now(), value }
+    return value
+  }
   const disposeRoutes = webServer.register({
     kind: 'prefix',
     path: '/lookatstudy',
     handler: async (req, res) => {
       const pathname = new URL(req.url ?? '/', 'http://x').pathname
       if (req.method === 'GET' && pathname === '/lookatstudy/api/state') {
-        sendJson(res, 200, { ...workbenchState(deps.store.get(), new Date()), statePath: deps.statePath, version: pluginVersion() })
+        sendJson(res, 200, { ...workbenchState(deps.store.get(), new Date()), statePath: deps.statePath, version: pluginVersion(), model: await modelInfo() })
         return
       }
       if (req.method === 'GET' && pathname === '/lookatstudy/api/search') {

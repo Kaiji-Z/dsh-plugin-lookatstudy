@@ -109,7 +109,7 @@ test('workbenchState assembles map, lesson html, notes, proposals, and due list'
 test('routes: state API, focus switching, and unknown paths', async () => {
   const { state, lessonId } = fixture()
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
 
   const page = await handle(routes, new FakeRequest('GET', '/lookatstudy/'), new FakeResponse())
   assert.equal(page.status, 404, 'the standalone workbench page is gone; only the API remains')
@@ -120,7 +120,7 @@ test('routes: state API, focus switching, and unknown paths', async () => {
 
   let saved = 0
   const routes2: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes2.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+  registerDashboard({ register: (route) => { routes2.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
   const focus = await handle(routes2, new FakeRequest('POST', '/lookatstudy/api/focus', { lessonId: `${state.courses[0]!.id}:0:1` }), new FakeResponse())
   assert.equal(focus.status, 200)
   assert.equal(saved, 1)
@@ -139,7 +139,7 @@ test('note delete route: removes one entry, persists, 400 on bad body, 404 on un
   const note = addNote(state, lessonId, 'understand', 'map', 'body', 'ai', null, new Date())
   let saved = 0
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
 
   const bad = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/note/delete', { lessonId }), new FakeResponse())
   assert.equal(bad.status, 400, 'missing noteId is a 400')
@@ -159,7 +159,7 @@ test('review route: records the SM-2 self-rating, 400 on bad quality, 404 withou
   const { state, lessonId } = fixture()
   let saved = 0
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
 
   const noSchedule = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/review', { lessonId, quality: 4 }), new FakeResponse())
   assert.equal(noSchedule.status, 404, 'a lesson without an SM-2 schedule cannot be reviewed')
@@ -178,7 +178,7 @@ test('user-note route: a selection becomes a record-zone note whose quote is the
   const { state, lessonId } = fixture()
   let saved = 0
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
 
   const bad = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/note/user', { lessonId, quote: 'x' }), new FakeResponse())
   assert.equal(bad.status, 400, 'a too-short selection is rejected')
@@ -203,6 +203,7 @@ test('tts route: streams the synthesis (cache-first), 400 on empty text, 502 whe
     studyAreaPath: studyArea,
     statePath: 'C:/state.json',
     onActiveChange: () => {},
+    modelInfo: async () => null,
     tts: {
       synthesize: async (text, voice) => {
         synths.push(`${voice}:${text}`)
@@ -230,6 +231,7 @@ test('tts route: streams the synthesis (cache-first), 400 on empty text, 502 whe
     studyAreaPath: studyArea,
     statePath: 'C:/state.json',
     onActiveChange: () => {},
+    modelInfo: async () => null,
     tts: { synthesize: async () => { throw new Error('endpoint gone') } },
   })
   const dead = await handle(failingRoutes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '第二句。' }), new FakeResponse())
@@ -241,7 +243,7 @@ test('mode route: switches and persists the soul mode; 400 on bad values', async
   assert.equal(state.mode, 'guide')
   let saved = 0
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
 
   const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/mode', { mode: 'practice' }), new FakeResponse())
   assert.equal(ok.status, 200)
@@ -266,6 +268,7 @@ test('active route: flips activation, persists, and syncs the surface before res
     studyAreaPath: 'C:/study-area',
     statePath: 'C:/state.json',
     onActiveChange: (active) => { flips.push(active) },
+    modelInfo: async () => null,
   })
 
   const feed = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
@@ -340,10 +343,30 @@ test('the state feed carries the plugin version read from the running package.js
   state.active = true
   const routes: Array<{ kind: string; path: string; handler: (req: RouteMethod, res: unknown) => unknown }> = []
   registerDashboard({ register: (route) => { routes.push(route as never); return () => {} } },
-    { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} } as never)
+    { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null } as never)
   const api = await handle(routes as never, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
   const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }
   assert.equal((api.json() as { version: string }).version, pkg.version, 'version equals the installed package.json — strictly the running build')
+})
+
+test('the state feed carries the host-resolved model facts (real context capacity for the meter)', async () => {
+  const state = emptyState()
+  state.active = true
+  const routes: Array<{ kind: string; path: string; handler: (req: RouteMethod, res: unknown) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route as never); return () => {} } },
+    {
+      store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {},
+      modelInfo: async () => ({ id: 'glm-5.2', provider: 'glm-coding', contextWindow: 128000 }),
+    } as never)
+  const api = await handle(routes as never, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  const model = (api.json() as { model: { id: string; provider: string; contextWindow: number | null } | null }).model
+  assert.deepEqual(model, { id: 'glm-5.2', provider: 'glm-coding', contextWindow: 128000 }, 'the feed exposes the host-resolved capacity verbatim')
+  // a face-less composition degrades to null, never throws the route down
+  const routes2: Array<{ kind: string; path: string; handler: (req: RouteMethod, res: unknown) => unknown }> = []
+  registerDashboard({ register: (route) => { routes2.push(route as never); return () => {} } },
+    { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null } as never)
+  const api2 = await handle(routes2 as never, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  assert.equal((api2.json() as { model: unknown }).model, null, 'no faces on the composition → model null')
 })
 
 
@@ -352,7 +375,7 @@ test('routes: the exam-v2 lifecycle rides the dashboard API (P12)', async () => 
   const course = importCourse(state, parseMarkdownToCourse(COURSE_MD), 'markdown', 'fixture')
   const exam = state.courses[0]!.sections.flatMap(s => s.lessons).find(l => l.kind === 'exam')!
   const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {} })
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
 
   const idle = (await handle(routes, new FakeRequest('GET', `/lookatstudy/api/exam?lessonId=${encodeURIComponent(exam.id)}`), new FakeResponse()) as { status: number; json(): { status: string; questionCount: number; attemptCount: number } })
   assert.equal(idle.status, 200)
