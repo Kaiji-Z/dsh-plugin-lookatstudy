@@ -1,15 +1,20 @@
 # dsh-plugin-lookatstudy
 
+**English** | [简体中文](README.zh-CN.md)
+
 Turn any markdown document, local folder, or GitHub learning repository into a guided course inside [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) — your dsh agent becomes a full AI tutor with the interaction design of [LookatStudy](https://github.com/Kaiji-Z/LookatStudy): per-concept knowledge tracking, mastery-driven progression, spaced repetition, mastery proposals, friction awareness, learner memory, a Cornell notebook, an in-chat proposal card, exam mode with star grades, XP & streak, bilingual lessons, read-aloud (Edge TTS with a system-voice fallback), and a rich blackboard (KaTeX math, syntax-highlighted code, mermaid diagrams, mindmap & concept-map views). Learning engine modules are vendored from LookatStudy (MIT).
 
 ## Screenshots
 
-| | |
-|---|---|
-| ![Three-column study panel: course rail list, tutor chat, blackboard](docs/media/overview.png)<br>![Same panel in light theme](docs/media/overview-light.png) | **The 学习 panel** — LookatStudy's UI 1:1 in **both themes** (the panel follows the host's dark/light switch live): the floating XP/streak app header, the three-column surface ladder (rail / chat / notebook, depth by color step), 3D push-down buttons, and the chat's typing dots; opened from the sidebar's 学习 row. |
-| ![Lesson page with rendered math, code and diagrams](docs/media/blackboard-lesson.png)<br>![Lesson page, light theme](docs/media/blackboard-lesson-light.png) | **讲解** — server-sanitized markdown rendered rich on demand: KaTeX formulas, syntax-highlighted code (shared copy-to-clipboard blocks), mermaid diagrams with a zoomable canvas stage (CDN loaders, silent degrade offline). |
-| ![Concept map view](docs/media/concept-map.png)<br>![Concept map, light theme](docs/media/concept-map-light.png) | **🕸 概念图** — the lesson's knowledge components laid out as a draw.io-style concept graph (bundled ELK layout, no external service). |
-| ![Course rail list](docs/media/course-rail.png)<br>![Course rail, light theme](docs/media/course-rail-light.png) | **课程栏** — the course tree as a quiet list (a deliberate deviation from upstream's gamified map): collapsible section heads with done/total counts, lesson rows carrying the status glyph (locked / available / in-progress / mastered crown / purple exam), inline mastery bars, due badges, streaming spinners, and hover tooltips that explain every state; the focused row is brand-edged. |
+<p align="center">
+  <img src="docs/media/overview.png" alt="The three-column study panel (light theme)" width="100%">
+</p>
+<p align="center"><b>The 学习 panel</b> — LookatStudy's UI 1:1 in the host's light theme (the panel follows the host's dark/light switch live): the floating XP/streak app header, the three-column surface ladder (rail / chat / notebook, depth by color step), 3D push-down buttons, and the chat's typing dots; opened from the sidebar's 学习 row.</p>
+
+| 课程栏 | 讲解 | 🕸 概念图 |
+|---|---|---|
+| <img src="docs/media/course-rail.png" width="100%" alt="Course rail list"> | <img src="docs/media/blackboard-lesson.png" width="100%" alt="讲解 lesson page"> | <img src="docs/media/concept-map.png" width="100%" alt="Concept map"> |
+| **课程栏** — the course tree as a quiet list (a deliberate deviation from upstream's gamified map): collapsible section heads with done/total counts, lesson rows carrying the status glyph (locked / available / in-progress / mastered crown / purple exam), inline mastery bars, due badges, streaming spinners, and hover tooltips that explain every state; the focused row is brand-edged. | **讲解** — server-sanitized markdown rendered rich on demand: KaTeX formulas, syntax-highlighted code (shared copy-to-clipboard blocks), mermaid diagrams with a zoomable canvas stage (CDN loaders, silent degrade offline). | **🕸 概念图** — the lesson's knowledge components laid out as a draw.io-style concept graph (bundled ELK layout, no external service). |
 
 ## Install
 
@@ -23,7 +28,7 @@ Works with any profile. In the `web` profile the plugin additionally serves the 
 
 ## The two surfaces
 
-**1. The tutor (chat).** Talk to the agent: *"import https://github.com/microsoft/AI-For-Beginners and teach me lesson 1"*, *"what reviews are due today?"*. The tutor persona (stable core + one of three souls — `guide` 引导 / `direct` 精讲 / `practice` 实战) drives the full LookatStudy loop:
+**1. The tutor (chat).** Talk to the agent: *"import https://github.com/microsoft/AI-For-Beginners and teach me lesson 1"*, *"what reviews are due today?"*. The tutor persona (stable core + one of three souls — `guide` 引导 / `direct` 直讲 / `practice` 实战) drives the full LookatStudy loop:
 
 - **Knowledge components (KC)** — on first teaching a lesson the tutor derives 2–7 concepts (`study_define_concepts`); every graded answer is attributed (`study_record_answer` with `concept`); per-concept BKT runs and **lesson mastery is the weakest concept** — quizzes target ⚡weak ones first.
 - **Mastery-driven progression** — ≥50% unlocks the next lesson early; ≥90% graduates and schedules the first SM-2 review; answers also nudge the review schedule.
@@ -59,7 +64,7 @@ Beyond the tab, the plugin rides the host's own integration points:
 - **Tool cards in the conversation tab** — keyed `tool.call.toolview` entries for `study_record_answer` (✓/✗ + concept), `study_lesson`, `study_due_reviews`, `study_exam_result`.
 - **Boot-tier prefetch** — `dsh.client.immediately: true`, so the sidebar 学习 row renders on first paint with no bundle fetch.
 
-## Tool surface (30)
+## Tool surface (31)
 
 Import: `study_import_markdown` / `study_import_folder` (12 doc formats incl. EPUB/DOCX/PPTX/PDF text) / `study_import_github` (jsDelivr CDN, works where github.com is unreachable) / `study_import_url` (articles, arXiv, video metadata) + `study_apply_design` (the tutor-designed structure protocol)
 Learn: `study_courses` (progress + full-text search), `study_map`, `study_lesson`
