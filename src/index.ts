@@ -22,7 +22,7 @@ export const name = 'lookatstudy-plugin'
 export const inject = ['tools', 'systemPrompt']
 
 /**
- * Register the activation-gated study surface: the 25 `study_*` tools (kept
+ * Register the activation-gated study surface: the 31 `study_*` tools (kept
  * unregistered while dormant), the tutor persona (stable core + soul), the
  * dynamic learner-snapshot context, and the `/study` command — every prompt
  * text renders empty while inactive, and empty sections are dropped at
