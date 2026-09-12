@@ -797,6 +797,11 @@ export const UPSTREAM_CSS = `
 .lks-ui[data-lks-theme='light'] .lks14-threadmenu{background:rgb(255 255 255/0.98);border-color:var(--border-faint);box-shadow:0 12px 32px -8px rgb(0 0 0/0.18)}
 .lks-ui[data-lks-theme='light'] .lks14-ctxpanel{background:rgb(255 255 255/0.98);box-shadow:0 8px 24px rgb(0 0 0/0.12)}
 /* ambient glyph motion sleeps under reduced-motion (A7 never had a guard) */
+/* v0.29 pane-resize: the grip line lights the upstream accent under the skin
+   (base sheet's host-token color is the no-skin fallback; the handle itself
+   is structural lks14- and lives in styles.ts) */
+.lks-ui .lks14-panehandle:hover::after,.lks-ui .lks14-panehandle[data-dragging='true']::after{background:color-mix(in srgb,var(--accent) 55%,transparent)}
+
 @media (prefers-reduced-motion: reduce){
   .lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph svg,.lks-ui .lks-hdr-xp .lks-hdr-glyph,.lks-ui .lks-hdr-streak .lks-hdr-glyph{animation:none}
 }

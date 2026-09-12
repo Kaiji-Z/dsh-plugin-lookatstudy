@@ -56,7 +56,7 @@ gate('bundle', () => {
     [client, 'feedRows', 'event-window → chat-rows fold (session-feed)'],
     [client, 'lesson-session', 'per-lesson thread binding'],
     [client, '/lookatstudy/api/active', 'activation route wired into the client'],
-    [client, 'flex:0 0 300px', 'upstream 300px rail column'],
+    [client, 'flex:0 0 var(--lks-rail-w,300px)', 'upstream 300px rail column (var fallback since the v0.29 pane-resize port)'],
     [client, 'clamp(480px,45%,800px)', 'upstream chat clamp column (row-relative)'],
     [client, 'lks14-composer', 'the chat pane owns its composer (host composer untouched)'],
     [client, 'M2 3.2C3.2', 'sidebar entry icon (open-book glyph)'],
@@ -242,6 +242,9 @@ gate('bundle', () => {
     // upstream v0.33 language-course axis: taught-language flag + posture block
     [host, 'languageTarget', 'the language-course flag (import protocol + course state)'],
     [host, '语言教学姿态', 'the language-teaching posture block in the snapshot'],
+    // v0.29 pane-resize port: the drag handles + the container-var width model
+    [client, 'lks14-panehandle', 'the pane-resize drag handles'],
+    [client, '--lks-rail-w', 'the container-level pane width vars'],
     [host, 'historyBudget', 'the budget flag + directive host-side'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]

@@ -206,13 +206,15 @@ test('the audit gate script exists with an exit-code contract', async () => {
 test('the B-track skeleton: floating rail chrome, swapped widths, de-carded assistant (P10b)', async () => {
   const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
   // the rail frame: floating topbar over sliding panes, sky on the rail itself
-  assert.match(STUDY_CSS, /\.lks14-rail\{flex:0 0 300px/, 'the rail is upstream 300px with its own panes')
+  // (v0.29 pane-resize: the 300px default now rides the var fallback — drag
+  // commits publish --lks-rail-w on the body; unset = the pinned default)
+  assert.match(STUDY_CSS, /\.lks14-rail\{flex:0 0 var\(--lks-rail-w,300px\)/, 'the rail is upstream 300px (var fallback) with its own panes')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railtop\{position:absolute/, 'the tab capsule + title card float over the scrolling map')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railtrack\{[^}]*width:200%/, 'map/import panes slide horizontally')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railscroll\{[^}]*padding:112px/, 'the scroller reserves the single-card chrome (0.19: 196 -> 112px)')
   assert.doesNotMatch(STUDY_CSS, /\.lks14-colhead\{/, 'the 课程/导师/黑板 column header rows are gone (upstream has none)')
-  // B3: the width logic swap
-  assert.match(STUDY_CSS, /\.lks14-chat\{flex:0 0 auto;width:clamp\(480px,45%,800px\)/, 'chat is the clamp column (row-relative %, fixed, never squeezed)')
+  // B3: the width logic swap (v0.29 pane-resize: clamp rides the var fallback)
+  assert.match(STUDY_CSS, /\.lks14-chat\{flex:0 0 auto;width:var\(--lks-chat-w,clamp\(480px,45%,800px\)\)/, 'chat is the clamp column (row-relative %, fixed, never squeezed)')
   assert.match(STUDY_CSS, /\.lks14-note\{flex:1 1 auto;min-width:440px/, 'the notebook takes the remaining width')
   // B6: assistant prose is cardless
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-msg-assistant\{background:none/, 'assistant text is full-width prose, not a bubble card')

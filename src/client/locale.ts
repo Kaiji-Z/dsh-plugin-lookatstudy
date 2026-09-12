@@ -174,6 +174,10 @@ export const ZH: StudyDict = {
   // P17: host-capability replacements
   'zoom.in': '放大面板字号',
   'zoom.out': '缩小面板字号',
+  // v0.29 pane-resize (upstream issue #14)
+  'pane.rail.aria': '调整课程栏宽度',
+  'pane.chat.aria': '调整对话栏宽度',
+  'pane.tip': '拖拽调宽,双击重置',
   'palette.label': '命令面板',
   'palette.placeholder': '搜索课时/课程,或选择动作…',
   'palette.lessons': '课时',
@@ -523,6 +527,10 @@ export const EN: StudyDict = {
   // P17: host-capability replacements
   'zoom.in': 'Increase panel font size',
   'zoom.out': 'Decrease panel font size',
+  // v0.29 pane-resize (upstream issue #14)
+  'pane.rail.aria': 'Resize the course pane width',
+  'pane.chat.aria': 'Resize the chat pane width',
+  'pane.tip': 'Drag to resize, double-click to reset',
   'palette.label': 'Command palette',
   'palette.placeholder': 'Search lessons/courses or pick an action…',
   'palette.lessons': 'Lesson',

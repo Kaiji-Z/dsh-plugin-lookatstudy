@@ -13,7 +13,7 @@
  * @module dsh-plugin-lookatstudy/client/panel
  */
 
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
@@ -25,6 +25,11 @@ import { useStudy, storedTtsVoice } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
 import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
 import { normalizeMathNotation } from '../vendor/math-normalize.ts'
+import { PaneResizeHandle } from './paneresize.tsx'
+import {
+  CHAT_MAX, CHAT_MIN, HANDLES_W, NOTE_MIN, RAIL_DEFAULT, RAIL_MAX, RAIL_MIN,
+  clampChatCandidate, clampRailCandidate, defaultChatWidth, panelZoomOf, parseStoredWidth, solvePaneWidths,
+} from './pane-resize.ts'
 import { ctxSegments, fmtTokens } from './views.tsx'
 import { renderLessonConceptMap } from './diagrams.ts'
 import { speechSentencesOf } from '../vendor/speech-text.ts'
@@ -224,6 +229,66 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     const clamped = Math.min(1.1, Math.max(0.9, Math.round(next * 10) / 10))
     setZoomTier(clamped)
     try { localStorage.setItem('dsh-plugin-lookatstudy:zoom', String(clamped)) } catch { /* storage denied — session-only */ }
+  }
+  // v0.29 pane-resize port (upstream issue #14): rail/chat widths are the only
+  // persisted numbers (null = responsive CSS defaults); the notebook column
+  // always eats the remainder. Drags write imperatively through the handles;
+  // commits land here and a layout effect republishes the container-level CSS
+  // vars (--lks-rail-w / --lks-chat-w) before paint, then clears the drag's
+  // inline widths — same value, no flash, no stale inline overriding later
+  // re-solves when the host column narrows.
+  const [railW, setRailW] = useState<number | null>(() => parseStoredWidth(localStorage.getItem('dsh-plugin-lookatstudy:pane-rail'), RAIL_MIN, RAIL_MAX))
+  const [chatW, setChatW] = useState<number | null>(() => parseStoredWidth(localStorage.getItem('dsh-plugin-lookatstudy:pane-chat'), CHAT_MIN, CHAT_MAX))
+  const [paneBoxW, setPaneBoxW] = useState(0)
+  const bodyEl = useRef<HTMLDivElement | null>(null)
+  const rowEl = useRef<HTMLDivElement | null>(null)
+  const panesCustom = railW !== null || chatW !== null
+  // Track the panel container only while a custom width exists (upstream's
+  // discipline: an in-band container resize must not re-render the whole app).
+  useEffect(() => {
+    const el = bodyEl.current
+    if (el === null || !panesCustom) return
+    const ro = new ResizeObserver(entries => { for (const entry of entries) setPaneBoxW(Math.round(entry.contentRect.width)) })
+    ro.observe(el)
+    return () => { ro.disconnect() }
+  }, [panesCustom])
+  const paneContainerW = paneBoxW > 0 ? paneBoxW : (bodyEl.current?.clientWidth ?? 0)
+  const solvedPanes = solvePaneWidths(railW, chatW, paneContainerW)
+  useLayoutEffect(() => {
+    const el = bodyEl.current
+    if (el === null) return
+    if (solvedPanes.rail !== null) el.style.setProperty('--lks-rail-w', `${String(solvedPanes.rail)}px`)
+    else el.style.removeProperty('--lks-rail-w')
+    if (solvedPanes.chat !== null) el.style.setProperty('--lks-chat-w', `${String(solvedPanes.chat)}px`)
+    else el.style.removeProperty('--lks-chat-w')
+    for (const col of el.querySelectorAll<HTMLElement>('.lks14-rail, .lks14-chat')) {
+      col.style.flexBasis = ''
+      col.style.width = ''
+    }
+  }, [solvedPanes.rail, solvedPanes.chat])
+  const commitPaneWidth = (which: 'rail' | 'chat', px: number | null): void => {
+    const key = which === 'rail' ? 'dsh-plugin-lookatstudy:pane-rail' : 'dsh-plugin-lookatstudy:pane-chat'
+    const value = px === null ? null : Math.round(px) // rects carry sub-pixel fractions
+    if (which === 'rail') setRailW(value)
+    else setChatW(value)
+    try {
+      if (value === null) localStorage.removeItem(key)
+      else localStorage.setItem(key, String(value))
+    } catch { /* storage denied — session-only */ }
+  }
+  // Drag-time live clamps — budgets measured from the live DOM (the same
+  // formulas solvePaneWidths uses, read at pointer time so mid-drag reflow
+  // holds; rects normalized through the panel zoom — widths apply in layout px).
+  const railClampLive = (px: number): number => {
+    const el = bodyEl.current
+    const containerW = (el?.getBoundingClientRect().width ?? 1280) / panelZoomOf(el)
+    const rowW = Math.max(0, containerW - RAIL_DEFAULT - HANDLES_W)
+    return clampRailCandidate(px, containerW, (solvedPanes.chat ?? defaultChatWidth(rowW)) + NOTE_MIN + HANDLES_W)
+  }
+  const chatClampLive = (px: number): number => {
+    const el = rowEl.current
+    const rowW = (el?.getBoundingClientRect().width ?? 900) / panelZoomOf(el)
+    return clampChatCandidate(px, rowW, NOTE_MIN)
   }
   // E4: the command palette bus — CourseRail registers its map/review/course
   // actions here so the palette (mounted at the panel root) can drive them.
@@ -575,6 +640,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   // surface-2) — depth by color step, no borders.
   const body: ReactNode = createElement('div', {
     className: 'lks14-body',
+    ref: bodyEl,
     'data-pane': narrowPane,
     // C12: horizontal flick switches the narrow pane (upstream T3 swipe).
     onTouchStart: (e: ReactTouchEvent<HTMLDivElement>) => {
@@ -601,6 +667,10 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       stop,
       // E4: the command palette's rail-side actions register here.
       paletteBus }),
+    // v0.29 pane-resize: the rail|right-half boundary handle (its drag target
+    // is its previousElementSibling — the rail column; hidden in narrow mode
+    // by the same container query that collapses the columns).
+    createElement(PaneResizeHandle, { side: 'rail', clampLive: railClampLive, onCommit: px => commitPaneWidth('rail', px) }),
     createElement('div', { className: 'lks14-righthalf' },
       createElement('div', { className: 'lks14-appheader' },
         createElement('span', { className: 'lks-hdr-title' }, lesson?.courseTitle ?? tr('tab.label')),
@@ -634,7 +704,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
             onClick: () => { setZoom(zoomTier + 0.1) },
           }, 'A+')),
       ),
-      createElement('div', { className: 'lks14-row' },
+      createElement('div', { className: 'lks14-row', ref: rowEl },
         examLessonActive
           ? createElement('div', { className: 'lks14-col lks14-chat' },
             // the wrapper carries the chat column's width/flex identity — the
@@ -642,6 +712,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
             // shrink to content and the center column narrows)
             createElement(ExamView, { lessonId: lesson!.lessonId, sectionTitle: lesson!.sectionTitle, paused: examLeave !== null, onSessionChange: onExamSession }))
           : createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadJump: (id: string) => { setNarrowPane('chat'); void guardedSetFocus(id) }, contextMeter, contextBreakdown: breakdown, uploadAttachment }),
+        // v0.29 pane-resize: the chat|notebook boundary handle (target = the
+        // chat column; the exam wrapper carries the same lks14-chat identity).
+        createElement(PaneResizeHandle, { side: 'chat', clampLive: chatClampLive, onCommit: px => commitPaneWidth('chat', px) }),
         createElement(NotebookPane, { data, deleteNote, send }),
       ),
     ),

@@ -65,7 +65,7 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14-col{display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}
 
 /* 左 rail: course picker, tree, review, import */
-.lks14-rail{flex:0 0 300px;border-right:none;padding:0;overflow:hidden;position:relative}
+.lks14-rail{flex:0 0 var(--lks-rail-w,300px);border-right:none;padding:0;overflow:hidden;position:relative;transition:flex-basis 150ms ease}
 .lks14-railhead{display:flex;align-items:center;gap:6px;margin-top:10px}
 .lks14-railtitle{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .lks14-railsub{font-size:12px;color:var(--dsw-alias-label-secondary);margin:6px 0}
@@ -80,7 +80,7 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14-hint{font-size:11.5px;color:var(--dsw-alias-label-tertiary);margin-top:6px;line-height:1.6}
 
 /* 中 chat: the tutor stream + its own composer (upstream ChatStream/ChatComposer) */
-.lks14-chat{flex:0 0 auto;width:clamp(480px,45%,800px);min-width:0;border-right:none}
+.lks14-chat{flex:0 0 auto;width:var(--lks-chat-w,clamp(480px,45%,800px));min-width:0;border-right:none;transition:width 150ms ease}
 .lks14-chatlesson{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;color:var(--dsw-alias-label-tertiary)}
 .lks14-pills{display:inline-flex;gap:2px}
 .lks14-pill{border:none;background:none;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;padding:2px 8px;border-radius:7px;cursor:pointer}
@@ -110,6 +110,22 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14-composer{flex:none;display:flex;gap:6px;align-items:flex-end;padding:8px 12px 10px;border-top:1px solid var(--dsw-alias-border-l1)}
 .lks14-composertext{flex:1;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:7px 10px;resize:none;box-sizing:border-box}
 .lks14-composertext:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
+
+/* ============================================================
+ * v0.29 pane-resize 拖拽手柄(PaneResizeHandle)——
+ * 栏间 6px 竖条,视觉握线默认隐形、hover/拖拽亮 accent;
+ * 命中区触屏 44px(触屏密度红线),细指针收窄 12px(不吃栏内容点击)。
+ * pane 分隔语汇 = surface 色阶不加描边:握线是 hover 才现身的交互
+ * affordance,不是常驻分隔线,不违反 v0.6「pane 间无 border」。
+ * ============================================================ */
+.lks14-panehandle{position:relative;flex:none;width:6px;cursor:col-resize;touch-action:none;z-index:5}
+.lks14-panehandle::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:44px;transform:translateX(-50%)}
+@media (pointer:fine){.lks14-panehandle::before{width:12px}}
+.lks14-panehandle::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:2px;transform:translateX(-50%);border-radius:1px;background:transparent;transition:background 120ms}
+.lks14-panehandle:hover::after,.lks14-panehandle[data-dragging='true']::after{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,transparent)}
+/* 拖拽中:全局列宽光标 + 禁文本选择(宽度直写不经过 React) */
+body.pane-dragging{cursor:col-resize;user-select:none}
+body.pane-dragging *{cursor:col-resize}
 
 /* 右 notebook: 讲解/概念图/笔记 (upstream NotebookPanel) */
 .lks14-note{flex:1 1 auto;min-width:440px;padding:0;overflow-y:auto}
@@ -179,6 +195,7 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
   .lks14-body[data-pane='rail'] .lks14-righthalf{display:none}
   .lks14-body[data-pane='chat'] .lks14-rail,.lks14-body[data-pane='chat'] .lks14-note,
   .lks14-body[data-pane='note'] .lks14-rail,.lks14-body[data-pane='note'] .lks14-chat{display:none}
+  .lks14-panehandle{display:none}
   .lks14-body[data-pane='rail'] .lks14-rail{display:flex;max-height:none;flex:1 1 auto}
   .lks14-body[data-pane='note'] .lks14-note{display:flex}
 }
