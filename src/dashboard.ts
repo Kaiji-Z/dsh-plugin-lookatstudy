@@ -311,24 +311,26 @@ function sendJson(res: ResponseLike, status: number, value: unknown): void {
 /**
  * Read one JSON body, answering 400 on malformed or oversized input so the
  * handler never throws into the HTTP layer.
+ * @param maxBytes - per-route body ceiling; defaults to the tight 64 kB every
+ * small-json route wants (issue #4: only the attachment intake lifts it).
  * @returns the parsed value, or undefined when the response is already sent.
  */
-async function readJsonBodySafe(req: RequestLike, res: ResponseLike): Promise<unknown | undefined> {
+async function readJsonBodySafe(req: RequestLike, res: ResponseLike, maxBytes = 65_536): Promise<unknown | undefined> {
   try {
-    return await readJsonBody(req as never)
+    return await readJsonBody(req as never, maxBytes)
   } catch (error) {
     sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : 'bad request' })
     return undefined
   }
 }
 
-/** Read one JSON request body with a hard 64 kB cap; malformed bodies reject. */
-function readJsonBody(req: RequestLike & { on(event: 'data' | 'end', listener: (...args: never[]) => void): void }): Promise<unknown> {
+/** Read one JSON request body with a hard cap (64 kB unless the route lifts it); malformed bodies reject. */
+function readJsonBody(req: RequestLike & { on(event: 'data' | 'end', listener: (...args: never[]) => void): void }, maxBytes = 65_536): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => {
       chunks.push(chunk)
-      if (chunks.reduce((n, c) => n + c.length, 0) > 65_536) {
+      if (chunks.reduce((n, c) => n + c.length, 0) > maxBytes) {
         reject(new Error('request body too large'))
         return
       }
@@ -698,7 +700,11 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
       if (req.method === 'POST' && pathname === '/lookatstudy/api/attachment') {
         // E3 (upstream composer attachments): the intake lands verbatim in the
         // study workspace (attachments/), the tutor reads it from there.
-        const body = await readJsonBodySafe(req, res)
+        // Issue #4: the JSON wraps the payload in base64 (~4/3 inflation), so
+        // the generic 64 kB reader cap would reject everything above ~48 kB
+        // and make the 20 MiB check below dead code — this route reads under
+        // the inflated ceiling (20 MiB × 4/3 + envelope slack ≈ 28 MiB).
+        const body = await readJsonBodySafe(req, res, 28 * 1024 * 1024)
         if (body === undefined) return
         const name = typeof body.name === 'string' ? body.name.trim() : ''
         const data = typeof body.dataBase64 === 'string' ? body.dataBase64 : ''

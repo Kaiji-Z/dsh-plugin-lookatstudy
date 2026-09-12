@@ -235,6 +235,10 @@ gate('bundle', () => {
     [client, 'lks-modelface', 'the model face chip'],
     [client, 'lks-hdr-zoom', 'the font-scale pair'],
     [client, 'lks-btn-attach', 'the composer attach button'],
+    // issue #3: the chat feed's enhance pass (KaTeX/code/diagram cards on
+    // finalized assistant rows) + the raw-text speech source
+    [client, 'lksFeedEnhanced', "the feed's enhance marker"],
+    [host, '29360128', 'the attachment route\u2019s lifted 28 MiB body cap (issue #4)'],
     [host, 'historyBudget', 'the budget flag + directive host-side'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]

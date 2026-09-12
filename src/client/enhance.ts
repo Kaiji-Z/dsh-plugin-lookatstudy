@@ -179,17 +179,24 @@ export async function enhanceMath(container: HTMLElement): Promise<number> {
     if (findMathSpan((node as Text).data) !== null && (node as Text).parentElement?.tagName !== 'CODE') targets.push(node as Text)
   }
   for (const t of targets) {
-    const span = findMathSpan(t.data)
-    if (span === null) continue
-    try {
-      const html = katex.renderToString(span.tex, { displayMode: span.display, throwOnError: false })
-      const holder = document.createElement('span')
-      holder.innerHTML = html
-      if (span.before !== '') t.before(document.createTextNode(span.before))
-      t.before(holder)
-      t.data = span.after
-      replaced++
-    } catch { /* leave the text as-is */ }
+    // drain the node: a single text run can hold several spans ("$a$ and $b$")
+    // — the feed-enhance pass (issue #3) runs once per row, so leaving the
+    // remainder raw would strand every span after the first (the teach prose
+    // shares this loop and the same one-shot callers).
+    let guard = 0
+    while (guard++ < 200) {
+      const span = findMathSpan(t.data)
+      if (span === null) break
+      try {
+        const html = katex.renderToString(span.tex, { displayMode: span.display, throwOnError: false })
+        const holder = document.createElement('span')
+        holder.innerHTML = html
+        if (span.before !== '') t.before(document.createTextNode(span.before))
+        t.before(holder)
+        t.data = span.after
+        replaced++
+      } catch { break /* leave the text as-is */ }
+    }
   }
   return replaced
 }

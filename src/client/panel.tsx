@@ -24,6 +24,7 @@ import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
 import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
+import { normalizeMathNotation } from '../vendor/math-normalize.ts'
 import { ctxSegments, fmtTokens } from './views.tsx'
 import { renderLessonConceptMap } from './diagrams.ts'
 import { speechSentencesOf } from '../vendor/speech-text.ts'
@@ -151,11 +152,13 @@ function chatRow(row: { key: string; role: string; text: string; toolState?: 'lo
   const cls = row.role === 'streaming' ? 'lks14-msg lks14-msg-assistant streaming' : 'lks14-msg lks14-msg-assistant'
   // D8: every markdown surface renders through a boundary — a poisoned row
   // degrades to the inline warning + retry, never unmounts the pane.
+  // Math folds to $..$ before render (upstream ChatStream's normalizeMathNotation
+  // wrap) so the feed-enhance pass below can KaTeX it.
   const body = createElement(ErrorBoundary, { key: `b-${row.key}` },
     createElement('div', {
       className: cls,
       'data-row-key': row.key,
-      dangerouslySetInnerHTML: { __html: renderMarkdown(row.text) },
+      dangerouslySetInnerHTML: { __html: renderMarkdown(normalizeMathNotation(row.text)) },
     }))
   if (audio !== undefined && row.role === 'assistant') {
     return createElement('div', { key: row.key, className: 'lks14-msgwrap' },
@@ -1538,6 +1541,21 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     const el = streamEl.current
     if (el !== null) el.scrollTop = el.scrollHeight
   }, [rows.length, lastIsUser])
+  // Issue #3: the feed renders through the same markdown pipeline as the teach
+  // prose but never met the enhancers — KaTeX/code/diagram cards only ran on
+  // `tab === 'teach'`. Each finalized assistant row gets exactly one pass
+  // (enhanceRendered is idempotent, the marker keeps settled rows untouched on
+  // every poll); streaming rows stay raw — React rewrites their innerHTML each
+  // tick, and the settled final row is picked up here on the next rows change.
+  useEffect(() => {
+    const root = streamEl.current
+    if (root === null) return
+    for (const el of root.querySelectorAll<HTMLElement>('.lks14-msg-assistant:not(.streaming)')) {
+      if (el.dataset.lksFeedEnhanced === '1') continue
+      el.dataset.lksFeedEnhanced = '1'
+      void enhanceRendered(el).catch(() => { /* degrade */ })
+    }
+  }, [rows])
   const dormant = data?.active !== true
   // C2: Esc aborts the running turn (upstream's global escape).
   useEffect(() => {
@@ -1611,8 +1629,13 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   const playMessage = (key: string): void => {
     const el = rowElement(key)
     if (el === null) return
-    const plain = (el.textContent ?? '').trim()
-    const sentences = speechSentencesOf(plain)
+    // Issue #3 coexistence: rows now carry the enhancers' DOM — every formula
+    // exists twice (KaTeX's MathML + visual spans) — so the speech source is
+    // the RAW row text, never the DOM, and synthesis maps through
+    // speakMathInSentence exactly like the lesson path (startReading).
+    const raw = rowsView.find(r => r.key === key && r.role === 'assistant')?.text
+    if (raw === undefined) return
+    const sentences = speechSentencesOf(raw)
     if (sentences.length === 0) return
     msgReadCtl.current?.stop()
     const voice = storedTtsVoice()
@@ -1648,7 +1671,9 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
       resume: () => { window.speechSynthesis?.resume() },
       cancel: () => { window.speechSynthesis?.cancel() },
     }
-    const controller = new ReadAloudController(sentences, edgeEngine, systemEngine, s => {
+    // karaoke matches the UN-mapped sentences against the DOM text model —
+    // math-bearing sentences silently skip (their DOM text is KaTeX-shaped)
+    const controller = new ReadAloudController(sentences.map(s => speakMathInSentence(s)), edgeEngine, systemEngine, s => {
       setMsgAudio(s.state === 'idle' && s.index >= s.total - 1 ? null : { key, index: s.index, total: s.total })
       const el2 = rowElement(key)
       if (el2 !== null) karaokeMark(el2, s.index, sentences)
