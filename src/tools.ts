@@ -566,6 +566,16 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       + 'heading and the course is imported. On a validation or fetch error the tutor fixes the design and '
       + 'simply calls again.',
     parameters: {
+      languageTarget: {
+        type: 'string',
+        description:
+          'Set ONLY when this course teaches a language ITSELF (vocabulary, grammar, reading/writing of English/Japanese/Chinese/…) '
+          + 'rather than being a knowledge/tech course that merely happens to be written in some language: the taught '
+          + 'language as a BCP-47 tag ("en", "ja", "zh-CN", …). The writing language is NOT the taught language — a Chinese-written '
+          + 'English-textbook repo has languageTarget "en". Typical tells: vocab lists, grammar points, dialogues/readings, '
+          + 'sentence-translation pairs, level markers (N5/N1, TOEFL, HSK, JLPT), pronunciation content. When unsure, omit it — '
+          + 'a normal course misflagged as a language course is worse than the reverse.',
+      },
       sections: {
         type: 'array',
         required: true,
@@ -605,12 +615,14 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
           firstLessonId: { type: 'string', required: true },
           firstLessonTitle: { type: 'string', required: true },
           droppedLessons: { type: 'integer', required: true },
+          languageTarget: { type: 'string', description: 'Present only when the course teaches a language itself (BCP-47); the tutor then keeps quiz material in the target language.' },
         },
       },
       render: (_args, value) => [{
         type: 'text',
         text: `Imported designed course “${value.title}” (${value.sections} sections, ${value.lessons} lessons`
-          + `${value.droppedLessons > 0 ? `, ${value.droppedLessons} hallucinated lesson(s) dropped` : ''}). `
+          + `${value.droppedLessons > 0 ? `, ${value.droppedLessons} hallucinated lesson(s) dropped` : ''})`
+          + `${typeof value.languageTarget === 'string' ? ` — language course (${value.languageTarget}): keep reading passages, example sentences, and quiz language material in the target language` : ''}. `
           + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}). Present the course map to the learner.`,
       }],
     },
@@ -658,10 +670,15 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
         pd.translations,
       )
       requireParsedLessons(parsed)
-      const value = mutate(state => toImportValue(importCourse(state, parsed, pd.source, pd.url)))
+      // upstream v0.33 parse discipline: only a non-empty string counts
+      // (empty/null/other types → null = normal course, zero behavior change)
+      const languageTarget = typeof args.languageTarget === 'string' && args.languageTarget.trim() !== ''
+        ? args.languageTarget.trim().slice(0, 35)
+        : null
+      const value = mutate(state => toImportValue(importCourse(state, parsed, pd.source, pd.url, languageTarget)))
       pendingDesign = null
       pendingPart = 1
-      return { ...value, droppedLessons: validated.droppedLessons }
+      return { ...value, droppedLessons: validated.droppedLessons, ...(languageTarget !== null ? { languageTarget } : {}) }
     },
     timeoutMs: 180_000,
     presentCall: () => ({ card: 'generic', title: 'Apply course design', kind: 'edit' }),

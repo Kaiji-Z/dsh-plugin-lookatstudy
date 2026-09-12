@@ -186,6 +186,11 @@ export interface CourseState {
   sourceRef: string
   createdAt: string
   sections: SectionState[]
+  /** The language this course TEACHES (BCP-47, e.g. "en"), decided by the
+   *  tutor at design-apply time — upstream v0.33's language-course axis.
+   *  null/absent = the course teaches knowledge, not a language itself.
+   *  Additive; v2 files without it load as a normal course. */
+  languageTarget?: string | null
 }
 
 /** Whole persisted state; `version` gates migrations (v1 → v2 renamed completed→mastered and added lesson.kind). */
@@ -386,6 +391,8 @@ function freshLesson(title: string, anchor: string, body: string, kind: LessonKi
  * @param parsed - course tree from an importer.
  * @param source - import origin.
  * @param sourceRef - markdown/folder/repo reference for display.
+ * @param languageTarget - the taught language (BCP-47) when the course IS a
+ *  language course (design-apply path only; markdown imports stay undefined).
  * @returns the imported (or pre-existing) course.
  */
 export function importCourse(
@@ -393,6 +400,7 @@ export function importCourse(
   parsed: ParsedCourse,
   source: CourseSource,
   sourceRef: string,
+  languageTarget?: string | null,
 ): CourseState {
   const id = slugify(parsed.title)
   const existing = state.courses.find(c => c.id === id)
@@ -403,6 +411,7 @@ export function importCourse(
     source,
     sourceRef,
     createdAt: new Date().toISOString(),
+    languageTarget: languageTarget ?? null,
     sections: parsed.sections.map(section => {
       const lessons = section.lessons.map(lesson =>
         (() => {

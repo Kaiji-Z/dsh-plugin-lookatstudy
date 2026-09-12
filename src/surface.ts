@@ -12,6 +12,7 @@
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { studyTools, type StudyStore } from './tools.ts'
 import { learnerSnapshot, type LearningState, type StudyMode } from './state.ts'
+import { localeToLanguageName } from './vendor/locale-names.ts'
 
 /**
  * Stable tutor core (ported from LookatStudy's BASE_AGENT_PROMPT plus its
@@ -135,6 +136,23 @@ export function snapshotSectionText(state: LearningState): string {
   if (memory.length > 0) lines.push(`记忆: ${memory.join(' | ')}`)
   if (snap.dueCount > 0) lines.push(`今日待复习: ${snap.dueCount} 项`)
   if (snap.pendingProposal !== null) lines.push(`待决提案 ${snap.pendingProposal.id}: ${snap.pendingProposal.rationale}(等学习者表态)`)
+  // Upstream v0.33 language-course axis (ported 2026-09-12): when the focus
+  // course teaches a language ITSELF, the base prompt's "answer in the
+  // learner's language including quiz stems" would translate the
+  // target-language material away (upstream issue #15 — a Chinese-UI learner
+  // studying English got fully-Chinese quizzes). This block carves the two
+  // axes: medium of instruction follows the learner, subject material stays
+  // original. Absent languageTarget = normal course, snapshot unchanged.
+  const focusCourse = state.courses.find(c => c.id === snap.focus?.courseId)
+  if (focusCourse?.languageTarget != null && focusCourse.languageTarget !== '') {
+    const t = localeToLanguageName(focusCourse.languageTarget)
+    lines.push('')
+    lines.push(`【语言教学姿态】这门课程教的是${t}——教学语言(讲解、指令、反馈)跟随学习者的界面语言,${t}是学习对象:`)
+    lines.push(`- 课文引用、例句、题目素材保持${t}原文,考察目标语言本身——不要把目标语言材料翻译成教学语言来讲解或出题(生词首次出现可附教学语言注释,注释是辅助不是替代);`)
+    lines.push(`- 出题双轴:题干和选项中的语言素材(句子/单词/短语/语法点)用${t}原文,指令性文字和解析用教学语言;`)
+    lines.push(`- 学习者用${t}造句或表达时,先肯定再纠正其中的语言错误(语法/用词/拼写),用教学语言讲清错在哪;`)
+    lines.push(`- 随掌握度上升,渐进提高${t}素材的占比,把学习者往"直接用${t}读"带。`)
+  }
   // E2 (upstream v0.27 history-budget): the panel-side flag instructs the
   // tutor layer to trim — summarize older turns when the thread grows.
   if (state.historyBudget === true) lines.push('历史预算已开启:当会话变长时,主动概括旧轮次的要点并基于概要继续,避免逐字复读历史。')

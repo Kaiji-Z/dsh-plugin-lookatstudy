@@ -239,6 +239,9 @@ gate('bundle', () => {
     // finalized assistant rows) + the raw-text speech source
     [client, 'lksFeedEnhanced', "the feed's enhance marker"],
     [host, '29360128', 'the attachment route\u2019s lifted 28 MiB body cap (issue #4)'],
+    // upstream v0.33 language-course axis: taught-language flag + posture block
+    [host, 'languageTarget', 'the language-course flag (import protocol + course state)'],
+    [host, '语言教学姿态', 'the language-teaching posture block in the snapshot'],
     [host, 'historyBudget', 'the budget flag + directive host-side'],
     [host, 'registerStudyCommand', '/study slash command'],
   ]

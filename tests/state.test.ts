@@ -224,10 +224,28 @@ test('state persists and reloads identically', () => {
   try {
     const path = join(dir, 'state.json')
     const { state, courseId } = importedFixture()
+    state.courses[0]!.languageTarget = 'en'
     completeLesson(state, `${courseId}:0:0`, T0)
     saveState(path, state)
     const reloaded = loadState(path)
     assert.deepEqual(reloaded, state)
+    assert.equal(reloaded.courses[0]!.languageTarget, 'en', 'the taught language survives the roundtrip')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('languageTarget is additive: v2 files without it load as normal courses (upstream v0.33 axis)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lookatstudy-'))
+  try {
+    const path = join(dir, 'state.json')
+    const { state } = importedFixture()
+    const legacy = JSON.parse(JSON.stringify(state)) as Record<string, unknown>
+    // strip every languageTarget the way a pre-0.21 file would look
+    for (const course of legacy.courses as Array<Record<string, unknown>>) delete course.languageTarget
+    writeFileSync(path, JSON.stringify(legacy), 'utf8')
+    const loaded = loadState(path)
+    assert.ok(loaded.courses[0]!.languageTarget == null, 'a missing field loads as a normal course (null-or-absent contract), no version bump')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

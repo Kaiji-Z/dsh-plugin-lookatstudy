@@ -163,4 +163,8 @@ test('buildPendingDesign derives title, role hints, and README excerpt from the 
   assert.ok(brief.includes('lessons/b.ipynb'), 'file paths appear verbatim')
   assert.ok(brief.includes('## Setup [60]'), 'per-heading char counts appear')
   assert.ok(brief.includes('# Repo Course'), 'the README excerpt rides the brief')
+  // upstream v0.33 language-course axis: the brief tells the tutor to decide
+  assert.ok(brief.includes('Language-course check'), 'the judgment instruction rides the brief')
+  assert.ok(brief.includes('writing language is NOT the taught language'), 'the tell-vs-carrier distinction is explicit')
+  assert.ok(brief.includes('"languageTarget"'), 'the apply JSON shape names the field')
 })

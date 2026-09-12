@@ -41,6 +41,27 @@ test('active states render the tutor core, the chosen soul, and the snapshot', (
   assert.ok(soulText(state).includes('Soul: guide'))
 })
 
+test('language courses inject the language-teaching posture; normal courses render none (upstream v0.33 axis)', () => {
+  const state = emptyState()
+  state.active = true
+  const course = importCourse(state, parseMarkdownToCourse('# Plain\n## Part\n### Lesson\nbody'), 'markdown', 'fixture')
+  state.focus = { lessonId: `${course.id}:0:0` }
+  const plain = snapshotSectionText(state)
+  assert.ok(!plain.includes('【语言教学姿态】'), 'no taught language → no posture block (zero-change default)')
+
+  const lang = importCourse(state, parseMarkdownToCourse('# English Course\n## Part\n### Lesson\nbody'), 'markdown', 'fixture', 'en')
+  const before = snapshotSectionText(state)
+  assert.ok(!before.includes('【语言教学姿态】'), 'a dormant language course beside the focus renders no posture — the block is focus-scoped')
+  state.focus = { lessonId: `${lang.id}:0:0` }
+  const postured = snapshotSectionText(state)
+  assert.ok(postured.includes('【语言教学姿态】这门课程教的是English'), 'the posture names the taught language via the vendored locale map')
+  assert.ok(postured.includes('出题双轴'), 'the dual-axis quiz rule rides the block (quiz material in the target language, instructions in the medium)')
+  assert.ok(postured.includes('不要把目标语言材料翻译成教学语言'), 'the anti-translation carve-out is explicit (upstream issue #15 root)')
+  const ja = importCourse(state, parseMarkdownToCourse('# 日本語講座\n## Part\n### Lesson\nbody'), 'markdown', 'fixture', 'ja')
+  state.focus = { lessonId: `${ja.id}:0:0` }
+  assert.ok(snapshotSectionText(state).includes('教的是日本語'), 'unmapped-script names render from the map, not the raw tag')
+})
+
 test('the study surface registers tools on activation and retires them on exit', () => {
   const state = emptyState()
   const registered: string[] = []

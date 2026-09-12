@@ -282,8 +282,16 @@ export function renderDesignBrief(pending: PendingDesign, part = 1): string {
   lines.push('- if the directory layout is already clear (e.g. lessons/N-Topic/), keep its sections; do not over-reorganize.')
   lines.push(`- anchor is the full heading text used to slice the body; omit it for whole-file lessons.${shown.length > COARSE_DESIGN_FILE_THRESHOLD ? ' This part is large: design at file granularity (omit anchors, one lesson per file) to keep the JSON manageable.' : ''}`)
   lines.push('')
+  lines.push('### Language-course check (decide while designing)')
+  lines.push('Is this course teaching a language ITSELF (vocabulary, grammar, reading/writing/listening of English/Japanese/Korean/Chinese/…),'
+    + ' rather than a knowledge/tech course that merely happens to be written in some language? Typical tells: vocab lists, grammar-point'
+    + ' explanations, dialogues/readings, sentence-translation pairs, level markers (N5/N1, TOEFL/IELTS, HSK, JLPT), pronunciation content.')
+  lines.push('- Yes → add "languageTarget": "<BCP-47 of the TAUGHT language>" (teaching English → "en", Japanese → "ja").'
+    + ' The writing language is NOT the taught language — a Chinese-written English-textbook repo has languageTarget "en".')
+  lines.push('- No, or unsure → omit it entirely (a normal course misflagged as a language course is worse than the reverse).')
+  lines.push('')
   lines.push('Now design the course and call study_apply_design with:')
-  lines.push('{ "sections": [ { "title": "...", "lessons": [ { "title": "...", "file": "<exact path from this brief>", "anchor": "<optional full heading text>", "world": "study" | "practice" } ] } ] }')
+  lines.push('{ "languageTarget": "<only for language courses>", "sections": [ { "title": "...", "lessons": [ { "title": "...", "file": "<exact path from this brief>", "anchor": "<optional full heading text>", "world": "study" | "practice" } ] } ] }')
   lines.push('Use ONLY file paths that appear in this brief — anything else is dropped. Apply directly, then walk the learner through the course map.')
   return lines.join('\n')
 }

@@ -488,6 +488,8 @@ test('the tutor design protocol: import returns a brief, apply lands the designe
   const course = state.courses[0]!
   assert.equal(course.source, 'github')
   assert.equal(course.sourceRef, 'https://github.com/o/r')
+  assert.equal(course.languageTarget, null, 'an apply without languageTarget imports a normal course (zero-change default)')
+  assert.equal('languageTarget' in applied, false, 'the output omits the field for normal courses')
   assert.deepEqual(course.sections.flatMap(s => s.lessons).map(l => l.kind), ['study', 'study', 'exam', 'practice'])
   assert.ok(course.sections[0]!.lessons[0]!.body.includes('preface prose'), 'the file\'s first designed lesson absorbs its header')
   assert.ok(!course.sections[0]!.lessons[1]!.body.includes('setup body'), 'the second lesson slices from its own anchor')
@@ -502,6 +504,40 @@ test('the tutor design protocol: import returns a brief, apply lands the designe
   assert.equal(again.courseId, course.id)
   assert.equal(conforms(again, byName.get('study_import_github')!.output.schema as Schema, 'github'), null,
     'the imported branch satisfies the oneOf schema')
+  } finally {
+    setHttpsGetOverride(null)
+  }
+})
+
+test('language-course axis: apply_design languageTarget lands trimmed on the course; blank coerces away (upstream v0.33)', async () => {
+  const mk = (): { state: ReturnType<typeof emptyState>; byName: Map<string, ReturnType<typeof studyTools>[number]> } => {
+    const state = emptyState()
+    setHttpsGetOverride(async () => ({ ok: false, error: 'offline test' }))
+    const tools = studyTools({ get: () => state, save: () => {} }, {
+      fetch: repoFetchStub({ 'README.md': REPO_README, 'lessons/a.md': REPO_FILE_A }),
+    })
+    return { state, byName: new Map(tools.map(t => [t.name, t])) }
+  }
+  try {
+    const first = mk()
+    await run(first.byName, 'study_import_github', { url: 'https://github.com/o/lang' })
+    const applied = await run(first.byName, 'study_apply_design', {
+      languageTarget: '  en ',
+      sections: [{ title: 'Part One', lessons: [{ title: 'A intro', file: 'lessons/a.md' }] }],
+    }) as { languageTarget?: string }
+    assert.equal(applied.languageTarget, 'en', 'the tag rides the output trimmed')
+    assert.equal(conforms(applied, first.byName.get('study_apply_design')!.output.schema as Schema, 'apply'), null,
+      'the language-course output still conforms to the declared schema')
+    assert.equal(first.state.courses[0]!.languageTarget, 'en', 'the course persists the taught language')
+
+    const second = mk()
+    await run(second.byName, 'study_import_github', { url: 'https://github.com/o/plain' })
+    const plain = await run(second.byName, 'study_apply_design', {
+      languageTarget: '   ',
+      sections: [{ title: 'S', lessons: [{ title: 'L', file: 'lessons/a.md' }] }],
+    }) as { languageTarget?: string }
+    assert.equal('languageTarget' in plain, false, 'a blank tag coerces away — no field on the output (upstream parse discipline: only non-empty strings count)')
+    assert.equal(second.state.courses[0]!.languageTarget, null, 'the course imports as a normal course')
   } finally {
     setHttpsGetOverride(null)
   }
