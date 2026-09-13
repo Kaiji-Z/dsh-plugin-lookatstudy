@@ -198,7 +198,7 @@ A feature is done if and only if ALL hold:
 ### 8.3 Flag mechanism [auto-fill] — FILLED 2026-09-14
 - Global surface flag: `Config.active: 'auto' | 'on' | 'off'` (src/config.ts:31,38) gates the ENTIRE model-facing surface — tools register/unregister, persona sections render empty (AGENTS.md state-machine invariants). Headless runs force `on` via the cordis overlay.
 - Single feature flag in service: `historyBudget` (src/state.ts:227, fed at src/dashboard.ts:161/195) — the context-budget directive toggle.
-- Per-feature flag machinery: none, design during remediation — the standing house practice is full-suite regression + additive-only state format instead of flag=on/off comparison runs (P0-2 in the 2026-09-14 gap list; owner decision pending).
+- Per-feature flag machinery: **policy RATIFIED 2026-09-14 (owner: "都按照你的推荐来")** — the baseline-equivalence rule replaces per-feature flags for routine work: "全量回归套件绿 + state 格式只加不改 + loadState 前向迁移 = flag-off 等价物"。Exception: a rewrite of an existing user-facing surface with a plausible rollback need (panel-rewrite / exam-v2 scale) lands behind a `Config` flag where off == pre-change behavior, with a comparison run before removal.
 
 ### 8.4 Supervisor design — FILLED 2026-09-14 from the standing owner-ratified decision (§3.2 landing paragraph above; judge-criteria.md; scripts/livetest-judge.mjs). Re-confirm at the next criteria refresh.
 1. Model: `glm-5.2` at temperature 0; `JUDGE_MODEL` env overrides (livetest-judge.mjs:23,125,140). Known deviation from iron rule 3 (judge defaults to the generator family), documented in the criteria file and ratified by the owner.
@@ -206,14 +206,24 @@ A feature is done if and only if ALL hold:
 3. Passing threshold: 0-10 integer per criterion, PASS iff EVERY criterion ≥ 8 (judge-criteria.md:15; runner exit code 0/1 — livetest-judge.mjs:14).
 4. Prompt MUST contain ONLY: criteria + transcript + the fixed template — enforced structurally by `tests/livetest-judge.test.ts` (prompt purity is test-asserted, not conventional). Code / PR description / commits / dev conversation are absent by construction: the assembler reads exactly three inputs.
 
-### 8.5 Acceptance criteria [must-ask] — PENDING (asked 2026-09-14, batch in the diagnosis report; awaiting owner answers)
-> Cannot be auto-filled: reverse-engineering from existing tests would freeze existing bugs as "the standard."
-Existing approximations, reference only (NOT the frozen standard): judge-criteria.md encodes the live-loop acceptance for the 6-step self-test task; the regression suite freezes per-feature acceptance born from live bugs.
-Questions sent (one batch, in the owner's language):
-1. 核心工作流的 happy path？（输入 → 工具 → 分支 → 输出）
-2. 3-5 条验收标准，形如「在 X 条件下，应该 Y」？
-3. 反向验收（绝不允许发生的行为）？
-Freeze the answers HERE once given (same commit as any behavior the criteria accept).
+### 8.5 Acceptance criteria — FROZEN 2026-09-14
+> Owner ratified by delegation ("都按照你的推荐来", 2026-09-14, answering the diagnosis batch) — the criteria below are the recommended set from that batch, now THE standard. Same-commit rule: any change accepting new behavior edits this section in the commit that ships it.
+
+**Happy path (the core workflow):** 学习者给材料（markdown / 文件夹 / GitHub / URL 文章·arXiv / B站 CC / 课程包）→ 导师用 `study_import_*` 取设计简报 → `study_apply_design` 落成课程（章节树 + 知识组件）→ 学习循环：点课时 = 零 LLM、种子 BKT + 双轨解锁 → 对话教学、出题判分（`recordAnswer`，BKT 演进）→ 掌握度 ≥85 时导师可提案、学习者决定（floor 0.95 不降）→ 完成课进 SM-2 复习池 → 到期复习回流到对应课时的线程组。
+
+**Acceptance criteria（在 X 条件下，应该 Y）:**
+1. **导入幂等**：同一来源（同 sourceRef 或同标题同 id）重复导入必须返回既有课程——绝不新建重复课、绝不静默丢数据（issue #5 的教训）。
+2. **状态机不变量**：任意操作序列后课时状态只前进不回退（locked→available→in_progress→mastered）；解锁只在掌握度 ≥0.5 时双轨触发；锁定课时的作答路径被拒绝。
+3. **掌握度门**：掌握度提案只在该课最新记录掌握度 ≥85 时出现；提案应用永不降低掌握度（floor 0.95）。
+4. **线程组完整性**：任意操作后，每课的 active 指针或为 null、或指向组内一个真实且非归档的线程；legacy `lessonSessions` 与组指针严格一致（fuzz-asserted）。
+5. **激活门**：`state.active=false` 时工具面不注册、persona 段渲染为空——宿主模型侧无法感知插件存在。
+
+**Reverse acceptance（绝不允许发生）:**
+1. `Z_AI_API_KEY` 或任何 `sk-` 模式出现在被跟踪文件、提交或输出回显（verify 密钥门逐文件扫描）。
+2. 课时状态回退；掌握度被任何路径降低。
+3. 锁定课时经任何工具调用被修改学习状态。
+4. state.json 破坏性格式变更：旧文件必须前向迁移加载；更新版本的文件必须响亮拒绝而非崩溃。
+5. 已完成课时的 SM-2 排期被静默清空（复习状态只按复习质量演进）。
 
 ### 8.6 Fill status (maintained by the agent)
 
@@ -223,7 +233,7 @@ Freeze the answers HERE once given (same commit as any behavior the criteria acc
 | 8.2 | auto-fill | FILLED 2026-09-14 | package.json scripts, tests/ (43 files/347 tests), node:test |
 | 8.3 | auto-fill | FILLED 2026-09-14 (per-feature: none, remediation pending) | config.ts:31/38, state.ts:227, dashboard.ts:161/195 |
 | 8.4 | must-ask | FILLED from the standing owner-ratified decision (§3.2 landing); re-confirm at next refresh | VERIFICATION.md §3.2 landing paragraph, judge-criteria.md:15/28, livetest-judge.mjs:14/23 |
-| 8.5 | must-ask | PENDING — asked 2026-09-14, awaiting owner answers | diagnosis report batch |
+| 8.5 | must-ask | FROZEN 2026-09-14 — owner ratified by delegation | diagnosis report batch + owner answer "都按照你的推荐来" (2026-09-14) |
 | 8.7 | auto-fill→must-ask | FILLED 2026-09-14 — none detected; the self-built path is the ratified standing decision (rules 8/9 honored, no install) | package.json devDependencies, VERIFICATION.md §3.2 landing |
 
 ### 8.7 Eval toolchain [auto-fill→must-ask] ⚙️ orchestration item
