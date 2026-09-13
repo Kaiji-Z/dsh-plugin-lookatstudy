@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
  */
 
 import { renderMarkdown } from './markdown.ts'
+import { coursePackOf, coursePackMarkdown, findCourseForPack, packFileName } from './export-pack.ts'
 import { normalizeMathNotation } from './vendor/math-normalize.ts'
 import { renderBilingual } from './markdown.ts'
 import { DEFAULT_DAILY_GOAL, levelFromTotalXp } from './vendor/xp.ts'
@@ -40,6 +41,9 @@ import {
   editNote,
   pinNote,
   bindLessonThread,
+  renameLessonThread,
+  archiveLessonThread,
+  deleteLessonThread,
 } from './state.ts'
 
 /** State access shared with the tools (same live object). */
@@ -660,6 +664,58 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         bindLessonThread(deps.store.get(), body.lessonId, body.sessionId as string | null, title)
         deps.store.save()
         sendJson(res, 200, { ok: true })
+        return
+      }
+      // issue #11 management (upstream gear menu): rename / archive / delete
+      // one thread of a lesson's group. The dsh session's own title (rename) is
+      // renamed host-side by the client after this returns — the dashboard has
+      // no session face; delete only removes OUR sediment (the host session
+      // face has no delete primitive).
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/lesson-thread') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string' || typeof body.sessionId !== 'string'
+          || (body.op !== 'rename' && body.op !== 'archive' && body.op !== 'delete')) {
+          sendJson(res, 400, { ok: false, error: 'lessonId, sessionId and op (rename|archive|delete) required' })
+          return
+        }
+        const state = deps.store.get()
+        try {
+          if (body.op === 'rename') {
+            if (typeof body.title !== 'string' || body.title.trim() === '') {
+              sendJson(res, 400, { ok: false, error: 'rename requires a non-empty title' })
+              return
+            }
+            renameLessonThread(state, body.lessonId, body.sessionId, body.title)
+          } else if (body.op === 'archive') {
+            if (typeof body.archived !== 'boolean') {
+              sendJson(res, 400, { ok: false, error: 'archive requires a boolean archived' })
+              return
+            }
+            archiveLessonThread(state, body.lessonId, body.sessionId, body.archived)
+          } else {
+            deleteLessonThread(state, body.lessonId, body.sessionId)
+          }
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+          return
+        }
+        deps.store.save()
+        const group = state.lessonThreads[body.lessonId]
+        sendJson(res, 200, { ok: true, active: group?.active ?? null, threads: group?.threads.length ?? 0 })
+        return
+      }
+      // course-pack export (upstream exportPack alignment): self-contained
+      // JSON pack + the markdown rendering; the client downloads the .md,
+      // machines take the JSON. Every source exports (bodies live in state).
+      if (req.method === 'GET' && pathname === '/lookatstudy/api/course-pack') {
+        const courseId = new URL(req.url ?? '/', 'http://x').searchParams.get('courseId') ?? ''
+        const course = findCourseForPack(deps.store.get(), courseId)
+        if (course === null) {
+          sendJson(res, 404, { ok: false, error: `unknown courseId: ${JSON.stringify(courseId)}` })
+          return
+        }
+        sendJson(res, 200, { ok: true, fileName: packFileName(course), markdown: coursePackMarkdown(course), pack: coursePackOf(course) })
         return
       }
       if (req.method === 'POST' && pathname === '/lookatstudy/api/tts') {

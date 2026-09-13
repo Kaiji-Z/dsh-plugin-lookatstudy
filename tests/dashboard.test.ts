@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
-import { emptyState, importCourse, proposeMastery, recordAnswer, addNote, deleteNote, findLesson, completeLesson, bindLessonThread } from '../src/state.ts'
+import { emptyState, importCourse, proposeMastery, recordAnswer, addNote, deleteNote, findLesson, completeLesson, bindLessonThread, archiveLessonThread } from '../src/state.ts'
 import type { LearningState } from '../src/state.ts'
 import {
   registerDashboard,
@@ -192,6 +192,67 @@ test('lesson-session route (issue #11): a title-less bind still succeeds (the th
   const res = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId, sessionId: 's-notitle' }), new FakeResponse())
   assert.equal(res.status, 200)
   assert.equal(state.lessonThreads[lessonId]!.threads[0]!.title, lessonId, 'no title offered = the lesson id stands in (never an empty chip)')
+})
+
+test('lesson-thread route (issue #11 management): rename/archive/delete with post-op snapshot, 400/404 loud', async () => {
+  const { state } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const lessonId = `${state.courses[0]!.id}:0:1`
+  bindLessonThread(state, lessonId, 's1', '一线')
+  bindLessonThread(state, lessonId, 's2', '二线')
+
+  const ren = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-thread', { lessonId, sessionId: 's1', op: 'rename', title: '改名后的线' }), new FakeResponse())
+  assert.equal(ren.status, 200)
+  assert.equal(state.lessonThreads[lessonId]!.threads[0]!.title, '改名后的线')
+
+  const arch = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-thread', { lessonId, sessionId: 's2', op: 'archive', archived: true }), new FakeResponse())
+  assert.equal(arch.status, 200)
+  const archBody = arch.json() as { active: string | null; threads: number }
+  assert.equal(archBody.active, 's1', 'archiving the current thread rolls the pointer (reported back)')
+  assert.equal(archBody.threads, 2)
+  assert.equal(state.lessonThreads[lessonId]!.threads[1]!.status, 'archived')
+
+  const del = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-thread', { lessonId, sessionId: 's1', op: 'delete' }), new FakeResponse())
+  assert.equal(del.status, 200)
+  assert.equal((del.json() as { active: string | null }).active, null, 'deleting the rolled-to thread leaves no live pointer')
+
+  const badOp = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-thread', { lessonId, sessionId: 's2', op: 'explode' }), new FakeResponse())
+  assert.equal(badOp.status, 400)
+  const badTitle = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-thread', { lessonId, sessionId: 's2', op: 'rename', title: '  ' }), new FakeResponse())
+  assert.equal(badTitle.status, 400)
+  const missing = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-thread', { lessonId, sessionId: 'ghost', op: 'rename', title: 'x' }), new FakeResponse())
+  assert.equal(missing.status, 404, 'unknown threads 404 with the state error')
+})
+
+test('the state feed carries thread status (archived threads are visible to the fold, filtered client-side)', async () => {
+  const { state } = fixture()
+  const lessonId = `${state.courses[0]!.id}:0:0`
+  bindLessonThread(state, lessonId, 's1', '一线')
+  archiveLessonThread(state, lessonId, 's1', true)
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const feed = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  const body = feed.json() as { lessonThreads: Record<string, { active: string | null; threads: Array<{ id: string; status?: string }> }> }
+  assert.equal(body.lessonThreads[lessonId]!.threads[0]!.status, 'archived', 'the status rides the feed untouched')
+  assert.equal(body.lessonThreads[lessonId]!.active, null)
+})
+
+test('course-pack route (upstream exportPack alignment): self-contained JSON + markdown rendering, 404 loud', async () => {
+  const { state } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const courseId = state.courses[0]!.id
+  const ok = await handle(routes, new FakeRequest('GET', `/lookatstudy/api/course-pack?courseId=${encodeURIComponent(courseId)}`), new FakeResponse())
+  assert.equal(ok.status, 200)
+  const body = ok.json() as { ok: boolean; fileName: string; markdown: string; pack: { kind: string; version: number; course: { title: string } } }
+  assert.equal(body.ok, true)
+  assert.ok(body.fileName.endsWith('.lookatstudy-pack.md'), `fileName=${body.fileName}`)
+  assert.ok(body.markdown.startsWith(`# ${body.pack.course.title}`), 'the markdown rendering leads with the course title')
+  assert.equal(body.pack.kind, 'lookatstudy-course-pack')
+  assert.equal(body.pack.version, 1)
+  const missing = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/course-pack?courseId=ghost'), new FakeResponse())
+  assert.equal(missing.status, 404)
 })
 
 test('the state feed always carries the groups object (issue #11): fresh states feed empty groups, never an omitted field', async () => {

@@ -157,9 +157,12 @@ export interface ThreadPillRow { id: string; title: string; current: boolean }
  * v0.5 节点 = 会话组) — every thread, freshest first, the active one marked.
  * Pure.
  */
-export function threadGroupPills(group: { active: string | null; threads: ReadonlyArray<{ id: string; title: string; lastAt: string }> } | undefined): ThreadPillRow[] {
+export function threadGroupPills(group: { active: string | null; threads: ReadonlyArray<{ id: string; title: string; lastAt: string; status?: string }> } | undefined): ThreadPillRow[] {
   if (group === undefined) return []
+  // upstream: archived threads leave the switcher list entirely (their gear
+  // menu has no unarchive entry; the state API keeps archived:false symmetric)
   return group.threads
+    .filter(t => t.status !== 'archived')
     .slice()
     .sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1))
     .map(t => ({ id: t.id, title: t.title, current: t.id === group.active }))

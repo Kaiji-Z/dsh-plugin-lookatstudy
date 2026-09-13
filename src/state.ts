@@ -187,6 +187,9 @@ export interface LessonThreadMeta {
   title: string
   createdAt: string
   lastAt: string
+  /** Upstream gear-menu archive: archived threads keep their sediment but
+   *  leave the switcher list (and the active pointer). Absent = active. */
+  status?: 'active' | 'archived'
 }
 
 /** A lesson's thread group (upstream v0.5: 节点 = 会话组 — many threads, one active). */
@@ -1015,10 +1018,71 @@ export function bindLessonThread(state: LearningState, lessonId: string, session
     group.threads.push({ id: sessionId, title: (title ?? '').trim() !== '' ? title!.trim() : lessonId, createdAt: now, lastAt: now })
   } else {
     existing.lastAt = new Date().toISOString()
+    // an active pointer at an archived thread is a contradiction — re-binding
+    // (a stale client, a dashboard replay) restores the thread to live
+    if (existing.status === 'archived') existing.status = 'active'
   }
   group.active = sessionId
   state.lessonThreads[lessonId] = group
   state.lessonSessions[lessonId] = sessionId
+  return group
+}
+
+/** Roll the group's active pointer to the freshest ACTIVE thread (or null)
+ *  and keep the legacy lessonSessions mirror in lockstep. Shared by the
+ *  archive/delete operations when they take out the current thread. */
+function rollActiveToFresh(state: LearningState, lessonId: string, group: LessonThreadGroup): void {
+  const live = group.threads.filter(t => t.status !== 'archived')
+  group.active = live.length > 0
+    ? live.reduce((a, b) => (a.lastAt > b.lastAt ? a : b)).id
+    : null
+  if (group.active !== null) state.lessonSessions[lessonId] = group.active
+  else delete state.lessonSessions[lessonId]
+}
+
+/** Rename a thread's stored title (issue #11 management: upstream gear menu).
+ *  The dsh session's own title is renamed host-side by the client (best
+ *  effort) — this is the durable plugin-side half. Throws on unknown ids. */
+export function renameLessonThread(state: LearningState, lessonId: string, sessionId: string, title: string): LessonThreadGroup {
+  const group = state.lessonThreads?.[lessonId]
+  if (group === undefined) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread group`)
+  const thread = group.threads.find(t => t.id === sessionId)
+  if (thread === undefined) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread ${JSON.stringify(sessionId)}`)
+  const clean = title.trim()
+  if (clean !== '') thread.title = clean
+  return group
+}
+
+/** Archive (or restore) a thread. Archiving the current thread rolls the
+ *  active pointer to the freshest remaining live thread — upstream's archived
+ *  threads leave the switcher list entirely (no unarchive entry there; the
+ *  state API keeps `archived: false` for symmetry/future UI). */
+export function archiveLessonThread(state: LearningState, lessonId: string, sessionId: string, archived: boolean): LessonThreadGroup {
+  const group = state.lessonThreads?.[lessonId]
+  if (group === undefined) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread group`)
+  const thread = group.threads.find(t => t.id === sessionId)
+  if (thread === undefined) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread ${JSON.stringify(sessionId)}`)
+  thread.status = archived ? 'archived' : 'active'
+  if (archived && group.active === sessionId) rollActiveToFresh(state, lessonId, group)
+  if (!archived && group.active === null) {
+    // restoring into an empty live set: the restored thread becomes current
+    group.active = sessionId
+    state.lessonSessions[lessonId] = sessionId
+  }
+  return group
+}
+
+/** Remove a thread from its group (sediment discipline: the OTHER threads and
+ *  the group itself survive). The dsh session itself cannot be deleted through
+ *  the host session face (no delete primitive) — it stays in the host's session
+ *  list; the UI discloses this. Throws on unknown ids. */
+export function deleteLessonThread(state: LearningState, lessonId: string, sessionId: string): LessonThreadGroup {
+  const group = state.lessonThreads?.[lessonId]
+  if (group === undefined) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread group`)
+  const idx = group.threads.findIndex(t => t.id === sessionId)
+  if (idx < 0) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread ${JSON.stringify(sessionId)}`)
+  group.threads.splice(idx, 1)
+  if (group.active === sessionId) rollActiveToFresh(state, lessonId, group)
   return group
 }
 

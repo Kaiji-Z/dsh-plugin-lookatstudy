@@ -72,6 +72,42 @@ function statusSnapshot(state: LearningState): Map<string, LessonState['status']
   return map
 }
 
+test('thread-group invariant fuzz: random bind/archive/delete/rename mixes keep the pointer sane', () => {
+  const rand = mulberry32(20260914)
+  const state = emptyState()
+  const course = importCourse(state, parseMarkdownToCourse(FUZZ_MD), 'markdown', 'thread-fuzz')
+  const lessonId = course.sections[0]!.lessons.find(l => l.kind === 'study')!.id
+  const pick = <T>(items: readonly T[]): T => items[Math.floor(rand() * items.length)]!
+  const assertSane = (): void => {
+    const group = state.lessonThreads[lessonId]
+    if (group === undefined) { assert.equal(state.lessonSessions[lessonId], undefined); return }
+    if (group.active !== null) {
+      const active = group.threads.find(t => t.id === group.active)
+      assert.ok(active !== undefined, 'the active pointer always names a real thread')
+      assert.notEqual(active.status, 'archived', 'the active pointer never sits on an archived thread')
+      assert.equal(state.lessonSessions[lessonId], group.active, 'the legacy map mirrors the active pointer')
+    } else {
+      assert.equal(state.lessonSessions[lessonId], undefined, 'no pointer = no legacy entry')
+    }
+  }
+  const ids: string[] = []
+  for (let step = 0; step < 300; step++) {
+    const op = pick(['bind', 'bind-old', 'archive', 'unarchive', 'delete', 'rename', 'clear'] as const)
+    const target = ids.length > 0 ? pick(ids) : 's0'
+    try {
+      if (op === 'bind') { bindLessonThread(state, lessonId, `s${String(step)}`, `线${String(step)}`); ids.push(`s${String(step)}`) }
+      else if (op === 'bind-old') bindLessonThread(state, lessonId, target)
+      else if (op === 'archive') archiveLessonThread(state, lessonId, target, true)
+      else if (op === 'unarchive') archiveLessonThread(state, lessonId, target, false)
+      else if (op === 'delete') { deleteLessonThread(state, lessonId, target); ids.splice(ids.indexOf(target), 1) }
+      else if (op === 'rename') renameLessonThread(state, lessonId, target, `改名${String(step)}`)
+      else bindLessonThread(state, lessonId, null)
+    } catch { /* ops on since-deleted ids throw loud — the invariant still holds */ }
+    assertSane()
+  }
+  assertSane()
+})
+
 test('invariant fuzz: 400 random ops never break the state machine', () => {
   const rand = mulberry32(20260815)
   const state = emptyState()

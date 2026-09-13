@@ -69,7 +69,7 @@ export interface StudyState {
   readonly memory: { global: string | null; lesson: string | null; pattern: string | null }
   readonly lessonSessions: Readonly<Record<string, string>>
   /** The thread groups (issue #11): lesson id → group; drives the per-lesson switcher. */
-  readonly lessonThreads: Readonly<Record<string, { active: string | null; threads: ReadonlyArray<{ id: string; title: string; createdAt: string; lastAt: string }> }>>
+  readonly lessonThreads: Readonly<Record<string, { active: string | null; threads: ReadonlyArray<{ id: string; title: string; createdAt: string; lastAt: string; status?: 'active' | 'archived' }> }>>
   /** XP + streak block (mirrors study_courses; feeds the dock pill and the settings page). */
   readonly progress: {
     readonly totalXp: number
@@ -280,6 +280,18 @@ class StudyStore {
     this.refresh()
   }
 
+  /** Issue #11 management (upstream gear menu): rename/archive/delete one
+   *  thread. Returns the route's post-op snapshot (active + thread count). */
+  async lessonThreadOp(lessonId: string, sessionId: string, op: 'rename' | 'archive' | 'delete', extra?: { title?: string; archived?: boolean }): Promise<{ active: string | null; threads: number }> {
+    const res = await fetchJson('/lookatstudy/api/lesson-thread', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId, sessionId, op, ...extra }),
+    }) as { active: string | null; threads: number }
+    this.refresh()
+    return res
+  }
+
   /** Delete one course (and its proposals) from the host state. */
   async deleteCourse(courseId: string): Promise<void> {
     await fetchJson('/lookatstudy/api/course/delete', {
@@ -468,6 +480,7 @@ export function useStudy(): {
   addUserNote: (lessonId: string, quote: string) => Promise<void>
   recordReview: (lessonId: string, quality: 1 | 4 | 5) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string | null, title?: string) => Promise<void>
+  lessonThreadOp: (lessonId: string, sessionId: string, op: 'rename' | 'archive' | 'delete', extra?: { title?: string; archived?: boolean }) => Promise<{ active: string | null; threads: number }>
 } {
   const data = useSyncExternalStore(studyStore.subscribe, studyStore.getSnapshot, studyStore.getSnapshot)
   return {
@@ -491,5 +504,6 @@ export function useStudy(): {
     addUserNote: studyStore.addUserNote.bind(studyStore),
     recordReview: studyStore.recordReview.bind(studyStore),
     bindLessonSession: studyStore.bindLessonSession.bind(studyStore),
+    lessonThreadOp: studyStore.lessonThreadOp.bind(studyStore),
   }
 }
