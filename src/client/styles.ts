@@ -110,6 +110,12 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14-composer{flex:none;display:flex;gap:6px;align-items:flex-end;padding:8px 12px 10px;border-top:1px solid var(--dsw-alias-border-l1)}
 .lks14-composertext{flex:1;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:7px 10px;resize:none;box-sizing:border-box}
 .lks14-composertext:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
+/* issue #7: the composer's pending-attachment chip (thumbnail + name + remove) */
+.lks14-attachchip{flex:none;display:flex;align-items:center;gap:8px;margin:0 0 6px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-layer-2);max-width:100%}
+.lks14-attachchip-thumb{flex:none;width:44px;height:44px;object-fit:cover;border-radius:7px;border:1px solid var(--dsw-alias-border-l1)}
+.lks14-attachchip-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--dsw-alias-label-primary)}
+.lks14-attachchip-x{flex:none;border:none;background:none;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer;border-radius:6px;padding:2px 6px}
+.lks14-attachchip-x:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 
 /* ============================================================
  * v0.29 pane-resize 拖拽手柄(PaneResizeHandle)——

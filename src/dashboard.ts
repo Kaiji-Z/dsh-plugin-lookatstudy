@@ -728,6 +728,33 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         }
         return
       }
+      if (req.method === 'GET' && pathname.startsWith('/lookatstudy/api/attachment/')) {
+        // Issue #7: read back one stored attachment — the composer's pending
+        // chip thumbnail and markdown-embedded images point here. Only names
+        // our own intake could have written: decoded, then re-validated (no
+        // separators, no traversal, sane length).
+        let name = ''
+        try { name = decodeURIComponent(pathname.slice('/lookatstudy/api/attachment/'.length)) } catch { name = '' }
+        if (name === '' || name.includes('..') || /[\\/]/.test(name) || name.length > 250) {
+          sendJson(res, 404, { ok: false, error: 'not found' })
+          return
+        }
+        try {
+          const buf = readFileSync(join(deps.studyAreaPath, 'attachments', name))
+          const ext = name.slice(name.lastIndexOf('.') + 1).toLowerCase()
+          const mime = ext === 'png' ? 'image/png'
+            : ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+            : ext === 'gif' ? 'image/gif'
+            : ext === 'webp' ? 'image/webp'
+            : ext === 'bmp' ? 'image/bmp'
+            : 'application/octet-stream'
+          // content-addressed by timestamped name — immutable forever
+          res.writeHead(200, { 'content-type': mime, 'cache-control': 'public, max-age=31536000, immutable' }).end(buf)
+        } catch {
+          sendJson(res, 404, { ok: false, error: 'not found' })
+        }
+        return
+      }
       sendJson(res, 404, { ok: false, error: 'not found' })
     },
   })

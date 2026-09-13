@@ -615,15 +615,18 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
           firstLessonId: { type: 'string', required: true },
           firstLessonTitle: { type: 'string', required: true },
           droppedLessons: { type: 'integer', required: true },
+          created: { type: 'boolean', required: true, description: 'False when an existing course short-circuited the import (same title) — the design did NOT land as a new course.' },
           languageTarget: { type: 'string', description: 'Present only when the course teaches a language itself (BCP-47); the tutor then keeps quiz material in the target language.' },
         },
       },
       render: (_args, value) => [{
         type: 'text',
-        text: `Imported designed course “${value.title}” (${value.sections} sections, ${value.lessons} lessons`
-          + `${value.droppedLessons > 0 ? `, ${value.droppedLessons} hallucinated lesson(s) dropped` : ''})`
-          + `${typeof value.languageTarget === 'string' ? ` — language course (${value.languageTarget}): keep reading passages, example sentences, and quiz language material in the target language` : ''}. `
-          + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}). Present the course map to the learner.`,
+        text: value.created === false
+          ? `“${value.title}” (id ${value.courseId}) was ALREADY imported — the design did not create a new course. Continue with the existing course, or delete it first (study_delete_course) to rebuild from this design.`
+          : `Imported designed course “${value.title}” (${value.sections} sections, ${value.lessons} lessons`
+            + `${value.droppedLessons > 0 ? `, ${value.droppedLessons} hallucinated lesson(s) dropped` : ''})`
+            + `${typeof value.languageTarget === 'string' ? ` — language course (${value.languageTarget}): keep reading passages, example sentences, and quiz language material in the target language` : ''}. `
+            + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}). Present the course map to the learner.`,
       }],
     },
     async execute(args, exec) {
@@ -675,7 +678,14 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       const languageTarget = typeof args.languageTarget === 'string' && args.languageTarget.trim() !== ''
         ? args.languageTarget.trim().slice(0, 35)
         : null
-      const value = mutate(state => toImportValue(importCourse(state, parsed, pd.source, pd.url, languageTarget)))
+      // issue #5: the value must say whether THIS apply created the course —
+      // an id-collision short-circuit used to report the old course's stats
+      // as a fresh import (silent data loss dressed as success)
+      const value = mutate(state => {
+        const before = state.courses.length
+        const imported = toImportValue(importCourse(state, parsed, pd.source, pd.url, languageTarget))
+        return { ...imported, created: state.courses.length > before }
+      })
       pendingDesign = null
       pendingPart = 1
       return { ...value, droppedLessons: validated.droppedLessons, ...(languageTarget !== null ? { languageTarget } : {}) }

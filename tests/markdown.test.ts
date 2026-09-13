@@ -67,3 +67,10 @@ test('headings inside code fences are not headings', () => {
   assert.ok(!html.includes('<h1>'))
   assert.ok(html.includes('# not a heading'))
 })
+
+test('image whitelist: the plugin attachment route renders, foreign relative paths stay literal (issue #7)', () => {
+  const html = renderMarkdown('![shot](/lookatstudy/api/attachment/abc12-shot.png)')
+  assert.ok(html.includes('<img src="/lookatstudy/api/attachment/abc12-shot.png"'), 'the same-origin attachment route is whitelisted')
+  assert.ok(!renderMarkdown('![x](attachments/rel.png)').includes('<img'), 'workspace-relative paths stay literal text')
+  assert.ok(!renderMarkdown('![x](javascript:alert(1))').includes('<img'), 'exotic schemes stay rejected')
+})

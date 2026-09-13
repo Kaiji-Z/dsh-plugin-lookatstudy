@@ -479,8 +479,9 @@ test('the tutor design protocol: import returns a brief, apply lands the designe
       { title: 'A deep', file: 'lessons/a.md', anchor: '## Deep' },
     ] },
     { title: 'Labs', lessons: [{ title: 'B lab', file: 'lessons/b.md', world: 'practice' }] },
-  ] }) as { lessons: number; droppedLessons: number; firstLessonId: string }
+  ] }) as { lessons: number; droppedLessons: number; firstLessonId: string; created: boolean }
   assert.equal(applied.lessons, 4, 'three designed lessons plus the study section\'s exam node')
+  assert.equal(applied.created, true, 'a fresh apply reports creation (issue #5 honesty flag)')
   assert.equal(applied.droppedLessons, 0)
   assert.equal(saves, 1)
   assert.equal(conforms(applied, byName.get('study_apply_design')!.output.schema as Schema, 'apply'), null)

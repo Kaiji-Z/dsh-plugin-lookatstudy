@@ -219,6 +219,38 @@ test('v1 state migrates: completed→mastered, kind defaults, exam nodes backfil
   }
 })
 
+test('course ids: same title re-imports idempotently, colliding slugs get suffixed ids — never silent data loss (issue #5)', () => {
+  const state = emptyState()
+  const md = (title: string): string => `# ${title}
+## S
+### L
+body`
+  const math = importCourse(state, parseMarkdownToCourse(md('数学')), 'markdown', 'a')
+  assert.equal(math.id, 'course', 'the pure-CJK title slugs to the empty fallback')
+  // re-importing the SAME title returns the same course (documented idempotency)
+  assert.equal(importCourse(state, parseMarkdownToCourse(md('数学')), 'markdown', 'a-again').id, math.id)
+  assert.equal(state.courses.length, 1)
+  // a DIFFERENT pure-CJK title must never collide onto the same course —
+  // this used to return 数学 silently while reporting success (issue #5)
+  const chem = importCourse(state, parseMarkdownToCourse(md('化学')), 'markdown', 'b')
+  assert.equal(chem.id, 'course-2', 'the colliding slug gets a suffixed NEW id')
+  assert.notEqual(chem.id, math.id)
+  assert.equal(state.courses.length, 2, 'both courses coexist — no silent drop')
+  assert.ok(chem.sections.length > 0, 'the second course keeps its own lessons')
+  // a third one keeps counting; ASCII courses are unaffected (back-compat)
+  const phys = importCourse(state, parseMarkdownToCourse(md('物理')), 'markdown', 'c')
+  assert.equal(phys.id, 'course-3')
+  const ascii = importCourse(state, parseMarkdownToCourse(md('Repo Course')), 'markdown', 'd')
+  assert.equal(ascii.id, 'repo-course')
+  // same title AFTER suffixes exist still dedups onto the original
+  assert.equal(importCourse(state, parseMarkdownToCourse(md('数学')), 'markdown', 'x').id, math.id)
+  assert.equal(state.courses.length, 4)
+  // same slug through different titles (case folding) no longer swallows either
+  const lower = importCourse(state, parseMarkdownToCourse(md('Math')), 'markdown', 'e')
+  const upper = importCourse(state, parseMarkdownToCourse(md('MATH')), 'markdown', 'f')
+  assert.notEqual(lower.id, upper.id)
+})
+
 test('state persists and reloads identically', () => {
   const dir = mkdtempSync(join(tmpdir(), 'lookatstudy-'))
   try {

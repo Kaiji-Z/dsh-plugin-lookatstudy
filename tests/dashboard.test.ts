@@ -200,6 +200,18 @@ test('attachment route: base64 payload rides a lifted body cap, the 20 MiB ceili
   assert.equal(overBody.status, 400)
   assert.equal((overBody.json() as { error: string }).error, 'request body too large')
 
+  // issue #7: the read-back route serves what the intake wrote, byte-exact
+  const served = await handle(routes, new FakeRequest('GET', `/lookatstudy/api/attachment/${encodeURIComponent(okBody.path.split('/').pop()!)}`), new FakeResponse())
+  assert.equal(served.status, 200)
+  assert.equal(served.headers['content-type'], 'image/png')
+  assert.ok(Buffer.from(served.body, 'utf8').equals(payload), 'the GET route returns the stored bytes')
+
+  const traversal = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/attachment/..%2Fstate.json'), new FakeResponse())
+  assert.equal(traversal.status, 404, 'path traversal is rejected server-side')
+
+  const ghost = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/attachment/nope.png'), new FakeResponse())
+  assert.equal(ghost.status, 404)
+
   // every other route keeps the tight default: a 70 kB /api/active body 400s
   const tight = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/active', { on: true, pad: 'x'.repeat(70_000) }), new FakeResponse())
   assert.equal(tight.status, 400)

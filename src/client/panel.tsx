@@ -1599,6 +1599,11 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   const [showFab, setShowFab] = useState(false)
   // E5: the thread menu's open state (outside-click + Esc close below)
   const [threadsOpen, setThreadsOpen] = useState(false)
+  // issue #7: the pending attachment — paste/drop/pick uploads immediately
+  // (error toasts keep the failure path) but NOTHING sends until the learner
+  // does; the composer shows it as a chip and send merges it with the draft
+  // into ONE message.
+  const [pendingAttach, setPendingAttach] = useState<{ name: string; path: string; image: boolean } | null>(null)
   const onStreamScroll = (): void => {
     const el = streamEl.current
     if (el === null) return
@@ -1819,15 +1824,31 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
       for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
       return uploadAttachment(file.name, btoa(bin))
     }).then(path => {
-      send(tr('attach.sent', { name: file.name, path }))
+      // issue #7: land as the composer's pending chip, not an instant send —
+      // the learner can keep typing, remove it, or send it merged with text
+      setPendingAttach({
+        name: file.name,
+        path,
+        image: /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(file.name),
+      })
     }, () => {
       showStudyToast(tr('attach.fail'), { severity: 'error' })
     })
   }
+  /** One send = draft + pending attachment merged into a single message (issue #7). */
+  const submitComposer = (): void => {
+    if (busy) return
+    const text = draft.trim()
+    if (text === '' && pendingAttach === null) return
+    const attachLine = pendingAttach === null ? '' : tr('attach.sent', { name: pendingAttach.name, path: pendingAttach.path })
+    setPendingAttach(null)
+    send(attachLine === '' ? text : text === '' ? attachLine : `${text}\n\n${attachLine}`)
+  }
   const onComposerKey = (e: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (draft.trim() !== '' && !busy) send(draft)
+      // issue #7: Enter submits draft + pending attachment as one message
+      if ((draft.trim() !== '' || pendingAttach !== null) && !busy) submitComposer()
     }
   }
   const proposal = data?.pendingProposals[0] ?? null
@@ -1977,6 +1998,26 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
               title: dormant ? tr('tutor.dormant') : tr(mode.hintKey),
               onClick: () => { if (!dormant) fire(setMode(mode.id)) },
             }, mode.id === 'direct' ? createElement(IconBoltFill16, { size: 12 }) : mode.id === 'guide' ? createElement(IconGoalOutline16, { size: 12 }) : createElement(IconBookFill16, { size: 12 }), tr(mode.labelKey))))),
+        // issue #7: the pending-attachment chip — thumbnail for images, name +
+        // ✕ remove; nothing sends until the learner does (Enter / send button
+        // merges it with the draft into ONE message)
+        pendingAttach !== null
+          ? createElement('div', { className: 'lks14-attachchip' },
+            pendingAttach.image
+              ? createElement('img', {
+                className: 'lks14-attachchip-thumb',
+                src: `/lookatstudy/api/attachment/${encodeURIComponent(pendingAttach.path.split('/').pop() ?? '')}`,
+                alt: pendingAttach.name,
+              })
+              : null,
+            createElement('span', { className: 'lks14-attachchip-name' }, pendingAttach.name),
+            createElement('button', {
+              className: 'lks14-attachchip-x',
+              'aria-label': tr('attach.remove'),
+              'data-tooltip': tr('attach.remove'),
+              onClick: () => { setPendingAttach(null) },
+            }, '✕'))
+          : null,
         createElement('textarea', {
           className: 'lks14-composertext',
           placeholder: busy ? tr('composer.busy') : tr('tutor.empty.hint'),
@@ -2063,8 +2104,8 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           : createElement('button', {
             className: 'lks-btn-send',
             'aria-label': tr('composer.send'),
-            disabled: dormant || draft.trim() === '',
-            onClick: () => { send(draft) },
+            disabled: dormant || (draft.trim() === '' && pendingAttach === null),
+            onClick: () => { submitComposer() },
           }, createElement(IconArrowUpFill16, { size: 18 })),
       ),
     // C1: the scroll-to-bottom FAB (red pulse while the tutor streams).
@@ -2098,6 +2139,9 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
   const [zoneOverrides, setZoneOverrides] = useState<Record<string, boolean>>({})
   const zoneCounts = useRef<Record<string, number>>({})
   const [editingNote, setEditingNote] = useState<string | null>(null)
+  // issue #6: bumping on note-save remounts the note rows (the key rides the
+  // rev) so the edited note's fresh innerHTML meets the enhance pass again
+  const [noteRev, setNoteRev] = useState(0)
   const [editDraft, setEditDraft] = useState('')
   // C6: a locate fired from the notes tab must wait for the teach prose to
   // remount before it can wrap and flash the quote.
@@ -2498,7 +2542,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                   tr(labelKey),
                   createElement('span', { className: 'lks14-zonecount' }, String(zoneNotes.length)),
                   createElement('span', { className: 'lks14-zonecaret' }, open ? '▾' : '▸')),
-                  ...(open ? zoneNotes.map(n => createElement('div', { key: n.id, className: `lks-note${n.pinned ? ' pinned' : ''}` },
+                  ...(open ? zoneNotes.map(n => createElement('div', { key: `${n.id}:${String(noteRev)}`, className: `lks-note${n.pinned ? ' pinned' : ''}` },
                     createElement('span', { className: 'lks-note-src' }, tr('note.src.' + n.source)),
                     createElement('button', {
                       className: 'lks-note-act',
@@ -2550,12 +2594,22 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                           createElement('button', {
                             className: 'lks-btn primary',
                             disabled: editDraft.trim() === '',
-                            onClick: () => { setEditingNote(null); fire(editNote(lesson.lessonId, n.id, editDraft)) },
+                            onClick: () => { setEditingNote(null); setNoteRev(r => r + 1); fire(editNote(lesson.lessonId, n.id, editDraft)) },
                           }, tr('note.save'))))
                       : createElement(ContentBoundary, {
                         content: n.text,
                         boundaryKey: `note-${n.id}`,
-                      }, createElement('div', { className: 'lks-note-text', dangerouslySetInnerHTML: { __html: renderMarkdown(n.text) } })),
+                      }, createElement('div', {
+                        className: 'lks-note-text',
+                        // issue #6: notes render through the same pipeline as
+                        // the feed (normalize → markdown → enhance pass); the
+                        // ref fires on mount — zone opens, tab switches, and
+                        // the edit-rev remount all re-enhance, polls don't
+                        ref: (el: HTMLDivElement | null) => {
+                          if (el !== null) void enhanceRendered(el).catch(() => { /* degrade */ })
+                        },
+                        dangerouslySetInnerHTML: { __html: renderMarkdown(normalizeMathNotation(n.text)) },
+                      })),
                     n.quote !== null ? createElement('div', { className: 'lks-note-q' }, `'${n.quote}'`) : null,
                   )) : []),
                 )

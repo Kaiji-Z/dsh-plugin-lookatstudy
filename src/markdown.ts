@@ -19,14 +19,17 @@ function escapeHtml(text: string): string {
 
 /** Render inline markup (code, bold, italic, links, images) over escaped text.
  * Image src allowlist: https?:// or data:image/ — folder imports inline local
- * images as data URLs (capped), GitHub imports reference jsDelivr; anything
- * else stays literal text (no broken relative images, no exotic schemes). */
+ * images as data URLs (capped), GitHub imports reference jsDelivr; the
+ * plugin's own attachment route (/lookatstudy/api/attachment/<name>, issue #7
+ * — same-origin, server-side validated) renders workspace attachments;
+ * anything else stays literal text (no broken relative images, no exotic
+ * schemes). */
 function inline(escaped: string): string {
   return escaped
     .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+|data:image\/[^)\s]+)\)/g, (_m, alt: string, src: string) => `<img src="${src}" alt="${alt}" loading="lazy">`)
+    .replace(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+|data:image\/[^)\s]+|\/lookatstudy\/api\/attachment\/[^)\s]+)\)/g, (_m, alt: string, src: string) => `<img src="${src}" alt="${alt}" loading="lazy">`)
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
 }
 

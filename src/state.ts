@@ -402,9 +402,15 @@ export function importCourse(
   sourceRef: string,
   languageTarget?: string | null,
 ): CourseState {
-  const id = slugify(parsed.title)
-  const existing = state.courses.find(c => c.id === id)
-  if (existing) return existing
+  const base = slugify(parsed.title)
+  // Issue #5: a matching id is only an idempotent re-import when the TITLE
+  // matches too — pure-CJK titles all slugified to "course", so the second
+  // course silently returned the first one (data loss reported as success).
+  // Same title → same course (re-import dedup); different title → suffixed id.
+  const sameTitle = state.courses.find(c => c.id === base && c.title === parsed.title)
+  if (sameTitle !== undefined) return sameTitle
+  let id = base
+  for (let n = 2; state.courses.some(c => c.id === id); n++) id = `${base}-${String(n)}`
   const course: CourseState = {
     id,
     title: parsed.title,
