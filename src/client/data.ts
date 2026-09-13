@@ -68,6 +68,8 @@ export interface StudyState {
   readonly pendingProposals: ReadonlyArray<{ id: string; lessonTitle: string; rationale: string }>
   readonly memory: { global: string | null; lesson: string | null; pattern: string | null }
   readonly lessonSessions: Readonly<Record<string, string>>
+  /** The thread groups (issue #11): lesson id → group; drives the per-lesson switcher. */
+  readonly lessonThreads: Readonly<Record<string, { active: string | null; threads: ReadonlyArray<{ id: string; title: string; createdAt: string; lastAt: string }> }>>
   /** XP + streak block (mirrors study_courses; feeds the dock pill and the settings page). */
   readonly progress: {
     readonly totalXp: number
@@ -264,11 +266,16 @@ class StudyStore {
   }
 
   /** Record the dsh session backing one lesson (the simplified thread system). */
-  async bindLessonSession(lessonId: string, sessionId: string): Promise<void> {
+  /**
+   * Bind a session into the lesson's thread group (issue #11): a new session
+   * id appends a thread (titled by `title` — first-message auto-naming);
+   * `null` clears the active pointer (＋新建 — the next send mints fresh).
+   */
+  async bindLessonSession(lessonId: string, sessionId: string | null, title?: string): Promise<void> {
     await fetchJson('/lookatstudy/api/lesson-session', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lessonId, sessionId }),
+      body: JSON.stringify({ lessonId, sessionId, title }),
     })
     this.refresh()
   }
@@ -460,7 +467,7 @@ export function useStudy(): {
   examRegenerate: (lessonId: string) => Promise<void>
   addUserNote: (lessonId: string, quote: string) => Promise<void>
   recordReview: (lessonId: string, quality: 1 | 4 | 5) => Promise<void>
-  bindLessonSession: (lessonId: string, sessionId: string) => Promise<void>
+  bindLessonSession: (lessonId: string, sessionId: string | null, title?: string) => Promise<void>
 } {
   const data = useSyncExternalStore(studyStore.subscribe, studyStore.getSnapshot, studyStore.getSnapshot)
   return {

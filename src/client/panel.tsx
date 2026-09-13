@@ -44,7 +44,7 @@ import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, FoldableArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills } from './views.tsx'
 import { ListSectionView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
@@ -111,7 +111,9 @@ function titleMatches(title: string, query: string): boolean {
   return keys.every(k => title.toLowerCase().includes(k))
 }
 
-export type PanelSend = (text: string) => void
+/** The panel's send: text plus (issue #11) an optional thread title and a
+ * optional target lesson (review routing into another lesson's group). */
+export type PanelSend = (text: string, threadTitle?: string, targetLessonId?: string) => void
 
 /**
  * Whether the host session list actually knows a bound thread id. A restart
@@ -363,7 +365,12 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   // surface for the ExamView (the leave guard still routes every focus jump).
   const examLessonActive = lesson !== null && lesson.kind === 'exam'
     && examOpen((data?.courses.flatMap(c => c.sections).find(s => s.lessons.some(l => l.id === lesson.lessonId))?.lessons ?? []))
-  const localBound = useRef<string | null>(null)
+  // issue #11: the local binding is LESSON-SCOPED — a pair, not a bare id, so
+  // a rail focus change can never leak the previous lesson's session into the
+  // next send (when the ids disagree the group map re-derives the binding)
+  const localBound = useRef<{ lessonId: string; sessionId: string } | null>(null)
+  const boundSessionOf = (lessonId: string | null): string | null =>
+    lessonId !== null && localBound.current?.lessonId === lessonId ? localBound.current.sessionId : null
   const streamEl = useRef<HTMLDivElement | null>(null)
   const touchStart = useRef<{ x: number; y: number } | null>(null)
   // C2: the live session face (kept by send) so the stop button can cancel the
@@ -376,7 +383,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         // mid-generation must resolve the bound session's face on demand.
         let face: SessionPromptFace | null | undefined = activeFace.current
         if (face === null) {
-          const sessionId = localBound.current ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null)
+          const sessionId = boundSessionOf(lesson !== null ? lesson.lessonId : null) ?? (lesson !== null ? data?.lessonThreads[lesson.lessonId]?.active ?? data?.lessonSessions[lesson.lessonId] ?? null : null)
           if (sessionId !== null && sessionKnown(ctx, sessionId)) {
             const actx = ctx.sessions.scope(sessionId)
             face = actx === undefined ? undefined : ctx.sessions.sessionOf(actx) ?? null
@@ -417,7 +424,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     prevCelebrationRef.current = snapshot
   }, [data])
 
-  const boundId = localBound.current ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null)
+  const boundId = boundSessionOf(lesson !== null ? lesson.lessonId : null) ?? (lesson !== null ? data?.lessonThreads[lesson.lessonId]?.active ?? data?.lessonSessions[lesson.lessonId] ?? null : null)
 
   // The review nudge (upstream review.nudge): due reviews pull the learner
   // back — one toast per panel open, never repeated while it stays open.
@@ -597,8 +604,11 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     return () => { clearInterval(iv) }
   }, [feedGen])
 
-  /** The one send path: lazily stage the lesson thread, then prompt. */
-  const send = (text: string): void => {
+  /** The one send path: lazily stage the lesson thread, then prompt.
+   * `targetLessonId` (issue #11 review routing) sends into ANOTHER lesson's
+   * group: focus moves there first (the tutor's snapshot follows), then the
+   * target's active thread — or a fresh titled one — carries the prompt. */
+  const send = (text: string, threadTitle?: string, targetLessonId?: string): void => {
     void (async () => {
       if (busy || lesson === null || text.trim() === '') return
       setBusy(true)
@@ -608,7 +618,18 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       lastAdvanceAtRef.current = Date.now()
       try {
         if (data?.active !== true) await activate(true)
-        let sessionId = localBound.current ?? data?.lessonSessions[lesson.lessonId] ?? null
+        // issue #11: review routing — move the focus BEFORE the prompt so the
+        // tutor's snapshot names the reviewed lesson, then bind into ITS group
+        if (targetLessonId !== undefined && targetLessonId !== lesson.lessonId) {
+          await setFocus(targetLessonId).catch(() => { /* the prompt still goes out; the snapshot catches up */ })
+        }
+        const bindId = targetLessonId ?? lesson.lessonId
+        // issue #11: the lesson's THREAD GROUP owns the binding — the group's
+        // active pointer first, the legacy single-binding map as fallback
+        // (localBound is lesson-scoped: another lesson's group resolves from
+        // the feed alone, and a stale rail focus never leaks in)
+        const fromLocal = boundSessionOf(bindId)
+        let sessionId = fromLocal ?? (data?.lessonThreads[bindId]?.active ?? data?.lessonSessions[bindId] ?? null)
         if (sessionId !== null && !sessionKnown(ctx, sessionId)) sessionId = null
         if (sessionId === null) {
           const area = await fetch('/lookatstudy/api/study-workspace')
@@ -616,8 +637,13 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
           const { path } = await area.json() as { path: string }
           const workspace = await ctx.workspaces.create({ path })
           sessionId = await ctx.sessions.create({ workspaceId: workspace.workspaceId })
-          localBound.current = sessionId
-          await bindLessonSession(lesson.lessonId, sessionId)
+          localBound.current = { lessonId: bindId, sessionId }
+          // upstream first-message auto-naming: the thread's title = this
+          // send's text (single-lined, the UI chip truncates via CSS) or the
+          // caller's short action label
+          await bindLessonSession(bindId, sessionId, threadTitle ?? threadAutoTitle(text))
+        } else {
+          localBound.current = { lessonId: bindId, sessionId }
         }
         // Stage the thread (its event window only opens while current); the
         // internal navigation must not hand the panel back.
@@ -655,6 +681,31 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     return () => { window.removeEventListener('lookatstudy-exam-generate', onGenerate) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [send])
+
+  // issue #11: switch to another thread in the CURRENT lesson's group — the
+  // local binding moves, the group's active pointer follows (lastAt bumps),
+  // and the staged session window changes (the feed rebinds via boundId).
+  const switchLessonThread = (sessionId: string): void => {
+    if (lesson === null) return
+    if (localBound.current?.lessonId === lesson.lessonId && localBound.current.sessionId === sessionId) return
+    localBound.current = { lessonId: lesson.lessonId, sessionId }
+    void bindLessonSession(lesson.lessonId, sessionId)
+    const shell = PANEL_SHELL.current
+    if (shell !== null) {
+      shell.suppressHandBack(() => { ctx.sessions.open(sessionId) })
+    } else {
+      ctx.sessions.open(sessionId)
+    }
+  }
+  // issue #11: ＋新建 — clear the active pointer; the group's threads stay
+  // (sedimentation intact) and the next send mints a fresh thread.
+  const startNewThread = (): void => {
+    if (lesson === null) return
+    localBound.current = null
+    void bindLessonSession(lesson.lessonId, null)
+    setRows([])
+    setFeedGen(false)
+  }
 
   const progress = data?.progress ?? null
   // The upstream v0.6 ladder: rail full-height on surface-rail; the right half
@@ -733,7 +784,8 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
             // exam stages are flex children that fill it (unwrapped they
             // shrink to content and the center column narrows)
             createElement(ExamView, { lessonId: lesson!.lessonId, sectionTitle: lesson!.sectionTitle, paused: examLeave !== null, onSessionChange: onExamSession }))
-          : createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadJump: (id: string) => { setNarrowPane('chat'); void guardedSetFocus(id) }, contextMeter, contextBreakdown: breakdown, uploadAttachment }),
+          : createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch: (sessionId: string) => { setNarrowPane('chat'); switchLessonThread(sessionId) },
+            onThreadNew: () => { setNarrowPane('chat'); startNewThread() }, contextMeter, contextBreakdown: breakdown, uploadAttachment }),
         // v0.29 pane-resize: the chat|notebook boundary handle (target = the
         // chat column; the exam wrapper carries the same lks14-chat identity).
         createElement(PaneResizeHandle, { side: 'chat', clampLive: chatClampLive, onCommit: px => commitPaneWidth('chat', px) }),
@@ -1337,7 +1389,19 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
           }, createElement(IconRefreshOutline16, { size: 13 }), tr('review.random')),
           createElement('button', {
             className: 'lks-btn primary',
-            onClick: () => { setReviewOpen(false); send(tr('prompt.review')) },
+            onClick: () => {
+              // issue #11: review routes to the TARGET lesson's group — focus
+              // moves there, its active thread carries the prompt (a fresh
+              // one mints titled 复习：<课名>), never a fragment elsewhere
+              const first = data.due[0]
+              setReviewOpen(false)
+              if (first !== undefined) {
+                showStudyToast(tr('review.banner', { lesson: first.lessonTitle }), { severity: 'info' })
+                send(tr('prompt.review'), tr('review.threadTitle', { lesson: first.lessonTitle }), first.lessonId)
+              } else {
+                send(tr('prompt.review'))
+              }
+            },
           }, tr('rail.due.start')))
         : createElement('div', { className: 'lks14-empty' }, tr('rail.due.none')))
     : null
@@ -1593,7 +1657,7 @@ export function epubFolderPath(path: string): string {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadJump, contextMeter, contextBreakdown, uploadAttachment }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, contextMeter, contextBreakdown, uploadAttachment }: {
   data: StudyData
   lesson: StudyData['lesson']
   rows: ReturnType<typeof feedRows>
@@ -1607,8 +1671,11 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   stop: () => void
   setMode: (mode: 'direct' | 'guide' | 'practice') => Promise<void>
   narrowPane: 'rail' | 'chat' | 'note'
-  /** E5: jump to another lesson's thread pill (focus change rebinds the feed). */
-  onThreadJump: (lessonId: string) => void
+  /** Issue #11: activate another thread in the CURRENT lesson's group (the
+   *  feed rebinds; no focus change — the lesson stays). */
+  onThreadSwitch: (sessionId: string) => void
+  /** Issue #11: ＋新建 — clear the active pointer; the next send mints fresh. */
+  onThreadNew: () => void
   /** E1: the context meter value (projection-backed, or the labeled estimate). */
   contextMeter: { pct: number | null; estimated: boolean; used: number | null; window: number | null }
   contextBreakdown: { systemTokens: number; toolsTokens: number; messageTokens: number } | null
@@ -1817,19 +1884,9 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         // assistant reply flips the wait line to the reveal note)
         : createElement(FoldableArtifactCard, { artifact: artifact as ArtifactRow, send, revealed }))
   }
-  // E5: the thread switcher rows — lessonSessions joined to lesson titles
-  // (every lesson that ever minted a thread gets a pill).
-  const threadPills: Array<{ id: string; title: string; current: boolean }> = []
-  if (data !== null) {
-    const titles = new Map<string, string>()
-    for (const c of data.courses) for (const s of c.sections) for (const l of s.lessons) titles.set(l.id, l.title)
-    for (const [lessonId, sessionId] of Object.entries(data.lessonSessions)) {
-      if (sessionId === undefined) continue
-      const title = titles.get(lessonId)
-      if (title === undefined) continue
-      threadPills.push({ id: lessonId, title, current: lesson !== null && lesson.lessonId === lessonId })
-    }
-  }
+  // E5/issue #11: the switcher rows = the CURRENT lesson's thread group
+  // (upstream v0.5 节点 = 会话组) — every thread, freshest first, active marked
+  const threadPills = threadGroupPills(lesson !== null && data !== null ? data.lessonThreads[lesson.lessonId] : undefined)
   const lastAssistant = rowsView.reduce((acc, row, i) => row.role === 'assistant' ? i : acc, -1)
   const [error, setError] = useState<string | null>(null)
   const fire = (action: Promise<void>): void => {
@@ -1919,6 +1976,8 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         // E5: the thread switcher — ONE labeled chip (0.19 owner note: a bare
         // pill strip of lesson titles read as mystery buttons); the menu lists
         // every minted thread, the current one marked, others jump on click.
+        // issue #11: the group switcher — the chip always shows once the
+        // lesson owns threads (the ＋新建 row inside the menu mints fresh)
         threadPills.length > 0
           ? createElement('div', { className: 'lks14-threadswitch' },
             createElement('button', {
@@ -1934,11 +1993,19 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
                   className: `lks14-threadmenu-row${p.current ? ' on' : ''}`,
                   role: 'menuitem',
                   'aria-current': p.current ? 'true' : undefined,
-                  onClick: () => { setThreadsOpen(false); if (!p.current) onThreadJump(p.id) },
+                  onClick: () => { setThreadsOpen(false); if (!p.current) onThreadSwitch(p.id) },
                 },
                   createElement('span', { className: 'lks14-threadmenu-dot', 'aria-hidden': 'true' }),
                   createElement('span', { className: 'lks14-threadmenu-title' }, p.title),
-                  p.current ? createElement('span', { className: 'lks14-threadmenu-now' }, tr('threads.now')) : null)))
+                  p.current ? createElement('span', { className: 'lks14-threadmenu-now' }, tr('threads.now')) : null)),
+                createElement('button', {
+                  key: '__new__',
+                  className: 'lks14-threadmenu-row new',
+                  role: 'menuitem',
+                  onClick: () => { setThreadsOpen(false); onThreadNew() },
+                },
+                  createElement('span', { className: 'lks14-threadmenu-plus', 'aria-hidden': 'true' }, '＋'),
+                  createElement('span', { className: 'lks14-threadmenu-title' }, tr('threads.new'))))
               : null)
           : null)
       : null,

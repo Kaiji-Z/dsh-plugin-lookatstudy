@@ -10,7 +10,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
-import { emptyState, importCourse, proposeMastery, recordAnswer, addNote, deleteNote, findLesson, completeLesson } from '../src/state.ts'
+import { emptyState, importCourse, proposeMastery, recordAnswer, addNote, deleteNote, findLesson, completeLesson, bindLessonThread } from '../src/state.ts'
 import type { LearningState } from '../src/state.ts'
 import {
   registerDashboard,
@@ -132,6 +132,76 @@ test('routes: state API, focus switching, and unknown paths', async () => {
 
   const missing = await handle(routes2, new FakeRequest('GET', '/lookatstudy/api/nope'), new FakeResponse())
   assert.equal(missing.status, 404)
+})
+
+test('lesson-session route (issue #11): group semantics — titled append, null clear, re-activate without duplication', async () => {
+  const { state } = fixture()
+  let saved = 0
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const lessonId = `${state.courses[0]!.id}:0:0`
+
+  const bind = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId, sessionId: 's1', title: '判别式法为什么失效' }), new FakeResponse())
+  assert.equal(bind.status, 200)
+  assert.equal(saved, 1)
+  const g1 = state.lessonThreads[lessonId]!
+  assert.equal(g1.threads.length, 1)
+  assert.equal(g1.threads[0]!.title, '判别式法为什么失效', 'the caller names the thread (first-message semantics)')
+  assert.equal(g1.active, 's1')
+  assert.equal(state.lessonSessions[lessonId], 's1', 'the legacy map mirrors the active pointer')
+
+  const second = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId, sessionId: 's2', title: '换一条线' }), new FakeResponse())
+  assert.equal(second.status, 200)
+  const g2 = state.lessonThreads[lessonId]!
+  assert.equal(g2.threads.length, 2)
+  assert.equal(g2.active, 's2')
+
+  const again = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId, sessionId: 's1' }), new FakeResponse())
+  assert.equal(again.status, 200)
+  assert.equal(state.lessonThreads[lessonId]!.threads.length, 2, 're-binding a known session never duplicates')
+  assert.equal(state.lessonThreads[lessonId]!.active, 's1')
+
+  const clear = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId, sessionId: null }), new FakeResponse())
+  assert.equal(clear.status, 200)
+  assert.equal(state.lessonThreads[lessonId]!.active, null, 'null clears the pointer (the plus-new affordance)')
+  assert.equal(state.lessonThreads[lessonId]!.threads.length, 2, 'threads survive a clear')
+  assert.equal(state.lessonSessions[lessonId], undefined)
+
+  const bad = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId: 5 }), new FakeResponse())
+  assert.equal(bad.status, 400, 'junk bodies reject loudly')
+})
+
+test('the state feed carries the thread groups beside the legacy map (issue #11 wire contract)', async () => {
+  const { state } = fixture()
+  const lessonId = `${state.courses[0]!.id}:0:0`
+  bindLessonThread(state, lessonId, 's1', '第一条线')
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const feed = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  const body = feed.json() as { lessonSessions: Record<string, string>; lessonThreads: Record<string, { active: string | null; threads: Array<{ id: string; title: string }> }> }
+  assert.equal(body.lessonSessions[lessonId], 's1')
+  assert.equal(body.lessonThreads[lessonId]!.active, 's1')
+  assert.equal(body.lessonThreads[lessonId]!.threads[0]!.title, '第一条线')
+})
+
+test('lesson-session route (issue #11): a title-less bind still succeeds (the thread falls back to the lesson id)', async () => {
+  const { state } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const lessonId = `${state.courses[0]!.id}:0:2`
+  const res = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId, sessionId: 's-notitle' }), new FakeResponse())
+  assert.equal(res.status, 200)
+  assert.equal(state.lessonThreads[lessonId]!.threads[0]!.title, lessonId, 'no title offered = the lesson id stands in (never an empty chip)')
+})
+
+test('the state feed always carries the groups object (issue #11): fresh states feed empty groups, never an omitted field', async () => {
+  const { state } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const feed = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  const body = feed.json() as Record<string, unknown>
+  assert.ok(body.lessonThreads !== undefined, 'the client indexes data.lessonThreads[lessonId] unconditionally — the field must exist')
+  assert.deepEqual(body.lessonThreads, {}, 'a never-taught course feeds empty groups')
 })
 
 test('note delete route: removes one entry, persists, 400 on bad body, 404 on unknown ids', async () => {

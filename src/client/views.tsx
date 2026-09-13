@@ -141,6 +141,31 @@ export function pickNarrowPane(stored: string | null): 'rail' | 'chat' | 'note' 
 }
 
 /**
+ * Issue #11 (upstream first-message auto-naming): a fresh thread's title is
+ * the sending text, single-lined and length-capped — the switcher chip
+ * truncates via CSS, storage keeps a sane whole title. Pure.
+ */
+export function threadAutoTitle(text: string, max = 80): string {
+  const oneLine = text.trim().replace(/\s+/g, ' ')
+  return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine
+}
+
+export interface ThreadPillRow { id: string; title: string; current: boolean }
+
+/**
+ * Issue #11: the switcher's rows = the CURRENT lesson's thread group (upstream
+ * v0.5 节点 = 会话组) — every thread, freshest first, the active one marked.
+ * Pure.
+ */
+export function threadGroupPills(group: { active: string | null; threads: ReadonlyArray<{ id: string; title: string; lastAt: string }> } | undefined): ThreadPillRow[] {
+  if (group === undefined) return []
+  return group.threads
+    .slice()
+    .sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1))
+    .map(t => ({ id: t.id, title: t.title, current: t.id === group.active }))
+}
+
+/**
  * Default expansion for one rail section: collapsed when every study lesson is
  * done (mastered) or not yet reachable (locked). The focus lesson's section
  * stays open; exam nodes never force a section open. Pure.

@@ -350,6 +350,61 @@ test('the lookatstudy locale dictionaries keep zh/en parity and translate with f
 })
 
 
+test('threadAutoTitle (issue #11): first-message titles single-line and truncate', async () => {
+  const { threadAutoTitle } = await import('../src/client/views.tsx')
+  assert.equal(threadAutoTitle('判别式法\n什么时候失效？'), '判别式法 什么时候失效？', 'newlines collapse to one line')
+  const long = 'a'.repeat(120)
+  assert.equal(threadAutoTitle(long).length, 80, 'the cap keeps the ellipsis inside 80')
+  assert.ok(threadAutoTitle(long).endsWith('…'))
+})
+
+test('threadAutoTitle (issue #11): short and messy inputs pass through sanely', async () => {
+  const { threadAutoTitle } = await import('../src/client/views.tsx')
+  assert.equal(threadAutoTitle('  为什么要有开闭区间？  '), '为什么要有开闭区间？', 'edges trim')
+  assert.equal(threadAutoTitle(''), '', 'empty stays empty (the caller falls back)')
+  assert.equal(threadAutoTitle('a\n\n\nb'), 'a b', 'blank lines collapse too')
+  const cjk = '含参恒成立的第一反应是什么？'
+  assert.equal(threadAutoTitle(cjk), cjk, 'short CJK passes verbatim')
+})
+
+test("threadGroupPills (issue #11): the current lesson's group, freshest first, active marked", async () => {
+  const { threadGroupPills } = await import('../src/client/views.tsx')
+  const group = {
+    active: 's1',
+    threads: [
+      { id: 's1', title: '第一条线', lastAt: '2026-09-13T10:00:00Z' },
+      { id: 's2', title: '第二条线', lastAt: '2026-09-13T12:00:00Z' },
+    ],
+  }
+  const pills = threadGroupPills(group)
+  assert.deepEqual(pills.map(p => p.id), ['s2', 's1'], 'freshest (lastAt) first')
+  assert.equal(pills[1]!.current, true, 'the active thread is marked')
+  assert.equal(pills[0]!.current, false)
+  assert.deepEqual(threadGroupPills(undefined), [], 'no group = no rows (a never-taught lesson)')
+})
+
+test('threadGroupPills (issue #11): a cleared pointer marks no pill current; empty groups render nothing', async () => {
+  const { threadGroupPills } = await import('../src/client/views.tsx')
+  const cleared = {
+    active: null,
+    threads: [
+      { id: 's1', title: '第一条线', lastAt: '2026-09-13T10:00:00Z' },
+      { id: 's2', title: '第二条线', lastAt: '2026-09-13T12:00:00Z' },
+    ],
+  }
+  const pills = threadGroupPills(cleared)
+  assert.equal(pills.length, 2, 'after the plus-new affordance the sediment stays listed')
+  assert.ok(pills.every(p => !p.current), 'nothing is current while the pointer is cleared (a fresh send mints a new thread)')
+  assert.deepEqual(threadGroupPills({ active: null, threads: [] }), [], 'an empty group renders no rows')
+})
+
+test('threadAutoTitle (issue #11): the max cap honors its argument; exactly-at-cap passes verbatim', async () => {
+  const { threadAutoTitle } = await import('../src/client/views.tsx')
+  assert.equal(threadAutoTitle('0123456789', 10), '0123456789', 'exactly at the cap: no ellipsis')
+  assert.equal(threadAutoTitle('0123456789A', 10), '012345678…', 'one over the cap: truncated with the ellipsis inside the cap')
+  assert.equal(threadAutoTitle('0123456789A', 10).length, 10, 'the capped title never exceeds max')
+})
+
 test('effectiveOpen: the user toggle overrides the frontier default; pickNarrowPane remembers', async () => {
   const { effectiveOpen, pickNarrowPane } = await import('../src/client/views.tsx')
   assert.equal(effectiveOpen('第一章', true, {}), true, 'no override = the default')

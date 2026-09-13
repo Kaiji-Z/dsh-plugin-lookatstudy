@@ -755,6 +755,8 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-threadmenu-row.on{background:rgb(var(--brand-rgb)/0.1)}
 .lks-ui .lks14-threadmenu-row.on .lks14-threadmenu-title{color:var(--brand);font-weight:700}
 .lks-ui .lks14-threadmenu-dot{flex:none;width:6px;height:6px;border-radius:999px;background:var(--ink-faint)}
+.lks-ui .lks14-threadmenu-row.new{margin-top:3px;border-top:1px solid var(--border-faint);border-radius:0 0 7px 7px;padding-top:7px}
+.lks-ui .lks14-threadmenu-plus{flex:none;width:13px;height:13px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;border:1px solid var(--brand);color:var(--brand);font-size:10px;line-height:1}
 .lks-ui .lks14-threadmenu-row.on .lks14-threadmenu-dot{background:var(--brand)}
 .lks-ui .lks14-threadmenu-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lks-ui .lks14-threadmenu-now{flex:none;font-size:10px;font-weight:800;color:var(--brand)}
