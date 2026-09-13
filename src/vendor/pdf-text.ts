@@ -36,29 +36,84 @@ function decodeHexString(s: string): string {
   return out;
 }
 
-/** Pull text out of one decoded content stream. */
-function textFromContentStream(content: string): string {
-  if (!/BT[\s\S]*?ET/.test(content)) return "";
-  let out = "";
-  // (..) Tj | ' | "   <hex> Tj | ' | "   [(..) <hex> nums] TJ
-  const re = /\(((?:\\.|[^\\()])*)\)\s*(Tj|'|")|<([0-9a-fA-F\s]+)>\s*(Tj|'|")|\[((?:\(.*?\)|<[0-9a-fA-F\s]+>|[^\]])*?)\]\s*TJ/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(content)) !== null) {
-    if (m[1] !== undefined) {
-      out += decodePdfString(m[1]);
-      if (m[2] === "'" || m[2] === '"') out += "\n";
-    } else if (m[3] !== undefined) {
-      out += decodeHexString(m[3]);
-      if (m[4] === "'" || m[4] === '"') out += "\n";
-    } else if (m[5] !== undefined) {
-      const partRe = /\(((?:\\.|[^\\()])*)\)|<([0-9a-fA-F\s]+)>/g;
-      let pm: RegExpExecArray | null;
-      while ((pm = partRe.exec(m[5])) !== null) {
-        out += pm[1] !== undefined ? decodePdfString(pm[1]!) : decodeHexString(pm[2] ?? "");
-      }
+/** Pull text out of one decoded content stream. Linear hand-rolled scan —
+ *  the original regex alternation backtracked catastrophically on real
+ *  papers' content streams (an unclosed `[` made the lazy TJ arm rescan
+ *  megabytes; found 2026-09-14 when the livetest refresh wedged the host for
+ *  10+ CPU-minutes on a real arXiv PDF while even a watchdog timer could not
+ *  fire — the loop blocked the event loop synchronously). */
+function readLiteral(src: string, i: number): { text: string; next: number } {
+  // src[i] === "("; PDF literal strings nest parens and honor \-escapes
+  let depth = 1
+  let j = i + 1
+  let raw = ""
+  while (j < src.length) {
+    const c = src[j]!
+    if (c === "\\") { raw += src.slice(j, j + 2); j += 2; continue }
+    if (c === "(") { depth++; raw += c; j++; continue }
+    if (c === ")") {
+      depth--
+      if (depth === 0) { j++; break }
+      raw += c; j++; continue
     }
+    raw += c; j++
   }
-  return out;
+  return { text: decodePdfString(raw), next: j }
+}
+
+function readHex(src: string, i: number): { text: string; next: number } {
+  const close = src.indexOf(">", i)
+  if (close === -1) return { text: decodeHexString(src.slice(i + 1)), next: src.length }
+  return { text: decodeHexString(src.slice(i + 1, close)), next: close + 1 }
+}
+
+function skipWs(src: string, i: number): number {
+  while (i < src.length && /\s/.test(src[i]!)) i++
+  return i
+}
+
+function readWord(src: string, i: number): string {
+  let j = i
+  while (j < src.length && /[A-Za-z0-9*'"]/.test(src[j]!)) j++
+  return src.slice(i, j)
+}
+
+function textFromContentStream(content: string): string {
+  if (!/BT[\s\S]*?ET/.test(content)) return ""
+  let out = ""
+  let i = 0
+  const n = content.length
+  while (i < n) {
+    const c = content[i]!
+    if (c === "[") {
+      // TJ array operand: collect its string parts in order, then the operator
+      const parts: string[] = []
+      let j = i + 1
+      while (j < n && content[j] !== "]") {
+        const d = content[j]!
+        if (d === "(") { const r = readLiteral(content, j); parts.push(r.text); j = r.next }
+        else if (d === "<") { const r = readHex(content, j); parts.push(r.text); j = r.next }
+        else j++
+      }
+      if (j >= n) break // unclosed array: bail honestly — never rescan (the old wedge)
+      const op = readWord(content, skipWs(content, j + 1))
+      if (op === "TJ") out += parts.join("")
+      i = j + 1
+      continue
+    }
+    if (c === "(" || c === "<") {
+      const r = c === "(" ? readLiteral(content, i) : readHex(content, i)
+      const op = readWord(content, skipWs(content, r.next))
+      if (op === "Tj" || op === "'" || op === '"') {
+        out += r.text
+        if (op !== "Tj") out += "\n"
+      }
+      i = r.next
+      continue
+    }
+    i++
+  }
+  return out
 }
 
 /**

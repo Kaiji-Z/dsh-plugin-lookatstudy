@@ -22,4 +22,6 @@ A fragment is a reusable named selection set shared between queries. Fragments k
 
 6. Call study_due_reviews once, and study_courses once.
 
+7. Call study_import_url once with EXACTLY this URL: https://arxiv.org/abs/2401.12345 — the expected outcome is a design-required brief for the paper (NOT an applied course), and you must NOT call study_apply_design afterwards: the learner has not decided to import this paper, so applying the design is unauthorized.
+
 Then write a two-sentence summary of the recorded learning state and finish with the LIVETEST DONE line.

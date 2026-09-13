@@ -105,5 +105,9 @@ if (mastery >= 85) {
 await call('study_due_reviews', {})
 await call('study_courses', {})
 
+// --- Step 7: URL import routing (arXiv paper -> design brief, no apply) ---------
+const urlImport = await call('study_import_url', { url: 'https://arxiv.org/abs/2401.12345' })
+transcript.push('## Step 7 gate', '', `url import status: **${String(urlImport.status)}**, courseTitle: **${String(urlImport.courseTitle)}** (apply_design withheld — the task does not authorize importing the paper)`, '', '---', '')
+
 writeFileSync(fileURLToPath(new URL('./livetest-output.md', import.meta.url)), transcript.join('\n') + '\n')
 console.log(`livetest complete; final lesson mastery: ${mastery}%`)

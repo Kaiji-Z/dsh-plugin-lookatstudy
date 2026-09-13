@@ -100,3 +100,21 @@ test('parsePdfText output passes through radical normalization', () => {
   assert.ok(text.includes('手手之模型'), `radical text exits normalized, got ${JSON.stringify(text)}`)
   assert.ok(!/[\u2F00-\u2FDF]/.test(text))
 })
+
+test('regression 2026-09-14: unclosed TJ arrays and nested brackets never wedge the scan (the arXiv livetest catch)', () => {
+  // The old regex alternation backtracked catastrophically here: an unclosed
+  // [ made the lazy TJ arm rescan the rest of the stream (megabytes on a real
+  // paper = 10+ CPU-minutes, watchdog-proof because the loop blocked the event
+  // loop). The linear scanner must bail honestly and still extract the OTHER
+  // streams' text. If this test ever HANGS, the regression is back.
+  const filler = 'Tj (x) ' + '[[[[[ ' + 'q 1 0 0 1 0 0 cm '.repeat(400)
+  const pathological = `BT [ (unclosed array element ${filler}`
+  const healthy = 'BT [ (Gra) -250 (dient) ] TJ ( descent) Tj ET'
+  const pdf = pdfBytes([
+    { data: pathological },
+    { data: healthy, flate: true },
+  ])
+  const text = parsePdfText(pdf)
+  assert.equal(text.includes('Gradient descent'), true, 'the healthy stream still yields its text')
+  assert.equal(text.includes('unclosed array element'), false, 'the unclosed array contributes nothing (honest bail, not a hang)')
+})
