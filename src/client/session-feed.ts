@@ -90,6 +90,29 @@ export function feedTurnActive(window: FeedWindow | undefined, stoppedAt: number
   return depth > 0 || liveChunkOrphan
 }
 
+/**
+ * Issue #9: how long a turn-liveness window may sit WITHOUT its top seq
+ * advancing before the panel reads it as stalled and unlocks the composer.
+ * Generous on purpose: a legit in-flight tool call journals nothing for up to
+ * its own timeout (the import tools run 180 s), so anything past 240 s with a
+ * motionless window is a dead turn (cancel paths never journal turn/end).
+ */
+export const TURN_STALL_MS = 240_000
+
+/**
+ * The stall decision (pure — the wall clock lives at the poll call site):
+ * an ACTIVE fold stays active while the window's top seq keeps advancing;
+ * once it has been frozen for longer than stallMs the panel treats the turn
+ * as over. `lastAdvanceAt === 0` means "first observation" — the clock starts
+ * now, so a freshly mounted window with an old unpaired turn/start does not
+ * insta-clear (it clears one stall window later if truly dead).
+ */
+export function turnStalled(active: boolean, lastSeq: number, prevLastSeq: number, lastAdvanceAt: number, now: number, stallMs: number = TURN_STALL_MS): boolean {
+  if (!active) return false
+  if (lastSeq !== prevLastSeq || lastAdvanceAt === 0) return false
+  return now - lastAdvanceAt > stallMs
+}
+
 /** The window's highest event seq (the stop watermark's source). */
 export function feedLastSeq(window: FeedWindow | undefined): number {
   if (window === undefined || window.entries === undefined) return 0

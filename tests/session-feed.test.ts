@@ -134,8 +134,7 @@ test('feedTurnActive reads the turn lifecycle — the stop twin rides it, not th
   assert.equal(feedTurnActive(win([])), false)
 })
 
-test('the stop watermark disarms the host cancel wedge-open turn (C2 live catch)', () => {
-  const window = win([
+test('the stop watermark disarms the host cancel wedge-open turn (C2 live catch)', () => {  const window = win([
     entry({ type: 'turn/start', seq: 1, data: {} }),
     entry({ type: 'user/message', seq: 2, data: { source: { kind: 'user' }, content: [] } }),
     entry({ type: 'assistant/attempt', seq: 3, data: {} }),
@@ -154,6 +153,23 @@ test('the stop watermark disarms the host cancel wedge-open turn (C2 live catch)
   assert.equal(feedLastSeq(next), 6)
   assert.equal(feedTurnActive(win([]), 3), false)
   assert.equal(feedLastSeq(undefined), 0)
+})
+
+test('turnStalled: a motionless window reads as over after the stall window (issue #9)', async () => {
+  const { turnStalled, TURN_STALL_MS } = await import('../src/client/session-feed.ts')
+  assert.equal(TURN_STALL_MS, 240_000, 'generous by design: in-flight tool calls journal nothing for up to 180 s')
+  // inactive is never stalled
+  assert.equal(turnStalled(false, 10, 10, 1_000, 999_999), false)
+  // first observation starts the clock — an old unpaired turn/start does not insta-clear on mount
+  assert.equal(turnStalled(true, 10, 10, 0, 999_999), false)
+  // fresh advancing activity
+  assert.equal(turnStalled(true, 11, 10, 5_000, 6_000), false)
+  // static window, inside the stall window
+  assert.equal(turnStalled(true, 10, 10, 5_000, 5_000 + TURN_STALL_MS - 1), false)
+  // static window, past the stall window → the composer unlocks
+  assert.equal(turnStalled(true, 10, 10, 5_000, 5_000 + TURN_STALL_MS + 1), true)
+  // resumed activity (seq advanced) resets
+  assert.equal(turnStalled(true, 12, 10, 5_000, 5_000 + TURN_STALL_MS + 10_000), false)
 })
 
 // ——— D4: in-stream artifact hydration + the sediment backlog ———

@@ -34,14 +34,14 @@ import { ctxSegments, fmtTokens } from './views.tsx'
 import { renderLessonConceptMap } from './diagrams.ts'
 import { speechSentencesOf } from '../vendor/speech-text.ts'
 import { speakMathInSentence } from '../vendor/math-speech.ts'
-import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog, importProgressOf } from './session-feed.ts'
+import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog, importProgressOf, TURN_STALL_MS, turnStalled } from './session-feed.ts'
 import { ErrorBoundary, ContentBoundary } from './error-boundary.tsx'
 import { wireCodeBlockCopy } from './codeblock.ts'
 import { panelTheme, subscribePanelTheme } from './theme.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { QuizCard, type QuizData } from './quizcard.tsx'
-import { ArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
+import { ArtifactCard, FoldableArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError } from './views.tsx'
@@ -312,6 +312,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const [feedGen, setFeedGen] = useState(false)
   const lastSeqRef = useRef(0)
   const stopWatermarkRef = useRef<number | null>(null)
+  // issue #9: wall clock of the last event-window advance — the stall guard's
+  // time source (events carry no timestamps; the poll window is the clock)
+  const lastAdvanceAtRef = useRef(0)
   // P12 exam leave guard: ExamView reports its session here; every focus
   // navigation routes through guardedSetFocus while answering is active.
   const examSessionRef = useRef<ExamSession>({ active: false, terminate: null })
@@ -510,8 +513,15 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       const update = (): void => {
         const snap = source.getSnapshot() as never
         setRows(feedRows(snap))
-        lastSeqRef.current = feedLastSeq(snap)
-        setFeedGen(feedTurnActive(snap, stopWatermarkRef.current))
+        const lastSeq = feedLastSeq(snap)
+        const prevSeq = lastSeqRef.current
+        if (lastSeq !== prevSeq || lastAdvanceAtRef.current === 0) lastAdvanceAtRef.current = Date.now()
+        lastSeqRef.current = lastSeq
+        // issue #9: a turn whose window stopped advancing reads as over after
+        // TURN_STALL_MS — cancel paths never journal turn/end, so the fold's
+        // depth flags would otherwise lock the composer forever
+        const active = feedTurnActive(snap, stopWatermarkRef.current)
+        setFeedGen(active && !turnStalled(active, lastSeq, prevSeq, lastAdvanceAtRef.current, Date.now()))
       }
       update()
       setFeedAttached(true)
@@ -577,6 +587,16 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     if (el !== null) el.scrollTop = el.scrollHeight
   }, [rows])
 
+  // issue #9: the stall guard's alarm — the window only pushes updates while
+  // events arrive, so a frozen window needs a timer to ever read as stalled
+  useEffect(() => {
+    if (!feedGen) return
+    const iv = setInterval(() => {
+      if (Date.now() - lastAdvanceAtRef.current > TURN_STALL_MS) setFeedGen(false)
+    }, 5000)
+    return () => { clearInterval(iv) }
+  }, [feedGen])
+
   /** The one send path: lazily stage the lesson thread, then prompt. */
   const send = (text: string): void => {
     void (async () => {
@@ -584,6 +604,8 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       setBusy(true)
       setSendError(null)
       stopWatermarkRef.current = null
+      // a fresh prompt is activity — the stall clock restarts with the turn
+      lastAdvanceAtRef.current = Date.now()
       try {
         if (data?.active !== true) await activate(true)
         let sessionId = localBound.current ?? data?.lessonSessions[lesson.lessonId] ?? null
@@ -1776,7 +1798,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     return ids
   }, [rowsView])
   const backlog = useMemo(() => lesson !== null ? sedimentBacklog(lesson.artifacts, inlineIds, unseenArtifacts(lesson.lessonId, lesson.artifacts)) : [], [lesson, inlineIds])
-  const inlineArtifactCard = (row: typeof rowsView[number]): ReactNode => {
+  const inlineArtifactCard = (row: typeof rowsView[number], revealed = false): ReactNode => {
     if (lesson === null || row.artifactId === undefined) return null
     const artifact = lesson.artifacts.find(a => a.id === row.artifactId)
     // The state feed fell behind the fold — the chip stands in until it lands.
@@ -1791,7 +1813,9 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           send,
           onFinished: () => {},
         })
-        : createElement(ArtifactCard, { artifact: artifact as ArtifactRow, send }))
+        // issue #8: fold bar + guess lifecycle (the pick persists; a later
+        // assistant reply flips the wait line to the reveal note)
+        : createElement(FoldableArtifactCard, { artifact: artifact as ArtifactRow, send, revealed }))
   }
   // E5: the thread switcher rows — lessonSessions joined to lesson titles
   // (every lesson that ever minted a thread gets a pill).
@@ -1936,7 +1960,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             }, tr('chat.start'))
             : null)
         : rowsView.map((row, i) => row.role === 'artifact'
-          ? inlineArtifactCard(row)
+          ? inlineArtifactCard(row, rowsView.slice(i + 1).some(r => r.role === 'assistant'))
           : chatRow(row,
             !dormant && i === lastAssistant ? { send } : undefined,
             row.role === 'assistant'
@@ -1961,7 +1985,8 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
       })),
     ...backlog
       .filter(a => a.artifactType !== 'quiz')
-      .map(a => createElement(ArtifactCard, { key: a.id, artifact: a as ArtifactRow, send })),
+      // issue #8: the sediment backlog starts folded — one thin line each
+      .map(a => createElement(FoldableArtifactCard, { key: a.id, artifact: a as ArtifactRow, send, defaultFolded: true })),
     // B7: starters appear only after the conversation starts (upstream gates
     // them on messages>0 — the empty state carries the CTA instead).
     rows.length > 0
@@ -2474,7 +2499,10 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                 }, tr('note.quote.save')))
               : null),
           latestHeavy !== null ? createElement('div', { className: 'lks-acard-stage' },
-            createElement(ArtifactCard, { artifact: latestHeavy, send: () => {} }))
+            // issue #8/#10: the teach tab's sediment starts FOLDED — the
+            // lesson prose owns the first screen; one thin bar keeps the
+            // latest board reachable without eating the viewport
+            createElement(FoldableArtifactCard, { artifact: latestHeavy, send: () => {}, defaultFolded: true }))
             : null,
         )
         : tab === 'board'
