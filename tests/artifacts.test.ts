@@ -181,3 +181,25 @@ test('locateInModel resolves repeats by fingerprint and rejects degenerate input
   ], 'a range spanning three nodes plans three segments')
   assert.deepEqual(planSegments(nodes, 5, 5), [], 'empty ranges plan nothing')
 })
+
+test('issue #8 lifecycle storage: guess picks and fold states survive remounts and reject junk', async () => {
+  const { guessPickedOf, markGuessPicked, acardFoldStoredOf, markAcardFoldStored } = await import('../src/client/artifact-cards.tsx')
+  const store = new Map<string, string>()
+  const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v) } }
+  // guess picks: absent -> null; mark -> read back; junk -> null
+  assert.equal(guessPickedOf('g1', storage), null)
+  markGuessPicked('g1', 'opt-b', storage)
+  markGuessPicked('g2', 'opt-a', storage)
+  assert.equal(guessPickedOf('g1', storage), 'opt-b')
+  assert.equal(guessPickedOf('g2', storage), 'opt-a')
+  store.set('dsh-plugin-lookatstudy:guess-picked', 'not json')
+  assert.equal(guessPickedOf('g1', storage), null, 'junk storage degrades to unpicked (never a wrong lock)')
+  // fold states: absent -> null (the mount default decides); toggle persists; junk -> null
+  assert.equal(acardFoldStoredOf('a1', storage), null)
+  markAcardFoldStored('a1', true, storage)
+  assert.equal(acardFoldStoredOf('a1', storage), true)
+  markAcardFoldStored('a1', false, storage)
+  assert.equal(acardFoldStoredOf('a1', storage), false, 'the explicit toggle overwrites')
+  store.set('dsh-plugin-lookatstudy:acard-folded', '[]')
+  assert.equal(acardFoldStoredOf('a1', storage), null, 'junk storage degrades to the default')
+})

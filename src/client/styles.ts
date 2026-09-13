@@ -290,6 +290,15 @@ mark.lks-hl{background:var(--dsw-alias-state-warn-tertiary);color:inherit;border
 .lks-acard-guess-opt.picked{border-color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-state-business-tertiary)}
 .lks-acard-guess-wait{font-size:12px;color:var(--dsw-alias-label-tertiary)}
 .lks-acard-stage{margin-top:14px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l1)}
+/* issue #8: every artifact card wears a fold bar — folded = one thin line */
+.lks-acard-foldwrap{margin:0}
+.lks-acard-fold{display:flex;align-items:center;gap:7px;width:100%;text-align:left;font:inherit;font-size:12px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:9px;padding:4px 10px;cursor:pointer}
+.lks-acard-fold:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.lks-acard-fold-caret{flex:none;color:var(--dsw-alias-label-tertiary)}
+.lks-acard-fold-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-acard-foldwrap:not(.folded) .lks-acard-fold{border-radius:9px 9px 0 0;border-bottom:none}
+.lks-acard-foldwrap:not(.folded) .lks-acard{border-radius:0 0 9px 9px}
+.lks-acard-guess-wait.revealed{color:var(--dsw-alias-state-success-primary)}
 .lks-acard-stage .lks-acard{margin:0}
 .lks14-zone .lks-acard{margin:0 0 8px}
 /* notebook tab badge (unseen artifacts) */

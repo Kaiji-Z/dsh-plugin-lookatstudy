@@ -461,7 +461,11 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-board-head svg{color:var(--ink-muted);flex:none}
 .lks-ui .lks14-board-stage{flex:1;min-height:0;padding:0 8px 8px}
 .lks-ui .lks14-board-stage> .lks14-stage{border-radius:14px;border:1px solid var(--border-faint);background:rgb(var(--surface0-rgb,17 17 20)/0.6);overflow:hidden}
-.lks-ui .lks14-board-artifact{padding:20px;width:max-content;max-width:none}
+.lks-ui .lks14-board-artifact{padding:20px;width:fit-content;max-width:1200px}
+/* issue #10: the board stage handles oversize via zoom — the table lays out
+   normally inside a bounded card (display:block + overflow was made for the
+   narrow chat column; on the canvas it broke cells into overlap) */
+.lks-ui .lks14-board-artifact .lks-acard-table{display:table;width:100%;max-width:100%;overflow:visible}
 .lks-ui .lks14-board-artifact .lks-acard{min-width:560px;background:var(--surface-0);border:1px solid var(--border-faint);border-radius:14px}
 .lks-ui .lks14-cmapwrap{position:relative}
 .lks-ui .lks14-cmap-expand{position:absolute;top:10px;right:10px;z-index:5}
