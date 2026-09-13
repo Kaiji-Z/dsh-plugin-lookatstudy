@@ -185,44 +185,46 @@ A feature is done if and only if ALL hold:
 **[auto-fill]** = scan code with evidence (file:line); missing evidence → fill "none, needed", no guessing
 **[must-ask]** = ask the developer per the template; fill after an answer; before that fill "pending"; guessing forbidden
 
-### 8.1 System entry [auto-fill]
-- Backend start command: [evidence]
-- CLI/API command to trigger a workflow: [evidence]
-- Command/API to fetch a trace: [evidence, or "none, needed"]
+### 8.1 System entry [auto-fill] — FILLED 2026-09-14
+- Backend start command: the plugin loads INSIDE the dsh host (no standalone server). Headless one-shot: `corepack pnpm dsh --profile headless --patch <repo>/cordis.livetest.yml "<livetest-task.txt contents>"` from the harness root (AGENTS.md "Headless livetest"; the overlay sets `Config.active: on` — src/config.ts:31,38). CI form: `pnpm run verify` (.github/workflows/publish.yml:31).
+- CLI/API command to trigger a workflow: the host `/study` slash command (src/commands.ts:83 registerStudyCommand, structural CommandInvocation at :63); every learning workflow is 1:1 the `study_*` tool surface (src/tools.ts) driven by the tutor turn; the panel UI is a third seat over the same HTTP API, never the only one.
+- Command/API to fetch a trace: the dsh session log (concatenated zstd frames, decoded per-frame with the harness `packages/session/session-persistence-jsonl/lib/types/zstd.js` util — AGENTS.md "Live testing"); deterministic transcript: `node scripts/livetest-run.mjs` → `livetest-output.md`; live plugin state: `GET /lookatstudy/api/state` (src/dashboard.ts:364 route registry).
 
-### 8.2 Test infra [auto-fill]
-- Regression run command: [evidence]
-- Regression set directory: [evidence]
-- Assertion framework: [evidence, or "none, needed"]
+### 8.2 Test infra [auto-fill] — FILLED 2026-09-14
+- Regression run command: `pnpm test` (package.json scripts.test: `node --import tsx --test tests/*.test.ts`); the single machine gate folding tests+build+bundle pins+secrets: `pnpm run verify` (scripts/verify.mjs).
+- Regression set directory: `tests/` — 43 files / 347 tests at fill time, including the frozen acceptance paths (tests/acceptance.test.ts), the state-machine invariant fuzz (tests/invariants.test.ts, seeded, plus the thread-group invariant fuzz), schema-conformance (every tool's output vs its declared schema), and issue-born regression tests (the #3-#11 rounds).
+- Assertion framework: plain `node:test` + `node:assert/strict` (zero-dependency mandate; no jest/vitest/deepeval in devDependencies — see 8.7).
 
-### 8.3 Flag mechanism [auto-fill]
-- How flags are defined and read: [evidence, or "none, design during remediation"]
+### 8.3 Flag mechanism [auto-fill] — FILLED 2026-09-14
+- Global surface flag: `Config.active: 'auto' | 'on' | 'off'` (src/config.ts:31,38) gates the ENTIRE model-facing surface — tools register/unregister, persona sections render empty (AGENTS.md state-machine invariants). Headless runs force `on` via the cordis overlay.
+- Single feature flag in service: `historyBudget` (src/state.ts:227, fed at src/dashboard.ts:161/195) — the context-budget directive toggle.
+- Per-feature flag machinery: none, design during remediation — the standing house practice is full-suite regression + additive-only state format instead of flag=on/off comparison runs (P0-2 in the 2026-09-14 gap list; owner decision pending).
 
-### 8.4 Supervisor design [must-ask] ⚠️ critical
-> Cannot be auto-filled: the agent's default inclination is "give more context," which exactly violates the §3.2 clean-context iron rule.
-Template (ask all at once):
-1. Which model scores the fuzzy parts?
-2. What are the scoring dimensions?
-3. Passing threshold per dimension?
-4. What MUST the supervisor prompt NOT contain? (default forbid: code implementation / PR description / commit / dev conversation)
+### 8.4 Supervisor design — FILLED 2026-09-14 from the standing owner-ratified decision (§3.2 landing paragraph above; judge-criteria.md; scripts/livetest-judge.mjs). Re-confirm at the next criteria refresh.
+1. Model: `glm-5.2` at temperature 0; `JUDGE_MODEL` env overrides (livetest-judge.mjs:23,125,140). Known deviation from iron rule 3 (judge defaults to the generator family), documented in the criteria file and ratified by the owner.
+2. Scoring dimensions: the frozen criteria in `judge-criteria.md` (one per numbered step of livetest-task.txt; e.g. the mastery-gate discipline at criteria line 28).
+3. Passing threshold: 0-10 integer per criterion, PASS iff EVERY criterion ≥ 8 (judge-criteria.md:15; runner exit code 0/1 — livetest-judge.mjs:14).
+4. Prompt MUST contain ONLY: criteria + transcript + the fixed template — enforced structurally by `tests/livetest-judge.test.ts` (prompt purity is test-asserted, not conventional). Code / PR description / commits / dev conversation are absent by construction: the assembler reads exactly three inputs.
 
-### 8.5 Acceptance criteria [must-ask] ⚠️ critical
+### 8.5 Acceptance criteria [must-ask] — PENDING (asked 2026-09-14, batch in the diagnosis report; awaiting owner answers)
 > Cannot be auto-filled: reverse-engineering from existing tests would freeze existing bugs as "the standard."
-Template (ask all at once):
-1. Happy path of the core workflow? (input → tool → branch → output)
-2. 3–5 acceptance criteria, shaped like "under condition X, should Y"?
-3. Reverse acceptance criteria (behaviors that MUST NEVER happen)?
+Existing approximations, reference only (NOT the frozen standard): judge-criteria.md encodes the live-loop acceptance for the 6-step self-test task; the regression suite freezes per-feature acceptance born from live bugs.
+Questions sent (one batch, in the owner's language):
+1. 核心工作流的 happy path？（输入 → 工具 → 分支 → 输出）
+2. 3-5 条验收标准，形如「在 X 条件下，应该 Y」？
+3. 反向验收（绝不允许发生的行为）？
+Freeze the answers HERE once given (same commit as any behavior the criteria accept).
 
 ### 8.6 Fill status (maintained by the agent)
 
 | Item | Category | Status | Source |
 |---|---|---|---|
-| 8.1 | auto-fill | | |
-| 8.2 | auto-fill | | |
-| 8.3 | auto-fill | | |
-| 8.4 | must-ask | | |
-| 8.5 | must-ask | | |
-| 8.7 | auto-fill→must-ask | | |
+| 8.1 | auto-fill | FILLED 2026-09-14 | AGENTS.md Live-testing, commands.ts:83, dashboard.ts:364, config.ts:31/38, publish.yml:31 |
+| 8.2 | auto-fill | FILLED 2026-09-14 | package.json scripts, tests/ (43 files/347 tests), node:test |
+| 8.3 | auto-fill | FILLED 2026-09-14 (per-feature: none, remediation pending) | config.ts:31/38, state.ts:227, dashboard.ts:161/195 |
+| 8.4 | must-ask | FILLED from the standing owner-ratified decision (§3.2 landing); re-confirm at next refresh | VERIFICATION.md §3.2 landing paragraph, judge-criteria.md:15/28, livetest-judge.mjs:14/23 |
+| 8.5 | must-ask | PENDING — asked 2026-09-14, awaiting owner answers | diagnosis report batch |
+| 8.7 | auto-fill→must-ask | FILLED 2026-09-14 — none detected; the self-built path is the ratified standing decision (rules 8/9 honored, no install) | package.json devDependencies, VERIFICATION.md §3.2 landing |
 
 ### 8.7 Eval toolchain [auto-fill→must-ask] ⚙️ orchestration item
 
@@ -230,11 +232,11 @@ Template (ask all at once):
 
 **Step 1 [auto-fill]: detect existing tools (scan dependency files)**
 Scan `requirements.txt` / `pyproject.toml` / `package.json` / `go.mod` etc., fill "installed" or "none" for each:
-- [ ] `deepeval`? [evidence]
-- [ ] `langsmith` / `langchain` with eval module? [evidence]
-- [ ] `pytest`? [evidence]
-- [ ] `jest` / `vitest` (Node)? [evidence]
-- [ ] other eval tool? [evidence]
+- [x] `deepeval`? none (devDependencies: @types/react, react, tsdown, tsx, @types/node, typescript — package.json)
+- [x] `langsmith` / `langchain` with eval module? none (same evidence)
+- [x] `pytest`? n/a — Node/TypeScript repo
+- [x] `jest` / `vitest` (Node)? none (same evidence; the runner is node:test via tsx)
+- [x] other eval tool? SELF-BUILT Layer-2 judge: scripts/livetest-judge.mjs + frozen judge-criteria.md + the prompt-purity structural test (tests/livetest-judge.test.ts) — owner-ratified as the explicit no-framework decision (§3.2 landing paragraph; red-line rules 8/9 honored: nothing was installed, nothing needs to be)
 
 **Detected at least one → §3/§4 land on that tool's API. Fill: "using [tool name]".**
 
