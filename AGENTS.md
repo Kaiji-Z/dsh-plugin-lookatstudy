@@ -13,6 +13,13 @@ pnpm run judge       # Layer-2 LLM judge: score livetest-output.md against judge
 pnpm run build       # tsdown dual config: lib/index.mjs (host ESM+dts) + lib/client.js (CJS in __ModuleLoader__.load)
 pnpm pack            # tarball for `dsh plugin add`
 node scripts/release.mjs <ver|major|minor|patch> ["msg"]  # THE release: verify → bump → commit → tag → push → CI → npm live
+
+# The live-probe lane (verification diagnosis P1): goal-round UI evidence via
+# playwright against a booted web-lks profile — scripts/probe-*.mjs. NEVER part
+# of `pnpm run verify` (needs a booted profile, the boot-log token, and for
+# send-flows the model key); probes settle on TURN END (stop twin gone), not on
+# a settled row. After any probe round: delete probe-born courses, restore the
+# profile dep, free the port.
 ```
 
 Reinstall into a profile from the registry (`--profile` goes AFTER the `plugin` subcommand; run from the harness checkout):
@@ -54,7 +61,7 @@ A same-version add silently keeps the old spec — remove + add forces the switc
 
 ## Verification system
 
-**Diagnosis 2026-09-14 (stop-manual-testing protocol, 7 steps, GATE'd):** ACI audit PASSES all three (headless one-shot via the headless profile + `/study` command commands.ts:83 + dashboard HTTP dashboard.ts:364; zstd session-log traces; no MCP web scraping). Test infra: `pnpm test` = 43 files/347 tests, node:test, zero-dep. §8 of VERIFICATION.md is now FILLED (8.5 acceptance criteria pending the owner's answers). Standing gap list: P0-1 acceptance criteria not yet frozen (§8.5 pending); P0-2 per-feature flag machinery absent (house practice = full-suite green + additive state format; owner to ratify or order Config flags); P0-3 Layer-2 judge stale (last live PASS predates the #8-#11 + four-gap rounds — refresh task/criteria + one judge run after the next release); P1 playwright probes lack a repeatable lane (`pnpm run probe` candidate, never inside verify); P2 no PR CI lane (verify runs only on tag publish, .github/workflows/publish.yml:31).
+**Diagnosis 2026-09-14 (stop-manual-testing protocol, 7 steps, GATE'd):** ACI audit PASSES all three (headless one-shot via the headless profile + `/study` command commands.ts:83 + dashboard HTTP dashboard.ts:364; zstd session-log traces; no MCP web scraping). Test infra: `pnpm test` = 43 files/347 tests, node:test, zero-dep. §8 of VERIFICATION.md is now FILLED (8.5 acceptance criteria pending the owner's answers). Remediation round 2026-09-14 (owner: 都按照你的推荐来): P0-1 DONE — acceptance criteria FROZEN in VERIFICATION.md §8.5 (5 positive + 5 reverse, same-commit rule); P0-2 DONE — the baseline-equivalence flag policy RATIFIED in §8.3 (full-suite green + additive state + forward migration = flag-off equivalent; rewrite-scale changes still go behind Config flags); P0-3 QUEUED post-release — refresh livetest-task.txt/judge-criteria.md for the thread-group/pack/CC surfaces, then one judge run; P1 DONE — the probe lane is documented in Commands (live probes stay OUTSIDE verify by design: they need a booted profile + boot-log token + the model key); P2 DONE — .github/workflows/ci.yml runs the full verify gate on every push to main and every PR.
 
 - **Layer 1 (deterministic, this repo's core):** `tests/*.test.ts` under plain `node:test` — engine fidelity, state transitions, import gating, tool contracts, presenter totality (including meta-less history inputs), dashboard routes, client folds (`feedRows`, `sectionDefaultOpen`), and two gates born from live bugs:
   - *schema conformance* — every tool's representative output validated against its declared `output.schema` (direct `execute` calls bypass the real path's validation; this gate is what caught `ConceptView.tested` being undeclared). When extending it: a `type:'null'` arm missing its switch case silently accepts everything — prove a new gate fails first, then trust its green.

@@ -1,0 +1,25 @@
+# The branch/PR lane: the same machine gate the release ritual runs, on every
+# push to main and every PR — breaks surface before the tag, not at publish
+# time (the 2026-09-14 verification diagnosis, P2-6). verify is self-contained
+# (tests → build → bundle pins → secrets scan); no secrets, no publish perms.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable # activates the packageManager-pinned pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run verify
