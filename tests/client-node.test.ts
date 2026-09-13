@@ -398,6 +398,33 @@ test('threadGroupPills (issue #11): a cleared pointer marks no pill current; emp
   assert.deepEqual(threadGroupPills({ active: null, threads: [] }), [], 'an empty group renders no rows')
 })
 
+test('threadGroupPills: a stale active pointer at an archived thread marks nothing current', async () => {
+  const { threadGroupPills } = await import('../src/client/views.tsx')
+  const pills = threadGroupPills({
+    active: 's1',
+    threads: [
+      { id: 's1', title: '一线', lastAt: '2026-09-14T10:00:00Z', status: 'archived' },
+      { id: 's2', title: '二线', lastAt: '2026-09-14T11:00:00Z' },
+    ],
+  })
+  assert.deepEqual(pills.map(p => p.current), [false], 'only the live thread lists, unmarked (the state layer never allows this — the fold stays defensive)')
+})
+
+test('threadGroupPills (issue #11 management): archived threads leave the list entirely', async () => {
+  const { threadGroupPills } = await import('../src/client/views.tsx')
+  const group = {
+    active: 's2',
+    threads: [
+      { id: 's1', title: '一线', lastAt: '2026-09-13T10:00:00Z', status: 'archived' },
+      { id: 's2', title: '二线', lastAt: '2026-09-13T11:00:00Z' },
+      { id: 's3', title: '三线', lastAt: '2026-09-13T12:00:00Z', status: 'active' },
+    ],
+  }
+  const pills = threadGroupPills(group)
+  assert.deepEqual(pills.map(p => p.id), ['s3', 's2'], 'only live threads list, freshest first')
+  assert.equal(pills.find(p => p.id === 's2')!.current, true, 'the active pointer still marks')
+})
+
 test('threadAutoTitle (issue #11): the max cap honors its argument; exactly-at-cap passes verbatim', async () => {
   const { threadAutoTitle } = await import('../src/client/views.tsx')
   assert.equal(threadAutoTitle('0123456789', 10), '0123456789', 'exactly at the cap: no ellipsis')

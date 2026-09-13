@@ -207,7 +207,7 @@ export function studyPanelView(ctx: ClientContext): () => ReactNode {
 type StudyData = ReturnType<typeof useStudy>['data']
 
 function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
-  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, uploadAttachment } = useStudy()
+  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, lessonThreadOp, uploadAttachment } = useStudy()
   // D8: the shared CodeBlock's delegated copy wire — one listener for every
   // zone the markdown pipeline feeds (chat, prose, notes).
   useEffect(() => { wireCodeBlockCopy() }, [])
@@ -707,6 +707,32 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     setFeedGen(false)
   }
 
+  // issue #11 management (upstream gear menu). rename: the durable state title
+  // first, then the host-side dsh session title (best effort — the session list
+  // shows it; failure leaves the state title already changed).
+  const renameLessonThreadUi = (sessionId: string, title: string): void => {
+    if (lesson === null) return
+    void lessonThreadOp(lesson.lessonId, sessionId, 'rename', { title }).then(() => {
+      const actx = ctx.sessions.scope(sessionId)
+      const face = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
+      void face?.rename?.(title).catch(() => { /* state title already renamed */ })
+    }, err => { setSendError(friendlyError(err, 'action')) })
+  }
+  // archive: the pill leaves the list; if it was current, the state layer rolls
+  // the active pointer and the feed rebinds through the poll
+  const archiveLessonThreadUi = (sessionId: string): void => {
+    if (lesson === null) return
+    if (localBound.current?.lessonId === lesson.lessonId && localBound.current.sessionId === sessionId) localBound.current = null
+    void lessonThreadOp(lesson.lessonId, sessionId, 'archive', { archived: true }).catch(err => { setSendError(friendlyError(err, 'action')) })
+  }
+  // delete: our sediment only — the host session face has no delete primitive,
+  // the ConfirmCard message discloses that the host session stays
+  const deleteLessonThreadUi = (sessionId: string): void => {
+    if (lesson === null) return
+    if (localBound.current?.lessonId === lesson.lessonId && localBound.current.sessionId === sessionId) localBound.current = null
+    void lessonThreadOp(lesson.lessonId, sessionId, 'delete').catch(err => { setSendError(friendlyError(err, 'action')) })
+  }
+
   const progress = data?.progress ?? null
   // The upstream v0.6 ladder: rail full-height on surface-rail; the right half
   // = floating app-header + the chat/notebook row (chat surface-1, notebook
@@ -785,7 +811,8 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
             // shrink to content and the center column narrows)
             createElement(ExamView, { lessonId: lesson!.lessonId, sectionTitle: lesson!.sectionTitle, paused: examLeave !== null, onSessionChange: onExamSession }))
           : createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch: (sessionId: string) => { setNarrowPane('chat'); switchLessonThread(sessionId) },
-            onThreadNew: () => { setNarrowPane('chat'); startNewThread() }, contextMeter, contextBreakdown: breakdown, uploadAttachment }),
+            onThreadNew: () => { setNarrowPane('chat'); startNewThread() },
+            onThreadRename: renameLessonThreadUi, onThreadArchive: archiveLessonThreadUi, onThreadDelete: deleteLessonThreadUi, contextMeter, contextBreakdown: breakdown, uploadAttachment }),
         // v0.29 pane-resize: the chat|notebook boundary handle (target = the
         // chat column; the exam wrapper carries the same lks14-chat identity).
         createElement(PaneResizeHandle, { side: 'chat', clampLive: chatClampLive, onCommit: px => commitPaneWidth('chat', px) }),
@@ -1196,6 +1223,33 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
               setConfirmDel({ rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } })
             },
           }, createElement(IconTrashOutline16, { size: 14 })),
+          // course-pack export (upstream exportPack alignment): fetch the pack
+          // route, download the markdown rendering as a file (the JSON rides
+          // the same response for machine consumers)
+          createElement('button', {
+            className: 'lks-btn ghost',
+            'data-tooltip': tr('rail.export.pack'),
+            'data-testid': 'course-export',
+            onClick: () => {
+              if (courseId === null) return
+              void (async () => {
+                try {
+                  const r = await fetch(`/lookatstudy/api/course-pack?courseId=${encodeURIComponent(courseId)}`)
+                  const body = await r.json() as { ok: boolean; fileName?: string; markdown?: string }
+                  if (!r.ok || body.ok !== true || body.markdown === undefined) throw new Error(`HTTP ${String(r.status)}`)
+                  const blob = new Blob([body.markdown], { type: 'text/markdown;charset=utf-8' })
+                  const a = document.createElement('a')
+                  a.href = URL.createObjectURL(blob)
+                  a.download = body.fileName ?? 'course-pack.md'
+                  a.click()
+                  URL.revokeObjectURL(a.href)
+                  showStudyToast(tr('rail.export.done', { file: a.download }), { severity: 'success' })
+                } catch (err) {
+                  showStudyToast(friendlyError(err, 'action'), { severity: 'error' })
+                }
+              })()
+            },
+          }, createElement(IconDownloadOutline16, { size: 14 })),
         ),
         createElement('div', {
           className: `lks14-masteryhair${course.avgMasteryPct === 100 ? ' gold' : ''}`,
@@ -1657,7 +1711,7 @@ export function epubFolderPath(path: string): string {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, contextMeter, contextBreakdown, uploadAttachment }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, onThreadRename, onThreadArchive, onThreadDelete, contextMeter, contextBreakdown, uploadAttachment }: {
   data: StudyData
   lesson: StudyData['lesson']
   rows: ReturnType<typeof feedRows>
@@ -1676,6 +1730,11 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   onThreadSwitch: (sessionId: string) => void
   /** Issue #11: ＋新建 — clear the active pointer; the next send mints fresh. */
   onThreadNew: () => void
+  /** Issue #11 management (upstream gear menu): rename / archive / delete one
+   *  thread of the current lesson's group. */
+  onThreadRename: (sessionId: string, title: string) => void
+  onThreadArchive: (sessionId: string) => void
+  onThreadDelete: (sessionId: string) => void
   /** E1: the context meter value (projection-backed, or the labeled estimate). */
   contextMeter: { pct: number | null; estimated: boolean; used: number | null; window: number | null }
   contextBreakdown: { systemTokens: number; toolsTokens: number; messageTokens: number } | null
@@ -1688,6 +1747,11 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   const [showFab, setShowFab] = useState(false)
   // E5: the thread menu's open state (outside-click + Esc close below)
   const [threadsOpen, setThreadsOpen] = useState(false)
+  // issue #11 management (upstream gear menu): the open actions submenu, the
+  // inline rename editor, and the delete confirmation anchor
+  const [gearFor, setGearFor] = useState<string | null>(null)
+  const [renaming, setRenaming] = useState<{ id: string; value: string } | null>(null)
+  const [confirmThreadDel, setConfirmThreadDel] = useState<{ id: string; title: string; rect: { left: number; top: number; right: number; bottom: number } } | null>(null)
   // issue #7: the pending attachment — paste/drop/pick uploads immediately
   // (error toasts keep the failure path) but NOTHING sends until the learner
   // does; the composer shows it as a chip and send merges it with the draft
@@ -1988,16 +2052,72 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             }, tr('threads.open', { n: String(threadPills.length) }), createElement('span', { className: 'lks14-threadchip-caret' }, threadsOpen ? '▾' : '▸')),
             threadsOpen
               ? createElement('div', { className: 'lks14-threadmenu', role: 'menu' },
-                ...threadPills.map(p => createElement('button', {
+                ...threadPills.map(p => createElement('div', {
                   key: p.id,
                   className: `lks14-threadmenu-row${p.current ? ' on' : ''}`,
                   role: 'menuitem',
+                  tabIndex: 0,
                   'aria-current': p.current ? 'true' : undefined,
-                  onClick: () => { setThreadsOpen(false); if (!p.current) onThreadSwitch(p.id) },
+                  onClick: () => {
+                    if (renaming !== null && renaming.id === p.id) return
+                    setThreadsOpen(false)
+                    setGearFor(null)
+                    if (!p.current) onThreadSwitch(p.id)
+                  },
                 },
                   createElement('span', { className: 'lks14-threadmenu-dot', 'aria-hidden': 'true' }),
-                  createElement('span', { className: 'lks14-threadmenu-title' }, p.title),
-                  p.current ? createElement('span', { className: 'lks14-threadmenu-now' }, tr('threads.now')) : null)),
+                  renaming !== null && renaming.id === p.id
+                    ? createElement('input', {
+                      className: 'lks14-threadmenu-rename',
+                      value: renaming.value,
+                      autoFocus: true,
+                      'data-testid': 'thread-rename-input',
+                      onChange: (e: { target: { value: string } }) => { setRenaming({ id: p.id, value: e.target.value }) },
+                      onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() },
+                      onKeyDown: (e: ReactKeyboardEvent<HTMLInputElement>) => {
+                        if (e.key === 'Enter') {
+                          const v = renaming.value.trim()
+                          if (v !== '') onThreadRename(p.id, v)
+                          setRenaming(null)
+                        }
+                        if (e.key === 'Escape') setRenaming(null)
+                      },
+                      onBlur: () => {
+                        const v = renaming.value.trim()
+                        if (v !== '' && v !== p.title) onThreadRename(p.id, v)
+                        setRenaming(null)
+                      },
+                    })
+                    : createElement('span', { className: 'lks14-threadmenu-title' }, p.title),
+                  p.current ? createElement('span', { className: 'lks14-threadmenu-now' }, tr('threads.now')) : null,
+                  // upstream: the gear appears on hover and opens the management
+                  // trio (重命名/归档/删除); the delete itself asks ConfirmCard
+                  createElement('button', {
+                    className: 'lks14-threadmenu-gear',
+                    'aria-label': tr('threads.actions'),
+                    'data-tooltip': tr('threads.actions'),
+                    'data-testid': `thread-gear`,
+                    onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation(); setGearFor(gearFor === p.id ? null : p.id) },
+                  }, '⋯'),
+                  gearFor === p.id
+                    ? createElement('div', {
+                      className: 'lks14-threadmenu-actions',
+                      role: 'menu',
+                      'data-testid': 'thread-actions',
+                      onClick: (e: { stopPropagation: () => void }) => { e.stopPropagation() },
+                    },
+                      createElement('button', { onClick: () => { setGearFor(null); setRenaming({ id: p.id, value: p.title }) } }, tr('threads.rename')),
+                      createElement('button', { onClick: () => { setGearFor(null); onThreadArchive(p.id) } }, tr('threads.archive')),
+                      createElement('button', {
+                        className: 'danger',
+                        'data-testid': 'thread-delete',
+                        onClick: (e: { currentTarget: HTMLElement }) => {
+                          const r = e.currentTarget.getBoundingClientRect()
+                          setConfirmThreadDel({ id: p.id, title: p.title, rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } })
+                          setGearFor(null)
+                        },
+                      }, tr('threads.delete')))
+                    : null)),
                 createElement('button', {
                   key: '__new__',
                   className: 'lks14-threadmenu-row new',
@@ -2005,7 +2125,17 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
                   onClick: () => { setThreadsOpen(false); onThreadNew() },
                 },
                   createElement('span', { className: 'lks14-threadmenu-plus', 'aria-hidden': 'true' }, '＋'),
-                  createElement('span', { className: 'lks14-threadmenu-title' }, tr('threads.new'))))
+                  createElement('span', { className: 'lks14-threadmenu-title' }, tr('threads.new'))),
+                confirmThreadDel !== null
+                  ? createElement(ConfirmCard, {
+                    anchor: confirmThreadDel.rect,
+                    message: tr('threads.delete.confirm', { name: confirmThreadDel.title }),
+                    danger: true,
+                    confirmLabel: tr('threads.delete'),
+                    onConfirm: () => { const id = confirmThreadDel.id; setConfirmThreadDel(null); onThreadDelete(id) },
+                    onCancel: () => { setConfirmThreadDel(null) },
+                  })
+                  : null)
               : null)
           : null)
       : null,

@@ -15,6 +15,9 @@ import {
   addNote,
   attemptLesson,
   bindLessonThread,
+  renameLessonThread,
+  archiveLessonThread,
+  deleteLessonThread,
   completeLesson,
   courseSummaries,
   deleteCourse,
@@ -278,6 +281,88 @@ test('bindLessonThread: append+activate a new thread, re-activate a known one, n
   // a title-less new thread falls back to the lesson id (defensive)
   const g5 = bindLessonThread(state, `${courseId}:0:1`, 'sess-x')
   assert.equal(g5.threads[0]!.title, `${courseId}:0:1`)
+})
+
+test('renameLessonThread: trims and stores, refuses unknown ids, empty title is a no-op', () => {
+  const { state, courseId } = importedFixture()
+  const lessonId = `${courseId}:0:0`
+  bindLessonThread(state, lessonId, 'sess-a', '  原标题  ')
+  const g = renameLessonThread(state, lessonId, 'sess-a', '  新标题  ')
+  assert.equal(g.threads[0]!.title, '新标题', 'titles trim on rename')
+  renameLessonThread(state, lessonId, 'sess-a', '   ')
+  assert.equal(g.threads[0]!.title, '新标题', 'an empty rename changes nothing')
+  assert.equal(g.active, 'sess-a', 'rename never moves the active pointer')
+  assert.throws(() => { renameLessonThread(state, lessonId, 'nope', 'x') })
+  assert.throws(() => { renameLessonThread(state, `${courseId}:9:9`, 'sess-a', 'x') })
+})
+
+test('archiveLessonThread: archiving the current thread rolls active to the freshest live one', () => {
+  const { state, courseId } = importedFixture()
+  const lessonId = `${courseId}:0:0`
+  bindLessonThread(state, lessonId, 'sess-a', '一线')
+  bindLessonThread(state, lessonId, 'sess-b', '二线')
+  // lastAt ordering: sess-b was touched last, so rolling lands on it
+  const g = archiveLessonThread(state, lessonId, 'sess-a', true)
+  assert.equal(g.threads.length, 2, 'archived threads keep their sediment')
+  assert.equal(g.threads[0]!.status, 'archived')
+  assert.equal(g.active, 'sess-b', 'the pointer rolls to the freshest LIVE thread')
+  assert.equal(state.lessonSessions[lessonId], 'sess-b', 'the legacy map follows the roll')
+  // archiving a non-current thread never moves the pointer
+  archiveLessonThread(state, lessonId, 'sess-b', true)
+  assert.equal(g.active, null, 'archiving everything leaves no live pointer')
+  assert.equal(state.lessonSessions[lessonId], undefined)
+  // restoring into an empty live set makes the restored thread current
+  archiveLessonThread(state, lessonId, 'sess-a', false)
+  assert.equal(g.active, 'sess-a')
+  assert.equal(g.threads[0]!.status, 'active', 'restore marks the thread active again')
+})
+
+test('deleteLessonThread: sediment shrinks, active rolls, the group itself survives', () => {
+  const { state, courseId } = importedFixture()
+  const lessonId = `${courseId}:0:0`
+  bindLessonThread(state, lessonId, 'sess-a', '一线')
+  bindLessonThread(state, lessonId, 'sess-b', '二线')
+  const g = deleteLessonThread(state, lessonId, 'sess-a')
+  assert.equal(g.threads.length, 1)
+  assert.equal(g.active, 'sess-b')
+  assert.equal(state.lessonSessions[lessonId], 'sess-b')
+  deleteLessonThread(state, lessonId, 'sess-b')
+  assert.equal(g.threads.length, 0, 'deleting the last thread empties the group but keeps it')
+  assert.equal(g.active, null)
+  assert.equal(state.lessonSessions[lessonId], undefined)
+  assert.throws(() => { deleteLessonThread(state, lessonId, 'sess-b') }, 'unknown ids throw loud')
+})
+
+test('bindLessonThread re-binding an ARCHIVED thread restores it to live (no active-at-archived contradiction)', () => {
+  const { state, courseId } = importedFixture()
+  const lessonId = `${courseId}:0:0`
+  bindLessonThread(state, lessonId, 'sess-a', '一线')
+  archiveLessonThread(state, lessonId, 'sess-a', true)
+  assert.equal(state.lessonThreads[lessonId]!.active, null)
+  // a stale client or dashboard replay re-binds the archived session
+  bindLessonThread(state, lessonId, 'sess-a')
+  const g = state.lessonThreads[lessonId]!
+  assert.equal(g.active, 'sess-a')
+  assert.notEqual(g.threads[0]!.status, 'archived', 'the active pointer never sits on an archived thread')
+})
+
+test('thread status persists through the save/load roundtrip (archive is durable)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lookatstudy-'))
+  try {
+    const path = join(dir, 'state.json')
+    const { state, courseId } = importedFixture()
+    bindLessonThread(state, `${courseId}:0:0`, 'sess-a', '一线')
+    bindLessonThread(state, `${courseId}:0:0`, 'sess-b', '二线')
+    archiveLessonThread(state, `${courseId}:0:0`, 'sess-a', true)
+    saveState(path, state)
+    const reloaded = loadState(path)
+    const g = reloaded.lessonThreads[`${courseId}:0:0`]!
+    assert.equal(g.threads[0]!.status, 'archived', 'the archived flag survives reload')
+    assert.equal(g.threads[1]!.status, undefined, 'active threads stay status-less (old files read the same)')
+    assert.equal(g.active, 'sess-b')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('lessonThreads additive load: files with neither field load with empty groups; junk shapes degrade', () => {

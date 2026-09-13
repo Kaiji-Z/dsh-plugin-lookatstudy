@@ -756,6 +756,16 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-threadmenu-row.on .lks14-threadmenu-title{color:var(--brand);font-weight:700}
 .lks-ui .lks14-threadmenu-dot{flex:none;width:6px;height:6px;border-radius:999px;background:var(--ink-faint)}
 .lks-ui .lks14-threadmenu-row.new{margin-top:3px;border-top:1px solid var(--border-faint);border-radius:0 0 7px 7px;padding-top:7px}
+.lks-ui .lks14-threadmenu-row{position:relative}
+.lks-ui .lks14-threadmenu-gear{flex:none;margin-left:auto;border:none;background:none;color:var(--ink-faint);font-size:13px;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px;opacity:0;transition:opacity .12s,color .12s}
+.lks-ui .lks14-threadmenu-row:hover .lks14-threadmenu-gear,.lks-ui .lks14-threadmenu-gear:focus-visible{opacity:1}
+.lks-ui .lks14-threadmenu-gear:hover{background:rgb(var(--ink-rgb)/0.08);color:var(--ink)}
+.lks-ui .lks14-threadmenu-actions{position:absolute;right:4px;top:calc(100% - 2px);z-index:70;min-width:118px;display:flex;flex-direction:column;padding:4px;border-radius:9px;background:var(--surface-0);border:1px solid var(--border);box-shadow:0 12px 32px -8px rgb(var(--shadow-rgb)/0.5)}
+.lks-ui .lks14-threadmenu-actions button{border:none;background:none;font:inherit;font-size:12px;color:var(--ink);text-align:left;padding:6px 8px;border-radius:6px;cursor:pointer}
+.lks-ui .lks14-threadmenu-actions button:hover{background:rgb(var(--ink-rgb)/0.06)}
+.lks-ui .lks14-threadmenu-actions button.danger{color:#d2483c}
+.lks-ui .lks14-threadmenu-actions button.danger:hover{background:rgb(210 72 60/0.1)}
+.lks-ui .lks14-threadmenu-rename{flex:1;min-width:0;font:inherit;font-size:12px;padding:3px 6px;border:1px solid var(--brand);border-radius:6px;background:var(--surface-0);color:var(--ink);outline:none}
 .lks-ui .lks14-threadmenu-plus{flex:none;width:13px;height:13px;display:inline-flex;align-items:center;justify-content:center;border-radius:999px;border:1px solid var(--brand);color:var(--brand);font-size:10px;line-height:1}
 .lks-ui .lks14-threadmenu-row.on .lks14-threadmenu-dot{background:var(--brand)}
 .lks-ui .lks14-threadmenu-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -21,7 +21,7 @@ import { routeImportUrl, normalizeUrlIdentity } from './vendor/url-route.ts'
 import { parsePdfText } from './vendor/pdf-text.ts'
 import { prepareSingleDoc } from './vendor/text-chunk.ts'
 import { extractArticle } from './vendor/html-article.ts'
-import { fetchBilibiliMeta } from './vendor/video-meta.ts'
+import { fetchBilibiliSubtitles } from './vendor/video-meta.ts'
 import {
   buildCourseFromDesign,
   buildPendingDesign,
@@ -486,9 +486,10 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       'Import any learning URL by auto-routing: GitHub repos reuse the repository import; arXiv papers '
       + 'download the PDF and extract its text layer; other http(s) pages get web-article extraction '
       + '(nav/ads stripped, honest failure on non-article pages). All routes return the same design '
-      + 'brief the tutor designs against (apply with study_apply_design). Video links (B站/YouTube/抖音) '
-      + 'are classified with title metadata but cannot be transcribed here — ask the learner to paste '
-      + 'the transcript/subtitles and use study_import_markdown instead.',
+      + 'brief the tutor designs against (apply with study_apply_design). B站 video links import their '
+      + 'CC subtitles directly (a multi-part series becomes one document per part; ?p=N picks one episode); '
+      + 'videos without CC, and YouTube/抖音 links, still ask the learner to paste the transcript '
+      + '(study_import_markdown).',
     parameters: {
       url: { type: 'string', required: true, description: 'The URL to import: github.com repo, arxiv.org paper, or any web article page.' },
       part: { type: 'integer', description: 'Which context-budget brief part to render (1-based); relevant only for enormous documents.' },
@@ -504,15 +505,29 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       }
       const fetchFn = signalFetch(exec.signal, baseFetch)
       if (route.kind === 'video') {
-        // 分类与元数据(SPEC 1.2):字幕拉取需 yt-dlp spawn、音频转写需模型客户端——
-        // 两条路都在插件禁区,诚实报元数据 + 指路粘贴文稿。
+        // B站:CC 字幕直连(wbi 签名,零 LLM,逐分P)——upstream 的 B站路是音轨+ASR
+        // (模型客户端路径,插件禁区),CC 列表是等价的零转写供给;无 CC 的视频诚实
+        // 拒绝并指路粘贴文稿。YouTube/抖音需要 yt-dlp spawn,仍在禁区。
         if (route.source === 'bilibili') {
-          const meta = await fetchBilibiliMeta(route.url, fetchFn, exec.signal)
-          const parts = meta.parts.length > 0 ? `, ${meta.parts.length} 分P` : ''
-          throw new Error(
-            `lookatstudy-plugin: B站视频《${meta.title}》(UP:${meta.owner}${parts})已识别,但插件内无字幕拉取与音频转写能力。`
-            + '请让学习者把字幕/文稿粘贴进来,用 study_import_markdown 导入。',
-          )
+          const part = args.part ?? 1
+          const identity = normalizeUrlIdentity(route.url)
+          const existing = part <= 1 ? store.get().courses.find(c => c.source === 'url' && c.sourceRef === identity) : undefined
+          if (existing !== undefined) return { status: 'imported' as const, ...toImportValue(existing) }
+          const cc = await fetchBilibiliSubtitles(route.url, fetchFn, exec.signal)
+          if (cc.parts.length === 0) {
+            const scope = cc.missing.length > 1 ? `共 ${cc.missing.length} 个分P均无` : '无'
+            throw new Error(
+              `lookatstudy-plugin: B站视频《${cc.title}》(UP:${cc.owner})${scope}可用 CC 字幕,插件不拉音轨转写。`
+              + '请让学习者把字幕/文稿粘贴进来,用 study_import_markdown 导入。',
+            )
+          }
+          const docs = cc.parts.flatMap((p, i) => prepareSingleDoc(`bili-p${String(i + 1)}`, `# ${p.name}
+
+${p.text}`))
+          if (docs.length === 0) throw new Error('lookatstudy-plugin: CC subtitle text was empty after chunking')
+          pendingDesign = buildPendingDesignFromUrl(identity, cc.title, docs)
+          pendingPart = part
+          return designRequiredValue(pendingDesign, part)
         }
         throw new Error(
           `lookatstudy-plugin: ${route.url} 是视频链接(YouTube/抖音需要 yt-dlp,插件环境不可用)。`
@@ -552,7 +567,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       pendingPart = part
       return designRequiredValue(pendingDesign, part)
     },
-    timeoutMs: 120_000,
+    timeoutMs: 180_000,
     presentCall: args => ({ card: 'generic', title: `Import URL: ${args.url}`, kind: 'fetch' }),
     ...designOrImportedPresent,
   })

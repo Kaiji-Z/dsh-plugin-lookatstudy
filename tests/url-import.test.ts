@@ -12,6 +12,9 @@ import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { studyTools } from '../src/tools.ts'
 import { emptyState, type LearningState } from '../src/state.ts'
 import { setHttpsGetOverride } from '../src/vendor/repo-fetcher.ts'
+import { normalizeUrlIdentity } from '../src/vendor/url-route.ts'
+import { importCourse } from '../src/state.ts'
+import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
 
 const exec = { signal: new AbortController().signal } as unknown as ToolRunContext
 
@@ -91,18 +94,56 @@ test('arXiv URL: PDF text layer becomes the design source', async () => {
   assert.ok(String(started.repo).includes('arXiv:2401.12345'))
 })
 
-test('bilibili URL: metadata classified, transcription honestly refused with guidance', async () => {
-  const fetchFn: typeof fetch = async (input) => {
+const WBI_NAV = JSON.stringify({ code: 0, data: { wbi_img: { img_url: 'https://i0.hdslb.com/bfs/wbi/abcd1234.png', sub_url: 'https://i0.hdslb.com/bfs/wbi/efgh5678.png' } } })
+const CC_BODY = JSON.stringify({ body: Array.from({ length: 60 }, (_v, i) => ({ from: i, to: i + 1, content: `第${i}句梯度下降的直觉讲解。` })) })
+
+function biliFetch(pages: { cid: number; page?: number; part?: string }[], ccByCid: Record<number, { lan: string; url: string }[]>): typeof fetch {
+  return async (input) => {
     const url = String(input)
-    if (url.includes('api.bilibili.com/x/web-interface/view')) {
-      return new Response(JSON.stringify({ code: 0, data: { title: '机器学习入门', owner: { name: '某UP' }, desc: '简介', duration: 600, pages: [{ part: 'P1' }] } }), { status: 200 })
+    if (url.includes('/x/web-interface/view')) {
+      return new Response(JSON.stringify({ code: 0, data: { title: '机器学习入门', owner: { name: '某UP' }, desc: '简介', duration: 600, cid: pages[0]?.cid ?? 1, pages } }), { status: 200 })
     }
+    if (url.includes('/x/web-interface/nav')) return new Response(WBI_NAV, { status: 200 })
+    if (url.includes('/x/player/wbi/v2')) {
+      const cid = Number(new URL(url).searchParams.get('cid'))
+      return new Response(JSON.stringify({ code: 0, data: { subtitle: { subtitles: ccByCid[cid] ?? [] } } }), { status: 200 })
+    }
+    if (url.includes('aisubtitle.hdslb.com')) return new Response(CC_BODY, { status: 200 })
     return new Response('x', { status: 404 })
   }
+}
+
+test('bilibili URL: CC subtitles become the design source (multi-P, one doc per part, missing parts dropped)', async () => {
+  // P1 has zh-CN CC, P2 has none: the brief carries P1 only — the tutor designs
+  // against what actually exists
+  const fetchFn = biliFetch(
+    [{ cid: 11, page: 1, part: '第一讲' }, { cid: 22, page: 2, part: '第二讲' }],
+    { 11: [{ lan: 'zh-CN', lan_doc: '中文', subtitle_url: '//aisubtitle.hdslb.com/cc1.json' }] },
+  )
+  const { byName } = setup(fetchFn)
+  const started = await run(byName, 'study_import_url', { url: 'https://www.bilibili.com/video/BV1ab411c2dE' })
+  assert.equal(started.status, 'design_required')
+  assert.equal(started.courseTitle, '机器学习入门')
+  assert.ok(started.fileCount >= 1, 'the CC part yields design documents')
+})
+
+test('bilibili URL: ?p=N imports exactly that episode', async () => {
+  const fetchFn = biliFetch(
+    [{ cid: 11, page: 1, part: '第一讲' }, { cid: 22, page: 2, part: '第二讲' }],
+    { 11: [{ lan: 'zh-CN', subtitle_url: '//aisubtitle.hdslb.com/cc1.json' }], 22: [{ lan: 'ai-zh', subtitle_url: '//aisubtitle.hdslb.com/cc2.json' }] },
+  )
+  const { byName } = setup(fetchFn)
+  const started = await run(byName, 'study_import_url', { url: 'https://www.bilibili.com/video/BV1ab411c2dE?p=2' })
+  assert.equal(started.status, 'design_required')
+  assert.ok(started.fileCount >= 1)
+})
+
+test('bilibili URL without any CC: honest refusal with the paste-transcript guidance', async () => {
+  const fetchFn = biliFetch([{ cid: 11, page: 1, part: '第一讲' }], {})
   const { byName } = setup(fetchFn)
   await assert.rejects(
     () => run(byName, 'study_import_url', { url: 'https://www.bilibili.com/video/BV1ab411c2dE' }),
-    /机器学习入门[\s\S]*study_import_markdown/,
+    /机器学习入门[\s\S]*CC 字幕[\s\S]*study_import_markdown/,
   )
 })
 
@@ -137,4 +178,17 @@ test('github URLs route into the repository import flow', async () => {
   } finally {
     setHttpsGetOverride(null)
   }
+})
+
+test('bilibili URL: an already-imported course (source url + normalized ref) returns directly', async () => {
+  const fetchFn = biliFetch(
+    [{ cid: 11, page: 1, part: '第一讲' }],
+    { 11: [{ lan: 'zh-CN', subtitle_url: '//aisubtitle.hdslb.com/cc1.json' }] },
+  )
+  const { byName, state } = setup(fetchFn)
+  const url = 'https://www.bilibili.com/video/BV1ab411c2dE'
+  importCourse(state, parseMarkdownToCourse('# 机器学习入门\n## 第一章\n### 第一讲\n正文'), 'url', normalizeUrlIdentity(url))
+  const res = await run(byName, 'study_import_url', { url })
+  assert.equal(res.status, 'imported')
+  assert.equal(res.title, '机器学习入门')
 })
