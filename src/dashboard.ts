@@ -39,6 +39,7 @@ import {
   type LearningState,
   editNote,
   pinNote,
+  bindLessonThread,
 } from './state.ts'
 
 /** State access shared with the tools (same live object). */
@@ -161,8 +162,11 @@ export interface WorkbenchState {
   due: Array<{ lessonId: string; lessonTitle: string; courseTitle: string; overdueDays: number }>
   pendingProposals: Array<{ id: string; lessonTitle: string; rationale: string }>
   memory: { global: string | null; lesson: string | null; pattern: string | null }
-  /** Lesson id → dsh session id (one session per lesson node). */
+  /** Lesson id → dsh session id (legacy single-binding; mirrors each group's active pointer). */
   lessonSessions: Record<string, string>
+  /** The thread groups (issue #11): lesson id → { active, threads[] } with
+   *  first-message titles; drives the per-lesson switcher and review routing. */
+  lessonThreads: Record<string, { active: string | null; threads: Array<{ id: string; title: string; createdAt: string; lastAt: string }> }>
   /** XP + streak block (same shape as study_courses; feeds the dock pill and the settings page). */
   progress: {
     totalXp: number
@@ -286,6 +290,7 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
       return { global: snap.memoryGlobal, lesson: snap.memoryLesson, pattern: snap.memoryPattern }
     })(),
     lessonSessions: state.lessonSessions,
+    lessonThreads: state.lessonThreads ?? {},
     progress: (() => {
       const xp = levelFromTotalXp(state.xp.total)
       return {
@@ -643,11 +648,16 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
       if (req.method === 'POST' && pathname === '/lookatstudy/api/lesson-session') {
         const body = await readJsonBodySafe(req, res)
         if (body === undefined) return
-        if (typeof body.lessonId !== 'string' || typeof body.sessionId !== 'string') {
-          sendJson(res, 400, { ok: false, error: 'lessonId and sessionId (strings) required' })
+        // issue #11: sessionId null = clear the active pointer (＋新建 — the
+        // next send mints a fresh thread); a string binds into the lesson's
+        // thread group (new threads carry the caller's title, upstream's
+        // first-message auto-naming)
+        if (typeof body.lessonId !== 'string' || (body.sessionId !== null && typeof body.sessionId !== 'string')) {
+          sendJson(res, 400, { ok: false, error: 'lessonId and sessionId (string or null) required' })
           return
         }
-        deps.store.get().lessonSessions[body.lessonId] = body.sessionId
+        const title = typeof body.title === 'string' ? body.title : null
+        bindLessonThread(deps.store.get(), body.lessonId, body.sessionId as string | null, title)
         deps.store.save()
         sendJson(res, 200, { ok: true })
         return

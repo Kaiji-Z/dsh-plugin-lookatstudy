@@ -14,6 +14,7 @@ import {
   addFriction,
   addNote,
   attemptLesson,
+  bindLessonThread,
   completeLesson,
   courseSummaries,
   deleteCourse,
@@ -214,6 +215,112 @@ test('v1 state migrates: completed→mastered, kind defaults, exam nodes backfil
     const exam = section.lessons.at(-1)!
     assert.equal(exam.kind, 'exam', 'exam node backfilled at the section end')
     assert.match(exam.id, new RegExp(`^${courseId}:0:[0-9]+$`))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+
+test('lessonThreads (issue #11): legacy lessonSessions migrate into one-thread groups at load; groups persist through save/reload', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lookatstudy-'))
+  try {
+    const path = join(dir, 'state.json')
+    const { state, courseId } = importedFixture()
+    const lessonId = `${courseId}:0:0`
+    // legacy single-binding file (no lessonThreads field at all)
+    state.lessonSessions[lessonId] = 'sess-old'
+    delete (state as Partial<LearningState>).lessonThreads
+    saveState(path, state)
+    const loaded = loadState(path)
+    const group = loaded.lessonThreads![lessonId]!
+    assert.equal(group.threads.length, 1, 'the legacy binding becomes one thread')
+    assert.equal(group.threads[0]!.id, 'sess-old')
+    assert.equal(group.active, 'sess-old')
+    assert.ok(group.threads[0]!.title.length > 0, 'the migrated thread carries the lesson title')
+    assert.equal(loaded.lessonSessions[lessonId], 'sess-old', 'the legacy map stays in lockstep')
+    // roundtrip keeps the group verbatim (no re-migration, no duplication)
+    loaded.lessonThreads![lessonId]!.threads.push({ id: 'sess-second', title: '第二条线', createdAt: '2026-09-13T00:00:00Z', lastAt: '2026-09-13T00:00:00Z' })
+    loaded.lessonThreads![lessonId]!.active = 'sess-second'
+    saveState(path, loaded)
+    const reloaded = loadState(path)
+    assert.equal(reloaded.lessonThreads![lessonId]!.threads.length, 2, 'groups persist without migration duplication')
+    assert.equal(reloaded.lessonThreads![lessonId]!.active, 'sess-second')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('bindLessonThread: append+activate a new thread, re-activate a known one, null clears (the +新建 affordance)', () => {
+  const { state, courseId } = importedFixture()
+  const lessonId = `${courseId}:0:0`
+  const g1 = bindLessonThread(state, lessonId, 'sess-a', '判别式法什么时候失效？')
+  assert.equal(g1.threads.length, 1)
+  assert.equal(g1.active, 'sess-a')
+  assert.equal(g1.threads[0]!.title, '判别式法什么时候失效？', 'the caller names the thread (first-message semantics)')
+  assert.equal(state.lessonSessions[lessonId], 'sess-a', 'the legacy map mirrors the active pointer')
+  // a second thread joins the group and takes the active pointer
+  const g2 = bindLessonThread(state, lessonId, 'sess-b', '换一条线：从最值法讲')
+  assert.equal(g2.threads.length, 2)
+  assert.equal(g2.active, 'sess-b')
+  assert.equal(state.lessonSessions[lessonId], 'sess-b')
+  // re-activating the FIRST thread bumps lastAt without duplicating
+  const before = g2.threads[0]!.lastAt
+  const g3 = bindLessonThread(state, lessonId, 'sess-a')
+  assert.equal(g3.threads.length, 2, 're-binding a known session never duplicates')
+  assert.equal(g3.active, 'sess-a')
+  assert.ok(g3.threads[0]!.lastAt >= before)
+  assert.equal(state.lessonSessions[lessonId], 'sess-a')
+  // null clears the active pointer (the next send mints fresh); the group survives
+  const g4 = bindLessonThread(state, lessonId, null)
+  assert.equal(g4.active, null)
+  assert.equal(g4.threads.length, 2, 'clearing never drops threads (sedimentation intact)')
+  assert.equal(state.lessonSessions[lessonId], undefined)
+  // a title-less new thread falls back to the lesson id (defensive)
+  const g5 = bindLessonThread(state, `${courseId}:0:1`, 'sess-x')
+  assert.equal(g5.threads[0]!.title, `${courseId}:0:1`)
+})
+
+test('lessonThreads additive load: files with neither field load with empty groups; junk shapes degrade', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lookatstudy-'))
+  try {
+    const path = join(dir, 'state.json')
+    const { state } = importedFixture()
+    const legacy = JSON.parse(JSON.stringify(state)) as Record<string, unknown>
+    delete legacy.lessonThreads
+    delete legacy.lessonSessions
+    writeFileSync(path, JSON.stringify(legacy), 'utf8')
+    const loaded = loadState(path)
+    assert.deepEqual(loaded.lessonThreads, {}, 'no bindings = empty groups, no version bump')
+    const junk = JSON.parse(JSON.stringify(loaded)) as Record<string, unknown>
+    junk.lessonThreads = { 'c:0:0': { active: 5, threads: 'not-an-array' }, 'c:0:1': null }
+    writeFileSync(path, JSON.stringify(junk), 'utf8')
+    const survived = loadState(path)
+    assert.equal(survived.lessonThreads['c:0:1'], undefined, 'null groups drop without a crash')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test("lessonThreads groups are per-lesson independent; a cleared pointer survives the roundtrip", () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lookatstudy-'))
+  try {
+    const path = join(dir, 'state.json')
+    const { state, courseId } = importedFixture()
+    const a = `${courseId}:0:0`
+    const b = `${courseId}:0:1`
+    bindLessonThread(state, a, 'sess-a1', '线程A')
+    bindLessonThread(state, a, 'sess-a2', '线程A2')
+    bindLessonThread(state, b, 'sess-b1', '线程B')
+    assert.equal(state.lessonThreads[a]!.threads.length, 2)
+    assert.equal(state.lessonThreads[b]!.threads.length, 1, "another lesson's group is untouched")
+    bindLessonThread(state, a, null)
+    saveState(path, state)
+    const reloaded = loadState(path)
+    assert.equal(reloaded.lessonThreads[a]!.active, null, 'the cleared pointer persists')
+    assert.equal(reloaded.lessonThreads[a]!.threads.length, 2)
+    assert.equal(reloaded.lessonThreads[b]!.active, 'sess-b1')
+    assert.equal(reloaded.lessonSessions[a], undefined)
+    assert.equal(reloaded.lessonSessions[b], 'sess-b1')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

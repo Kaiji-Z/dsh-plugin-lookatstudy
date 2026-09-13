@@ -177,6 +177,24 @@ export interface SectionState {
 /** Where a course came from. */
 export type CourseSource = 'markdown' | 'folder' | 'github' | 'url'
 
+/** One thread (a dsh session) inside a lesson's group — upstream's Thread row
+ *  (title auto-set from the first message, upstream sendMessage semantics). */
+export interface LessonThreadMeta {
+  /** The dsh session id. */
+  id: string
+  /** Upstream: the user's first full input (button-triggered messages store
+   *  the short action label); UI truncates via CSS, storage keeps it whole. */
+  title: string
+  createdAt: string
+  lastAt: string
+}
+
+/** A lesson's thread group (upstream v0.5: 节点 = 会话组 — many threads, one active). */
+export interface LessonThreadGroup {
+  active: string | null
+  threads: LessonThreadMeta[]
+}
+
 /** One imported course. */
 export interface CourseState {
   id: string
@@ -212,8 +230,16 @@ export interface LearningState {
   memoryPatterns: Record<string, string>
   /** Mastery proposals across courses. */
   proposals: MasteryProposal[]
-  /** Lesson id → dsh session id (the simplified thread system: one session per lesson node). */
+  /** Lesson id → dsh session id (the legacy single-binding thread system —
+   *  superseded by `lessonThreads`; kept readable for pre-0.22 files and kept
+   *  in lockstep with the group's ACTIVE pointer while both exist). */
   lessonSessions: Record<string, string>
+  /** The thread-group system (upstream v0.5 节点组 model, ported 2026-09-13):
+   *  every lesson owns a GROUP of dsh sessions — one active, many parallel,
+   *  auto-created on first send, auto-titled from the first message.
+   *  Additive; v2 files without it load with empty groups (and any legacy
+   *  lessonSessions binding migrates into a one-thread group at load). */
+  lessonThreads?: Record<string, LessonThreadGroup>
   /** Lesson id → recorded artifacts (upstream canvas_items: the panel's
    *  interactive cards — practice quizzes, compare tables, walkthroughs).
    *  Additive in 0.15.0; v2 files without it load with {}. */
@@ -249,7 +275,7 @@ const FRICTION_CAP = 10
 export function emptyState(): LearningState {
   return {
     version: 2, courses: [], active: false, mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, artifacts: {},
-    proposals: [], lessonSessions: {}, lastConsolidatedAt: null,
+    proposals: [], lessonSessions: {}, lessonThreads: {}, lastConsolidatedAt: null,
     xp: { total: 0, todayKey: '', todayXp: 0 },
     streak: { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
   }
@@ -328,6 +354,30 @@ export function loadState(path: string): LearningState {
     memoryPatterns: raw.memoryPatterns ?? {},
     proposals: raw.proposals ?? [],
     lessonSessions: raw.lessonSessions ?? {},
+    // the thread-group system: existing groups load verbatim; every legacy
+    // single-binding (lessonSessions) without a group migrates into a
+    // one-thread group titled by the lesson (issue #11 alignment, additive)
+    lessonThreads: (() => {
+      const groups: Record<string, LessonThreadGroup> = {}
+      for (const [lessonId, group] of Object.entries(raw.lessonThreads ?? {})) {
+        if (group !== null && typeof group === 'object' && Array.isArray(group.threads)) {
+          groups[lessonId] = { active: typeof group.active === 'string' ? group.active : null, threads: group.threads }
+        }
+      }
+      for (const [lessonId, sessionId] of Object.entries(raw.lessonSessions ?? {})) {
+        if (typeof sessionId !== 'string' || groups[lessonId] !== undefined) continue
+        let title = lessonId
+        for (const course of courses) {
+          for (const section of course.sections) {
+            const hit = section.lessons.find(l => l.id === lessonId)
+            if (hit !== undefined) { title = hit.title; break }
+          }
+        }
+        const now = new Date().toISOString()
+        groups[lessonId] = { active: sessionId, threads: [{ id: sessionId, title, createdAt: now, lastAt: now }] }
+      }
+      return groups
+    })(),
     artifacts: raw.artifacts ?? {},
     lastConsolidatedAt: raw.lastConsolidatedAt ?? null,
     xp: raw.xp ?? { total: 0, todayKey: '', todayXp: 0 },
@@ -941,6 +991,37 @@ export function recordAnswer(
  * @param now - current time.
  * @returns completion result including the unlocked lessons.
  */
+/**
+ * Bind a dsh session into a lesson's thread group (the issue-#11 write, the
+ * upstream sendMessage/ensureThreadForSend translation): an UNKNOWN session id
+ * appends a new thread (titled by the caller — the first message's text or a
+ * short action label) and becomes active; a KNOWN id re-activates it (bumping
+ * lastAt); `null` clears the active pointer (the ＋新建 affordance — the next
+ * send mints a fresh thread). The legacy lessonSessions map stays in lockstep
+ * with the active pointer so pre-0.22 readers never disagree.
+ */
+export function bindLessonThread(state: LearningState, lessonId: string, sessionId: string | null, title?: string | null): LessonThreadGroup {
+  state.lessonThreads ??= {}
+  const group = state.lessonThreads[lessonId] ?? { active: null, threads: [] }
+  if (sessionId === null) {
+    group.active = null
+    state.lessonThreads[lessonId] = group
+    delete state.lessonSessions[lessonId]
+    return group
+  }
+  const existing = group.threads.find(t => t.id === sessionId)
+  if (existing === undefined) {
+    const now = new Date().toISOString()
+    group.threads.push({ id: sessionId, title: (title ?? '').trim() !== '' ? title!.trim() : lessonId, createdAt: now, lastAt: now })
+  } else {
+    existing.lastAt = new Date().toISOString()
+  }
+  group.active = sessionId
+  state.lessonThreads[lessonId] = group
+  state.lessonSessions[lessonId] = sessionId
+  return group
+}
+
 export function completeLesson(
   state: LearningState,
   lessonId: string,
