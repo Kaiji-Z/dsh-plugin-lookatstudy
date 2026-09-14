@@ -11,7 +11,8 @@
 
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { studyTools, type StudyStore } from './tools.ts'
-import { learnerSnapshot, type LearningState, type StudyMode } from './state.ts'
+import { conceptViews, learnerSnapshot, type LearningState, type StudyMode } from './state.ts'
+import { threadOwnerKey } from './thread-key.ts'
 import { localeToLanguageName } from './vendor/locale-names.ts'
 
 /**
@@ -157,6 +158,35 @@ export function snapshotSectionText(state: LearningState): string {
   // axes: medium of instruction follows the learner, subject material stays
   // original. Absent languageTarget = normal course, snapshot unchanged.
   const focusCourse = state.courses.find(c => c.id === snap.focus?.courseId)
+  // 0.23.0 course scope (issue #11 follow-up) — the three-layer assembly: a
+  // LIVE course digest (one line per lesson, re-derived every turn, never a
+  // frozen snapshot), this thread's lesson coverage, and the
+  // combined-problem behavioral line. Lesson bodies NEVER ride in here —
+  // study_lesson pulls them on demand (staleness + per-turn cost forbid
+  // preloading the whole course; the live thread carries the 现场).
+  if (focusCourse?.threadScope === 'course' && snap.focus !== null) {
+    const group = state.lessonThreads[threadOwnerKey('course', focusCourse.id, snap.focus.lessonId)]
+    const touched = group?.threads.find(t => t.id === group.active)?.touchedLessons
+    const titleOf = new Map<string, string>()
+    for (const sec of focusCourse.sections) for (const l of sec.lessons) titleOf.set(l.id, l.title)
+    const digest = focusCourse.sections
+      .flatMap(sec => sec.lessons.filter(l => l.kind !== 'exam'))
+      .slice(0, 60)
+      .map(l => {
+        const pct = l.mastery === null ? '' : ` ${String(Math.round(l.mastery * 100))}%`
+        const weak = (conceptViews(l) ?? []).some(c => c.weak) ? ' ⚡薄弱' : ''
+        const fric = l.friction.length > 0 ? ` ⚑卡点${String(l.friction.length)}` : ''
+        return `- ${sanitizePromptText(l.title)}[${String(l.status)}${pct}]${weak}${fric}`
+      })
+    lines.push('')
+    lines.push('【本课程进度摘要】(跨课时连续对话:本线跨课时延续,换课时不改线)')
+    lines.push(...digest)
+    if (touched !== undefined && touched.length > 0) {
+      const names = touched.map(id => sanitizePromptText(titleOf.get(id) ?? id)).join(' · ')
+      lines.push(`本对话线已覆盖课时: ${names}; 当前焦点: ${sanitizePromptText(snap.focus.lessonTitle)}`)
+    }
+    lines.push('出跨课时综合题前,先调用 study_lesson 调出相关课时正文再命题——组合题优先利用本线已有的跨课时现场。')
+  }
   if (focusCourse?.languageTarget != null && focusCourse.languageTarget !== '') {
     const t = localeToLanguageName(focusCourse.languageTarget)
     lines.push('')

@@ -18,6 +18,10 @@ export interface StudyState {
   readonly courses: ReadonlyArray<{
     readonly courseId: string
     readonly title: string
+    /** Thread-group granularity (0.23.0): 'course' = one continuous thread
+     *  across this course's lessons (owner key `course:<id>`); 'lesson' = the
+     *  per-lesson groups. Resolve keys via threadOwnerKey, never raw ids. */
+    readonly threadScope: 'lesson' | 'course'
     readonly mastered: number
     readonly total: number
     readonly avgMasteryPct: number | null
@@ -68,8 +72,9 @@ export interface StudyState {
   readonly pendingProposals: ReadonlyArray<{ id: string; lessonTitle: string; rationale: string }>
   readonly memory: { global: string | null; lesson: string | null; pattern: string | null }
   readonly lessonSessions: Readonly<Record<string, string>>
-  /** The thread groups (issue #11): lesson id → group; drives the per-lesson switcher. */
-  readonly lessonThreads: Readonly<Record<string, { active: string | null; threads: ReadonlyArray<{ id: string; title: string; createdAt: string; lastAt: string; status?: 'active' | 'archived' }> }>>
+  /** The thread groups (issue #11): OWNER key (lesson id, or `course:<id>`
+   *  under 0.23.0 course scope) → group; drives the per-lesson switcher. */
+  readonly lessonThreads: Readonly<Record<string, { active: string | null; threads: ReadonlyArray<{ id: string; title: string; createdAt: string; lastAt: string; status?: 'active' | 'archived'; touchedLessons?: string[] }> }>>
   /** XP + streak block (mirrors study_courses; feeds the dock pill and the settings page). */
   readonly progress: {
     readonly totalXp: number
@@ -304,6 +309,17 @@ class StudyStore {
     return res
   }
 
+  /** Flip a course's thread granularity (0.23.0, issue #11 follow-up). Never
+   *  touches sediment — both sides' groups stay and are resumed on flip. */
+  async setCourseScope(courseId: string, scope: 'lesson' | 'course'): Promise<void> {
+    await fetchJson('/lookatstudy/api/course-scope', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ courseId, scope }),
+    })
+    this.refresh()
+  }
+
   /** Delete one course (and its proposals) from the host state. */
   async deleteCourse(courseId: string): Promise<void> {
     await fetchJson('/lookatstudy/api/course/delete', {
@@ -493,6 +509,7 @@ export function useStudy(): {
   recordReview: (lessonId: string, quality: 1 | 4 | 5) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string | null, title?: string) => Promise<void>
   lessonThreadOp: (lessonId: string, sessionId: string, op: 'rename' | 'archive' | 'delete', extra?: { title?: string; archived?: boolean }) => Promise<{ active: string | null; threads: number }>
+  setCourseScope: (courseId: string, scope: 'lesson' | 'course') => Promise<void>
   tts: (text: string, voice?: string) => Promise<Uint8Array>
 } {
   const data = useSyncExternalStore(studyStore.subscribe, studyStore.getSnapshot, studyStore.getSnapshot)
@@ -505,6 +522,7 @@ export function useStudy(): {
     setFocus: studyStore.setFocus.bind(studyStore),
     searchLessons: studyStore.searchLessons.bind(studyStore),
     tts: studyStore.tts.bind(studyStore),
+    setCourseScope: studyStore.setCourseScope.bind(studyStore),
     deleteCourse: studyStore.deleteCourse.bind(studyStore),
     deleteNote: studyStore.deleteNote.bind(studyStore),
     editNote: studyStore.editNote.bind(studyStore),

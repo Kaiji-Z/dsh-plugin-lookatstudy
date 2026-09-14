@@ -23,6 +23,7 @@ import {
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
+import { threadOwnerKey } from '../thread-key.ts'
 import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
 import { normalizeMathNotation } from '../vendor/math-normalize.ts'
 import { PaneResizeHandle } from './paneresize.tsx'
@@ -44,7 +45,7 @@ import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, FoldableArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel } from './views.tsx'
 import { ListSectionView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
@@ -207,7 +208,7 @@ export function studyPanelView(ctx: ClientContext): () => ReactNode {
 type StudyData = ReturnType<typeof useStudy>['data']
 
 function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
-  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, lessonThreadOp, uploadAttachment } = useStudy()
+  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, lessonThreadOp, setCourseScope, uploadAttachment } = useStudy()
   // D8: the shared CodeBlock's delegated copy wire — one listener for every
   // zone the markdown pipeline feeds (chat, prose, notes).
   useEffect(() => { wireCodeBlockCopy() }, [])
@@ -371,6 +372,24 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const localBound = useRef<{ lessonId: string; sessionId: string } | null>(null)
   const boundSessionOf = (lessonId: string | null): string | null =>
     lessonId !== null && localBound.current?.lessonId === lessonId ? localBound.current.sessionId : null
+  // 0.23.0 course scope (issue #11 follow-up): the thread-group key a send
+  // from this lesson belongs to — the lesson id under lesson scope,
+  // course:<id> under course scope. Every group lookup funnels through here
+  // (the client twin of the state machine's ownerKeyFor; the legacy
+  // lessonSessions fallback stays keyed by lesson id — mirrors are per-lesson).
+  const threadKeyOf = (lessonId: string | null): string | null => {
+    if (lessonId === null || data === null) return null
+    for (const c of data.courses) {
+      if (c.sections.some(s => s.lessons.some(l => l.id === lessonId))) {
+        return threadOwnerKey(c.threadScope, c.courseId, lessonId)
+      }
+    }
+    return null
+  }
+  const threadGroupOf = (lessonId: string | null): { active: string | null; threads: ReadonlyArray<{ id: string; title: string; createdAt: string; lastAt: string; status?: 'active' | 'archived'; touchedLessons?: string[] }> } | null => {
+    const key = threadKeyOf(lessonId)
+    return key !== null ? (data?.lessonThreads[key] ?? null) : null
+  }
   const streamEl = useRef<HTMLDivElement | null>(null)
   const touchStart = useRef<{ x: number; y: number } | null>(null)
   // C2: the live session face (kept by send) so the stop button can cancel the
@@ -383,7 +402,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         // mid-generation must resolve the bound session's face on demand.
         let face: SessionPromptFace | null | undefined = activeFace.current
         if (face === null) {
-          const sessionId = boundSessionOf(lesson !== null ? lesson.lessonId : null) ?? (lesson !== null ? data?.lessonThreads[lesson.lessonId]?.active ?? data?.lessonSessions[lesson.lessonId] ?? null : null)
+          const sessionId = boundSessionOf(lesson !== null ? lesson.lessonId : null) ?? (threadGroupOf(lesson !== null ? lesson.lessonId : null)?.active ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null))
           if (sessionId !== null && sessionKnown(ctx, sessionId)) {
             const actx = ctx.sessions.scope(sessionId)
             face = actx === undefined ? undefined : ctx.sessions.sessionOf(actx) ?? null
@@ -424,7 +443,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     prevCelebrationRef.current = snapshot
   }, [data])
 
-  const boundId = boundSessionOf(lesson !== null ? lesson.lessonId : null) ?? (lesson !== null ? data?.lessonThreads[lesson.lessonId]?.active ?? data?.lessonSessions[lesson.lessonId] ?? null : null)
+  const boundId = boundSessionOf(lesson !== null ? lesson.lessonId : null) ?? (threadGroupOf(lesson !== null ? lesson.lessonId : null)?.active ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null))
 
   // The review nudge (upstream review.nudge): due reviews pull the learner
   // back — one toast per panel open, never repeated while it stays open.
@@ -629,7 +648,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         // (localBound is lesson-scoped: another lesson's group resolves from
         // the feed alone, and a stale rail focus never leaks in)
         const fromLocal = boundSessionOf(bindId)
-        let sessionId = fromLocal ?? (data?.lessonThreads[bindId]?.active ?? data?.lessonSessions[bindId] ?? null)
+        let sessionId = fromLocal ?? (threadGroupOf(bindId)?.active ?? data?.lessonSessions[bindId] ?? null)
         if (sessionId !== null && !sessionKnown(ctx, sessionId)) sessionId = null
         if (sessionId === null) {
           const area = await fetch('/lookatstudy/api/study-workspace')
@@ -812,7 +831,12 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
             createElement(ExamView, { lessonId: lesson!.lessonId, sectionTitle: lesson!.sectionTitle, paused: examLeave !== null, onSessionChange: onExamSession }))
           : createElement(ChatPane, { data, lesson, rows, feedAttached, bound: boundId !== null, busy: busy || feedGen, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch: (sessionId: string) => { setNarrowPane('chat'); switchLessonThread(sessionId) },
             onThreadNew: () => { setNarrowPane('chat'); startNewThread() },
-            onThreadRename: renameLessonThreadUi, onThreadArchive: archiveLessonThreadUi, onThreadDelete: deleteLessonThreadUi, contextMeter, contextBreakdown: breakdown, uploadAttachment }),
+            onThreadRename: renameLessonThreadUi, onThreadArchive: archiveLessonThreadUi, onThreadDelete: deleteLessonThreadUi,
+            courseScope: (data !== null && lesson !== null ? (data.courses.find(c => c.sections.some(sec => sec.lessons.some(l => l.id === lesson.lessonId)))?.threadScope ?? 'lesson') : 'lesson'),
+            onScopeToggle: (next) => {
+              const cid = data !== null && lesson !== null ? data.courses.find(c => c.sections.some(sec => sec.lessons.some(l => l.id === lesson.lessonId)))?.courseId : undefined
+              if (cid !== undefined) void setCourseScope(cid, next)
+            }, contextMeter, contextBreakdown: breakdown, uploadAttachment }),
         // v0.29 pane-resize: the chat|notebook boundary handle (target = the
         // chat column; the exam wrapper carries the same lks14-chat identity).
         createElement(PaneResizeHandle, { side: 'chat', clampLive: chatClampLive, onCommit: px => commitPaneWidth('chat', px) }),
@@ -1731,7 +1755,7 @@ export function epubFolderPath(path: string): string {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, onThreadRename, onThreadArchive, onThreadDelete, contextMeter, contextBreakdown, uploadAttachment }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, onThreadRename, onThreadArchive, onThreadDelete, courseScope, onScopeToggle, contextMeter, contextBreakdown, uploadAttachment }: {
   data: StudyData
   lesson: NonNullable<StudyData>['lesson']
   rows: ReturnType<typeof feedRows>
@@ -1755,6 +1779,9 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   onThreadRename: (sessionId: string, title: string) => void
   onThreadArchive: (sessionId: string) => void
   onThreadDelete: (sessionId: string) => void
+  /** 0.23.0: the focus course's thread granularity + the toggle write. */
+  courseScope: 'lesson' | 'course'
+  onScopeToggle: (next: 'lesson' | 'course') => void
   /** E1: the context meter value (projection-backed, or the labeled estimate). */
   contextMeter: { pct: number | null; estimated: boolean; used: number | null; window: number | null }
   contextBreakdown: { systemTokens: number; toolsTokens: number; messageTokens: number } | null
@@ -1970,7 +1997,19 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   }
   // E5/issue #11: the switcher rows = the CURRENT lesson's thread group
   // (upstream v0.5 节点 = 会话组) — every thread, freshest first, active marked
-  const threadPills = threadGroupPills(lesson !== null && data !== null ? data.lessonThreads[lesson.lessonId] : undefined)
+  // 0.23.0 course scope: the switcher reads the FOCUS lesson's owner-resolved
+  // group (the course group when the course runs continuous threads)
+  const threadKeyOfHere = (lessonId: string | null): string | null => {
+    if (lessonId === null || data === null) return null
+    for (const c of data.courses) {
+      if (c.sections.some(sec => sec.lessons.some(l => l.id === lessonId))) {
+        return threadOwnerKey(c.threadScope, c.courseId, lessonId)
+      }
+    }
+    return null
+  }
+  const keyHere = threadKeyOfHere(lesson !== null ? lesson.lessonId : null)
+  const threadPills = threadGroupPills(keyHere !== null ? data?.lessonThreads[keyHere] : undefined)
   const lastAssistant = rowsView.reduce((acc, row, i) => row.role === 'assistant' ? i : acc, -1)
   const [error, setError] = useState<string | null>(null)
   const fire = (action: Promise<void>): void => {
@@ -2108,7 +2147,11 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
                         setRenaming(null)
                       },
                     })
-                    : createElement('span', { className: 'lks14-threadmenu-title' }, p.title),
+                    : createElement('span', { className: 'lks14-threadmenu-title' }, p.title,
+                      courseScope === 'course' && threadCoverageLabel(p.touchedLessons, data?.courses ?? []) !== ''
+                        ? createElement('span', { className: 'lks14-threadmenu-cover', 'data-testid': 'thread-cover' },
+                            `${tr('threads.coverage')}: ${threadCoverageLabel(p.touchedLessons, data?.courses ?? [])}`)
+                        : null),
                   p.current ? createElement('span', { className: 'lks14-threadmenu-now' }, tr('threads.now')) : null,
                   // upstream: the gear appears on hover and opens the management
                   // trio (重命名/归档/删除); the delete itself asks ConfirmCard
@@ -2138,6 +2181,18 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
                         },
                       }, tr('threads.delete')))
                     : null)),
+                createElement('button', {
+                  key: '__scope__',
+                  className: 'lks14-threadmenu-row scope',
+                  role: 'menuitemcheckbox',
+                  'aria-checked': String(courseScope === 'course'),
+                  'data-testid': 'thread-scope-toggle',
+                  onClick: () => { onScopeToggle(courseScope === 'course' ? 'lesson' : 'course') },
+                },
+                  createElement('span', { className: 'lks14-threadmenu-scope-icon', 'aria-hidden': 'true' }, courseScope === 'course' ? '🔗' : '⛓'),
+                  createElement('span', { className: 'lks14-threadmenu-title' }, tr('threads.scope')),
+                  createElement('span', { className: `lks14-threadmenu-scope-state${courseScope === 'course' ? ' on' : ''}` },
+                    courseScope === 'course' ? tr('threads.scope.on') : tr('threads.scope.off'))),
                 createElement('button', {
                   key: '__new__',
                   className: 'lks14-threadmenu-row new',

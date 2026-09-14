@@ -152,14 +152,14 @@ export function threadAutoTitle(text: string, max = 80): string {
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine
 }
 
-export interface ThreadPillRow { id: string; title: string; current: boolean }
+export interface ThreadPillRow { id: string; title: string; current: boolean, touchedLessons?: string[] }
 
 /**
  * Issue #11: the switcher's rows = the CURRENT lesson's thread group (upstream
  * v0.5 节点 = 会话组) — every thread, freshest first, the active one marked.
  * Pure.
  */
-export function threadGroupPills(group: { active: string | null; threads: ReadonlyArray<{ id: string; title: string; lastAt: string; status?: string }> } | undefined): ThreadPillRow[] {
+export function threadGroupPills(group: { active: string | null; threads: ReadonlyArray<{ id: string; title: string; lastAt: string; status?: string, touchedLessons?: string[] }> } | undefined): ThreadPillRow[] {
   if (group === undefined) return []
   // upstream: archived threads leave the switcher list entirely (their gear
   // menu has no unarchive entry; the state API keeps archived:false symmetric)
@@ -167,7 +167,26 @@ export function threadGroupPills(group: { active: string | null; threads: Readon
     .filter(t => t.status !== 'archived')
     .slice()
     .sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1))
-    .map(t => ({ id: t.id, title: t.title, current: t.id === group.active }))
+    .map(t => ({ id: t.id, title: t.title, current: t.id === group.active, touchedLessons: t.touchedLessons }))
+}
+
+/**
+ * 0.23.0 course scope: the coverage label under a course-scoped thread — the
+ * lessons it has been sent from, by section order, capped at three titles
+ * with an 等 N 课时 tail. Empty/undefined coverage renders '' (lesson-scoped
+ * threads show nothing). Pure.
+ */
+export function threadCoverageLabel(touched: string[] | undefined, courses: ReadonlyArray<{
+  courseId: string
+  sections: ReadonlyArray<{ lessons: ReadonlyArray<{ id: string, title: string }> }>
+}>): string {
+  if (touched === undefined || touched.length === 0) return ''
+  const titleOf = new Map<string, string>()
+  for (const c of courses) for (const s of c.sections) for (const l of s.lessons) titleOf.set(l.id, l.title)
+  const titles = touched.map(id => titleOf.get(id)).filter((t): t is string => t !== undefined)
+  if (titles.length === 0) return ''
+  const head = titles.slice(0, 3).join(' · ')
+  return titles.length > 3 ? `${head} 等 ${String(titles.length)} 课时` : head
 }
 
 /**

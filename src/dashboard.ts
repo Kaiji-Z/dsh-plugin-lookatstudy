@@ -46,6 +46,8 @@ import {
   renameLessonThread,
   archiveLessonThread,
   deleteLessonThread,
+  setCourseThreadScope,
+  type LessonThreadGroup,
 } from './state.ts'
 
 /** State access shared with the tools (same live object). */
@@ -109,6 +111,9 @@ export interface ResponseLike {
 export interface WorkbenchCourse {
   courseId: string
   title: string
+  /** Thread-group granularity (0.23.0): 'course' = one continuous thread
+   *  across this course's lessons; 'lesson' = the 0.22 per-lesson groups. */
+  threadScope: 'lesson' | 'course'
   mastered: number
   total: number
   avgMasteryPct: number | null
@@ -171,9 +176,11 @@ export interface WorkbenchState {
   memory: { global: string | null; lesson: string | null; pattern: string | null }
   /** Lesson id → dsh session id (legacy single-binding; mirrors each group's active pointer). */
   lessonSessions: Record<string, string>
-  /** The thread groups (issue #11): lesson id → { active, threads[] } with
-   *  first-message titles; drives the per-lesson switcher and review routing. */
-  lessonThreads: Record<string, { active: string | null; threads: Array<{ id: string; title: string; createdAt: string; lastAt: string }> }>
+  /** The thread groups (issue #11): OWNER key (lesson id, or `course:<id>`
+   *  under 0.23.0 course scope — derive via threadOwnerKey) → { active,
+   *  threads[] } with first-message titles; drives the per-lesson switcher
+   *  and review routing. */
+  lessonThreads: Record<string, { active: string | null; threads: Array<{ id: string; title: string; createdAt: string; lastAt: string; status?: 'active' | 'archived'; touchedLessons?: string[] }> }>
   /** XP + streak block (same shape as study_courses; feeds the dock pill and the settings page). */
   progress: {
     totalXp: number
@@ -204,6 +211,7 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
     return {
       courseId: course.id,
       title: course.title,
+      threadScope: course.threadScope === 'course' ? 'course' : 'lesson',
       mastered: lessons.filter(l => l.status === 'mastered').length,
       total: lessons.length,
       avgMasteryPct: answered.length === 0
@@ -778,29 +786,50 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
           return
         }
         const state = deps.store.get()
+        let group: LessonThreadGroup | null = null
         try {
           if (body.op === 'rename') {
             if (typeof body.title !== 'string' || body.title.trim() === '') {
               sendJson(res, 400, { ok: false, error: 'rename requires a non-empty title' })
               return
             }
-            renameLessonThread(state, body.lessonId, body.sessionId, body.title)
+            group = renameLessonThread(state, body.lessonId, body.sessionId, body.title)
           } else if (body.op === 'archive') {
             if (typeof body.archived !== 'boolean') {
               sendJson(res, 400, { ok: false, error: 'archive requires a boolean archived' })
               return
             }
-            archiveLessonThread(state, body.lessonId, body.sessionId, body.archived)
+            group = archiveLessonThread(state, body.lessonId, body.sessionId, body.archived)
           } else {
-            deleteLessonThread(state, body.lessonId, body.sessionId)
+            group = deleteLessonThread(state, body.lessonId, body.sessionId)
           }
         } catch (error) {
           sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
           return
         }
         deps.store.save()
-        const group = state.lessonThreads[body.lessonId]
+        // 0.23.0: under course scope the group lives at the derived owner key —
+        // the mutator's return IS the group, re-reading body.lessonId would miss it
         sendJson(res, 200, { ok: true, active: group?.active ?? null, threads: group?.threads.length ?? 0 })
+        return
+      }
+      // 0.23.0 course scope (issue #11 follow-up): flip a course's thread
+      // granularity. Never touches sediment — both sides' groups stay put.
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/course-scope') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.courseId !== 'string' || (body.scope !== 'lesson' && body.scope !== 'course')) {
+          sendJson(res, 400, { ok: false, error: 'courseId and scope (lesson|course) required' })
+          return
+        }
+        try {
+          setCourseThreadScope(deps.store.get(), body.courseId, body.scope)
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+          return
+        }
+        deps.store.save()
+        sendJson(res, 200, { ok: true, scope: body.scope })
         return
       }
       // course-pack export (upstream exportPack alignment): self-contained

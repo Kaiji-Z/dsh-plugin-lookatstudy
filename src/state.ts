@@ -18,6 +18,7 @@ import { computeStreakTransition } from './vendor/streak-transition.ts'
 import { XP_CORRECT, XP_WRONG, XP_MASTERED } from './vendor/xp.ts'
 import type { StudyArtifact } from './artifacts.ts'
 import type { ParsedCourse } from './vendor/markdown-course.ts'
+import { isCourseOwnerKey, threadOwnerKey, type ThreadScope } from './thread-key.ts'
 
 /** Lesson position on the mastery-gated path (LookatStudy NodeStatus). */
 export type LessonStatus = 'locked' | 'available' | 'in_progress' | 'mastered'
@@ -195,6 +196,10 @@ export interface LessonThreadMeta {
   /** Upstream gear-menu archive: archived threads keep their sediment but
    *  leave the switcher list (and the active pointer). Absent = active. */
   status?: 'active' | 'archived'
+  /** The lessons this thread has been sent from (0.23.0 course scope): the
+   *  coverage label's source and the mirror-sync set. Order-preserving,
+   *  deduped; absent on pre-0.23 entries. */
+  touchedLessons?: string[]
 }
 
 /** A lesson's thread group (upstream v0.5: 节点 = 会话组 — many threads, one active). */
@@ -231,6 +236,11 @@ export interface CourseState {
    *  null/absent = the course teaches knowledge, not a language itself.
    *  Additive; v2 files without it load as a normal course. */
   languageTarget?: string | null
+  /** Thread-group granularity (0.23.0, issue #11 follow-up): 'lesson'
+   *  (default; absent = the 0.22 model, each lesson owns a group) or
+   *  'course' (one group per course — the active thread runs continuously
+   *  across lessons). Additive; old files load as lesson-scoped. */
+  threadScope?: ThreadScope
 }
 
 /** Whole persisted state; `version` gates migrations (v1 → v2 renamed completed→mastered and added lesson.kind). */
@@ -617,7 +627,7 @@ export function deleteCourse(state: LearningState, courseId: string): void {
   const prefix = `${courseId}:`
   const lessonThreads: Array<[string, LessonThreadGroup]> = []
   for (const key of Object.keys(state.lessonThreads)) {
-    if (key.startsWith(prefix)) {
+    if (key.startsWith(prefix) || key === `course:${courseId}`) {
       lessonThreads.push([key, state.lessonThreads[key]!])
       delete state.lessonThreads[key]
     }
@@ -671,7 +681,15 @@ export function restoreCourse(state: LearningState, courseId: string): CourseSta
     course.sections.forEach((section, si) => section.lessons.forEach((lesson, li) => { lesson.id = `${id}:${si}:${li}` }))
     for (const p of entry.proposals) p.lessonId = remap(p.lessonId)
     entry.artifacts = entry.artifacts.map(([k, v]) => [remap(k), v])
-    entry.lessonThreads = entry.lessonThreads.map(([k, v]) => [remap(k), v])
+    // 0.23.0 course-scope groups ride along: the course key re-ids, and the
+    // touchedLessons coverage inside every thread remaps into the new namespace
+    entry.lessonThreads = entry.lessonThreads.map(([k, v]) => {
+      if (!isCourseOwnerKey(k)) return [remap(k), v]
+      for (const t of v.threads) {
+        if (t.touchedLessons !== undefined) t.touchedLessons = t.touchedLessons.map(remap)
+      }
+      return [`course:${id}`, v]
+    })
     entry.lessonSessions = entry.lessonSessions.map(([k, v]) => [remap(k), v])
     if (entry.focusLessonId !== null) entry.focusLessonId = remap(entry.focusLessonId)
   }
@@ -1187,38 +1205,86 @@ export function recordAnswer(
  * @returns completion result including the unlocked lessons.
  */
 /**
+ * Set a course's thread granularity (0.23.0). Switching never touches the
+ * sediment: both sides' groups stay put and are resumed when the scope flips
+ * back. Unknown ids fail loud.
+ */
+export function setCourseThreadScope(state: LearningState, courseId: string, scope: ThreadScope): void {
+  const course = state.courses.find(c => c.id === courseId)
+  if (course === undefined) throw new Error(`lookatstudy-plugin: unknown course id ${JSON.stringify(courseId)}`)
+  course.threadScope = scope
+}
+
+/**
+ * Resolve the thread-group map key a send from `lessonId` belongs to — the
+ * 0.23.0 granularity funnel: lesson scope keeps legacy lessonId keys, course
+ * scope namespaces the course. Every thread-group access in this module goes
+ * through here (or through an ownerKey already derived from it).
+ */
+function ownerKeyFor(state: LearningState, lessonId: string): { key: string; scope: ThreadScope } {
+  const ref = findLesson(state, lessonId)
+  const scope: ThreadScope = ref.course.threadScope === 'course' ? 'course' : 'lesson'
+  return { key: threadOwnerKey(scope, ref.course.id, lessonId), scope }
+}
+
+/**
+ * Under course scope, mirrors drift per lesson (each remembers the last
+ * thread IT used) — drift onto a LIVE thread is fine. The moment a thread
+ * leaves the live set (archived, deleted, or rolled off the active pointer),
+ * every mirror still naming it is a dead reference — re-point them at the
+ * group's current active thread (or drop them when none is left). Lesson
+ * scope keeps the legacy exact-mirror behavior at its own key.
+ */
+function repointMirrorsOff(state: LearningState, key: string, threadId: string | null, group: LessonThreadGroup): void {
+  if (threadId === null || !isCourseOwnerKey(key)) return
+  for (const lessonId of Object.keys(state.lessonSessions)) {
+    if (state.lessonSessions[lessonId] === threadId) {
+      if (group.active === null) delete state.lessonSessions[lessonId]
+      else state.lessonSessions[lessonId] = group.active
+    }
+  }
+}
+
+/**
  * Bind a dsh session into a lesson's thread group (the issue-#11 write, the
  * upstream sendMessage/ensureThreadForSend translation): an UNKNOWN session id
  * appends a new thread (titled by the caller — the first message's text or a
  * short action label) and becomes active; a KNOWN id re-activates it (bumping
  * lastAt); `null` clears the active pointer (the ＋新建 affordance — the next
  * send mints a fresh thread). The legacy lessonSessions map stays in lockstep
- * with the active pointer so pre-0.22 readers never disagree.
+ * with the active pointer so pre-0.22 readers never disagree. Under course
+ * scope (0.23.0) the group is the course's, the send-from lesson joins the
+ * thread's touchedLessons coverage, and mirrors sync per
+ * {@link repointRolledMirrors}.
  */
 export function bindLessonThread(state: LearningState, lessonId: string, sessionId: string | null, title?: string | null): LessonThreadGroup {
   // Audit C26: every other mutator validates existence first — an
   // unauthenticated route must not mint orphan groups for arbitrary strings.
-  findLesson(state, lessonId)
+  const { key, scope } = ownerKeyFor(state, lessonId)
   state.lessonThreads ??= {}
-  const group = state.lessonThreads[lessonId] ?? { active: null, threads: [] }
+  const group = state.lessonThreads[key] ?? { active: null, threads: [] }
   if (sessionId === null) {
     group.active = null
-    state.lessonThreads[lessonId] = group
-    delete state.lessonSessions[lessonId]
+    state.lessonThreads[key] = group
+    if (scope === 'lesson') delete state.lessonSessions[lessonId]
+    // course scope: the threads stay live, so drifting mirrors onto them
+    // remain valid — nothing to re-point (the next send rebinds its lesson)
     return group
   }
   const existing = group.threads.find(t => t.id === sessionId)
   if (existing === undefined) {
     const now = new Date().toISOString()
-    group.threads.push({ id: sessionId, title: (title ?? '').trim() !== '' ? title!.trim() : lessonId, createdAt: now, lastAt: now })
+    group.threads.push({ id: sessionId, title: (title ?? '').trim() !== '' ? title!.trim() : lessonId, createdAt: now, lastAt: now, touchedLessons: [lessonId] })
   } else {
     existing.lastAt = new Date().toISOString()
     // an active pointer at an archived thread is a contradiction — re-binding
     // (a stale client, a dashboard replay) restores the thread to live
     if (existing.status === 'archived') existing.status = 'active'
+    const touched = existing.touchedLessons ??= []
+    if (!touched.includes(lessonId)) touched.push(lessonId)
   }
   group.active = sessionId
-  state.lessonThreads[lessonId] = group
+  state.lessonThreads[key] = group
   state.lessonSessions[lessonId] = sessionId
   return group
 }
@@ -1226,20 +1292,26 @@ export function bindLessonThread(state: LearningState, lessonId: string, session
 /** Roll the group's active pointer to the freshest ACTIVE thread (or null)
  *  and keep the legacy lessonSessions mirror in lockstep. Shared by the
  *  archive/delete operations when they take out the current thread. */
-function rollActiveToFresh(state: LearningState, lessonId: string, group: LessonThreadGroup): void {
+function rollActiveToFresh(state: LearningState, key: string, group: LessonThreadGroup): void {
+  const prev = group.active
   const live = group.threads.filter(t => t.status !== 'archived')
   group.active = live.length > 0
     ? live.reduce((a, b) => (a.lastAt > b.lastAt ? a : b)).id
     : null
-  if (group.active !== null) state.lessonSessions[lessonId] = group.active
-  else delete state.lessonSessions[lessonId]
+  if (isCourseOwnerKey(key)) {
+    repointMirrorsOff(state, key, prev, group)
+  } else {
+    if (group.active !== null) state.lessonSessions[key] = group.active
+    else delete state.lessonSessions[key]
+  }
 }
 
 /** Rename a thread's stored title (issue #11 management: upstream gear menu).
  *  The dsh session's own title is renamed host-side by the client (best
  *  effort) — this is the durable plugin-side half. Throws on unknown ids. */
 export function renameLessonThread(state: LearningState, lessonId: string, sessionId: string, title: string): LessonThreadGroup {
-  const group = state.lessonThreads?.[lessonId]
+  const key = ownerKeyFor(state, lessonId).key
+  const group = state.lessonThreads?.[key]
   if (group === undefined) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread group`)
   const thread = group.threads.find(t => t.id === sessionId)
   if (thread === undefined) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread ${JSON.stringify(sessionId)}`)
@@ -1253,12 +1325,14 @@ export function renameLessonThread(state: LearningState, lessonId: string, sessi
  *  threads leave the switcher list entirely (no unarchive entry there; the
  *  state API keeps `archived: false` for symmetry/future UI). */
 export function archiveLessonThread(state: LearningState, lessonId: string, sessionId: string, archived: boolean): LessonThreadGroup {
-  const group = state.lessonThreads?.[lessonId]
+  const key = ownerKeyFor(state, lessonId).key
+  const group = state.lessonThreads?.[key]
   if (group === undefined) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread group`)
   const thread = group.threads.find(t => t.id === sessionId)
   if (thread === undefined) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread ${JSON.stringify(sessionId)}`)
   thread.status = archived ? 'archived' : 'active'
-  if (archived && group.active === sessionId) rollActiveToFresh(state, lessonId, group)
+  if (archived && group.active === sessionId) rollActiveToFresh(state, key, group)
+  if (archived) repointMirrorsOff(state, key, sessionId, group)
   if (!archived && group.active === null) {
     // restoring into an empty live set: the restored thread becomes current
     group.active = sessionId
@@ -1272,12 +1346,14 @@ export function archiveLessonThread(state: LearningState, lessonId: string, sess
  *  the host session face (no delete primitive) — it stays in the host's session
  *  list; the UI discloses this. Throws on unknown ids. */
 export function deleteLessonThread(state: LearningState, lessonId: string, sessionId: string): LessonThreadGroup {
-  const group = state.lessonThreads?.[lessonId]
+  const key = ownerKeyFor(state, lessonId).key
+  const group = state.lessonThreads?.[key]
   if (group === undefined) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread group`)
   const idx = group.threads.findIndex(t => t.id === sessionId)
   if (idx < 0) throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no thread ${JSON.stringify(sessionId)}`)
   group.threads.splice(idx, 1)
-  if (group.active === sessionId) rollActiveToFresh(state, lessonId, group)
+  if (group.active === sessionId) rollActiveToFresh(state, key, group)
+  repointMirrorsOff(state, key, sessionId, group)
   return group
 }
 

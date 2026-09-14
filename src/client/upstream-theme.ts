@@ -767,7 +767,15 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-threadmenu-row.on{background:rgb(var(--brand-rgb)/0.1)}
 .lks-ui .lks14-threadmenu-row.on .lks14-threadmenu-title{color:var(--brand);font-weight:700}
 .lks-ui .lks14-threadmenu-dot{flex:none;width:6px;height:6px;border-radius:999px;background:var(--ink-faint)}
-.lks-ui .lks14-threadmenu-row.new{margin-top:3px;border-top:1px solid var(--border-faint);border-radius:0 0 7px 7px;padding-top:7px}
+/* 0.23.0 course scope: the coverage line under a course thread's title, and
+   the granularity toggle row pinned above the ＋新建 row */
+.lks-ui .lks14-threadmenu-title{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.lks-ui .lks14-threadmenu-cover{font-size:10.5px;color:var(--ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lks-ui .lks14-threadmenu-row.scope{margin-top:3px;border-top:1px solid var(--border-faint);border-radius:0;padding-top:7px}
+.lks-ui .lks14-threadmenu-scope-icon{flex:none;font-size:12px;line-height:1}
+.lks-ui .lks14-threadmenu-scope-state{flex:none;margin-left:auto;font-size:10.5px;font-weight:700;color:var(--ink-faint);padding:1px 7px;border-radius:999px;border:1px solid var(--border)}
+.lks-ui .lks14-threadmenu-scope-state.on{color:var(--brand);border-color:rgb(var(--brand-rgb)/0.45);background:rgb(var(--brand-rgb)/0.08)}
+.lks-ui .lks14-threadmenu-row.new{margin-top:1px;border-top:1px solid var(--border-faint);border-radius:0 0 7px 7px;padding-top:7px}
 .lks-ui .lks14-threadmenu-row{position:relative}
 .lks-ui .lks14-threadmenu-gear{flex:none;margin-left:auto;border:none;background:none;color:var(--ink-faint);font-size:13px;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px;opacity:0;transition:opacity .12s,color .12s}
 .lks-ui .lks14-threadmenu-row:hover .lks14-threadmenu-gear,.lks-ui .lks14-threadmenu-gear:focus-visible{opacity:1}

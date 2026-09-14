@@ -8,8 +8,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
+import { threadOwnerKey } from '../src/thread-key.ts'
 import {
   archiveLessonThread,
+  setCourseThreadScope,
   attemptLesson,
   bindLessonThread,
   completeLesson,
@@ -119,6 +121,59 @@ test('thread-group invariant fuzz: random bind/archive/delete/rename mixes keep 
   assertSane()
   for (const [op, count] of executed) {
     assert.ok(count > 0, `thread fuzz executed ${op} ${count} times — a missing import turns ops into swallowed ReferenceErrors (audit B4)`)
+  }
+})
+
+
+test('course-scope invariant fuzz: scope flips + two-lesson binds keep the pointer and mirrors sane', () => {
+  const rand = mulberry32(20260915)
+  const state = emptyState()
+  const course = importCourse(state, parseMarkdownToCourse(FUZZ_MD), 'markdown', 'course-scope-fuzz')
+  const lessons = (course.sections[0]?.lessons ?? []).filter(l => l.kind === 'study').map(l => l.id)
+  const pick = <T>(items: readonly T[]): T => items[Math.floor(rand() * items.length)]!
+  const assertSane = (): void => {
+    for (const lessonId of lessons) {
+      const scope = course.threadScope === 'course' ? 'course' : 'lesson'
+      const group = state.lessonThreads[threadOwnerKey(scope, course.id, lessonId)]
+      if (group === undefined) continue
+      if (group.active !== null) {
+        const active = group.threads.find(t => t.id === group.active)
+        assert.ok(active !== undefined, 'the active pointer always names a real thread')
+        assert.notEqual(active.status, 'archived', 'the active pointer never sits on an archived thread')
+      }
+      // a mirror may drift (course scope: each lesson remembers its last
+      // thread; a scope flip leaves cross-scope drift onto a still-live
+      // thread) but it may NEVER name an archived or deleted thread — it
+      // must resolve inside the course's sediment under EITHER scope
+      const mirrored = state.lessonSessions[lessonId]
+      if (mirrored !== undefined) {
+        const thread = (['lesson', 'course'] as const)
+          .flatMap(sc => state.lessonThreads[threadOwnerKey(sc, course.id, lessonId)]?.threads ?? [])
+          .find(t => t.id === mirrored)
+        assert.ok(thread !== undefined, 'a mirror always names a live thread of the course sediment')
+        assert.notEqual(thread.status, 'archived', 'a mirror never names an archived thread')
+      }
+    }
+  }
+  const ids: string[] = []
+  const executed = new Map<string, number>(([['bind', 0], ['bind-old', 0], ['archive', 0], ['delete', 0], ['flip', 0], ['clear', 0]] as const).map(([k]) => [k, 0]))
+  for (let step = 0; step < 300; step++) {
+    const op = pick(['bind', 'bind-old', 'archive', 'delete', 'flip', 'clear'] as const)
+    const from = pick(lessons)
+    const target = ids.length > 0 ? pick(ids) : 's0'
+    try {
+      if (op === 'bind') { bindLessonThread(state, from, `s${String(step)}`, `线${String(step)}`); ids.push(`s${String(step)}`) }
+      else if (op === 'bind-old') bindLessonThread(state, from, target)
+      else if (op === 'archive') archiveLessonThread(state, from, target, true)
+      else if (op === 'delete') { deleteLessonThread(state, from, target); ids.splice(ids.indexOf(target), 1) }
+      else if (op === 'flip') setCourseThreadScope(state, course.id, course.threadScope === 'course' ? 'lesson' : 'course')
+      else bindLessonThread(state, from, null)
+      executed.set(op, (executed.get(op) ?? 0) + 1)
+    } catch { /* ops on since-deleted ids throw loud — the invariant still holds */ }
+    assertSane()
+  }
+  for (const [op, count] of executed) {
+    assert.ok(count > 0, `course-scope fuzz executed ${op} ${count} times`)
   }
 })
 
