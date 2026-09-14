@@ -6,7 +6,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
@@ -494,12 +494,14 @@ test('activation defaults: fresh states dormant, pre-active files stay on', () =
   }
 })
 
-test('a corrupt state file fails loud', () => {
+test('a corrupt state file degrades instead of killing the plugin (audit A3)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'lookatstudy-'))
   try {
     const path = join(dir, 'state.json')
     writeFileSync(path, '{not json', 'utf8')
-    assert.throws(() => loadState(path), /not valid JSON/)
+    const state = loadState(path)
+    assert.equal(state.courses.length, 0, 'recovery path returns a usable empty state')
+    assert.ok(readdirSync(dir).some(f => f.includes('.corrupt-')), 'the unusable file was quarantined beside it')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

@@ -141,6 +141,14 @@ function mermaidThemeVariables(): Record<string, string> {
   }
 }
 
+/**
+ * Audit A1 (2026-09-14): diagram sources arrive from imported (untrusted)
+ * content — mermaid must run under 'strict'. 'loose' skips DOMPurify label
+ * sanitization and enables click callbacks, which turns a hostile repo
+ * README into stored XSS in the host page. Exported so the gate is testable.
+ */
+export const MERMAID_SECURITY_LEVEL = 'strict' as const
+
 function defaultLoadMermaid(): Promise<MermaidLike> {
   mermaidPromise ??= (async () => {
     const mod = await import(/* @vite-ignore */ CDN.mermaid) as Record<string, unknown>
@@ -149,7 +157,7 @@ function defaultLoadMermaid(): Promise<MermaidLike> {
       const elk = await import(/* @vite-ignore */ CDN.mermaidElk) as Record<string, unknown>
       mermaid.registerLayoutLoaders(elk.default)
     } catch { /* ELK unavailable → mermaid falls back to dagre silently */ }
-    mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: 'loose', themeVariables: mermaidThemeVariables() })
+    mermaid.initialize({ startOnLoad: false, theme: 'base', securityLevel: MERMAID_SECURITY_LEVEL, themeVariables: mermaidThemeVariables() })
     return mermaid
   })()
   return mermaidPromise

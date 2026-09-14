@@ -91,6 +91,7 @@ export interface RouteRegistry {
 export interface RequestLike {
   method?: string
   url?: string
+  headers?: Record<string, string | string[] | undefined>
 }
 
 /** Structural `ServerResponse` the handlers write to. */
@@ -313,6 +314,49 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
 
 const JSON_HEADERS = { 'content-type': 'application/json; charset=utf-8' }
 
+/** Local hostnames the panel is ever legitimately served from (audit A2). */
+const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
+
+function headerValue(req: RequestLike, name: string): string {
+  const raw = req.headers?.[name]
+  const value = Array.isArray(raw) ? (raw[0] ?? '') : raw
+  return typeof value === 'string' ? value : ''
+}
+
+/** Hostname of the Host header with the port stripped (IPv6 brackets kept). */
+function hostNameOf(req: RequestLike): string {
+  const host = headerValue(req, 'host').toLowerCase().trim()
+  if (host.startsWith('[')) return host.slice(0, host.indexOf(']') + 1)
+  return host.split(':')[0] ?? ''
+}
+
+function originIsLocal(origin: string): boolean {
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(origin).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Audit A2: the host does not token-guard plugin routes, so the dashboard
+ * gates itself. Every request must name a local Host header (kills DNS
+ * rebinding reads); mutating POSTs must additionally carry the plugin marker
+ * header `x-lks-request` — a drive-by page can still smuggle a no-preflight
+ * text/plain POST at us, but it cannot add that header. GETs stay
+ * marker-free because `<img>` tags (attachment thumbnails) cannot send
+ * custom headers; the Host check still applies to them.
+ */
+function requestPassesGate(req: RequestLike): boolean {
+  if (!LOCAL_HOSTNAMES.has(hostNameOf(req))) return false
+  if (req.method === 'POST') {
+    if (headerValue(req, 'x-lks-request') !== '1') return false
+    const origin = headerValue(req, 'origin').trim()
+    if (origin !== '' && !originIsLocal(origin)) return false
+  }
+  return true
+}
+
 function sendJson(res: ResponseLike, status: number, value: unknown): void {
   res.writeHead(status, JSON_HEADERS).end(JSON.stringify(value))
 }
@@ -376,6 +420,10 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
     kind: 'prefix',
     path: '/lookatstudy',
     handler: async (req, res) => {
+      if (!requestPassesGate(req)) {
+        sendJson(res, 403, { ok: false, error: 'forbidden' })
+        return
+      }
       const pathname = new URL(req.url ?? '/', 'http://x').pathname
       if (req.method === 'GET' && pathname === '/lookatstudy/api/state') {
         sendJson(res, 200, { ...workbenchState(deps.store.get(), new Date()), statePath: deps.statePath, version: pluginVersion(), model: await modelInfo() })

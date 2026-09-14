@@ -83,3 +83,8 @@ test('sanitize invariant: the render pipeline is escape-first — hostile markdo
   assert.ok(!/<\s*(script|iframe|img|svg)/i.test(html), `raw hostile tags leaked: ${html}`)
   assert.ok(!/href=("|')?javascript:/i.test(html), 'javascript: hrefs are not emitted')
 })
+
+test('mermaid hardening (audit A1): untrusted diagram sources render under strict security', async () => {
+  const { MERMAID_SECURITY_LEVEL } = await import('../src/client/enhance.ts')
+  assert.equal(MERMAID_SECURITY_LEVEL, 'strict', "imported-content diagrams must never run under 'loose' (label HTML + click callbacks = stored XSS)")
+})

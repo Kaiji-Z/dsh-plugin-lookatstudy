@@ -147,7 +147,11 @@ const POLL_MS = 3_000
 type Listener = () => void
 
 async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
-  const res = await fetch(url, init)
+  // A2 gate: every plugin API call carries the marker header the dashboard's
+  // auth gate requires on mutating routes (harmless on GETs).
+  const headers = new Headers(init?.headers)
+  headers.set('x-lks-request', '1')
+  const res = await fetch(url, { ...init, headers })
   const body: unknown = await res.json().catch(() => null)
   if (!res.ok) {
     const error = body !== null && typeof body === 'object' && 'error' in body && typeof body.error === 'string'

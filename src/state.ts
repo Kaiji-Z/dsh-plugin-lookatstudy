@@ -7,7 +7,7 @@
  * @module dsh-plugin-lookatstudy/state
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
@@ -297,14 +297,55 @@ export function resolveStatePath(configured: string): string {
 }
 
 /**
- * Load persisted state; a missing file yields empty state, a corrupt file fails loud.
+ * Load persisted state; a missing file yields empty state, and an unusable
+ * file (torn bytes, future version) recovers from `.bak` or degrades to a
+ * fresh state instead of throwing out of the host's apply() (audit A3).
  * v1 → v2 migration: `completed` lessons become `mastered`, lessons gain `kind`
- * (default `study`). Newer files than this code knows are rejected.
+ * (default `study`).
  * @param path - state-file path.
  * @returns the loaded state.
  */
 export function loadState(path: string): LearningState {
-  if (!existsSync(path)) return emptyState()
+  if (existsSync(path)) {
+    try {
+      return parseStateFile(path)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      const backup = loadBackup(path)
+      if (backup !== null) {
+        console.error(`lookatstudy-plugin: state file unusable (${message}); recovered from ${path}.bak`)
+        return backup
+      }
+      console.error(`lookatstudy-plugin: state file unusable (${message}) and no backup survived — quarantining it and starting fresh (${path})`)
+      quarantine(path)
+      return emptyState()
+    }
+  }
+  // Crash window between the .bak copy and the rename: the backup holds the
+  // last durable generation.
+  return loadBackup(path) ?? emptyState()
+}
+
+function loadBackup(path: string): LearningState | null {
+  const bak = `${path}.bak`
+  if (!existsSync(bak)) return null
+  try {
+    return parseStateFile(bak)
+  } catch {
+    return null
+  }
+}
+
+function quarantine(path: string): void {
+  try {
+    renameSync(path, `${path}.corrupt-${Date.now().toString(36)}`)
+  } catch (error) {
+    console.error(`lookatstudy-plugin: could not quarantine the unusable state file (${String(error)})`)
+  }
+}
+
+/** Parse + migrate one state file; malformed bytes, shapes, and future versions throw. */
+function parseStateFile(path: string): LearningState {
   let parsed: unknown
   try {
     parsed = JSON.parse(readFileSync(path, 'utf8'))
@@ -389,15 +430,39 @@ export function loadState(path: string): LearningState {
 }
 
 /**
- * Persist state atomically (write a sibling temp file, then rename).
+ * Persist state atomically. The tmp file carries pid + random bytes so
+ * processes sharing one state.json (multi-profile installs) never interleave
+ * on the same temp path — a fixed name let one writer rename the other's
+ * half-written bytes into place; the previous generation is kept one deep as
+ * `.bak` for loadState recovery; the rename retries through the Windows
+ * AV/indexer EPERM window (audit A3).
  * @param path - state-file path.
  * @param state - state to persist.
  */
 export function saveState(path: string, state: LearningState): void {
   mkdirSync(dirname(path), { recursive: true })
-  const tmp = `${path}.tmp`
+  const tmp = `${path}.${process.pid}-${randomBytes(4).toString('hex')}.tmp`
   writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8')
-  renameSync(tmp, path)
+  try {
+    const fd = openSync(tmp, 'r+')
+    try { fsyncSync(fd) } finally { closeSync(fd) }
+  } catch { /* best-effort durability; the rename is atomic either way */ }
+  if (existsSync(path)) {
+    try { copyFileSync(path, `${path}.bak`) } catch { /* best-effort recovery generation */ }
+  }
+  for (let attempt = 0; ; attempt++) {
+    try {
+      renameSync(tmp, path)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if ((code === 'EPERM' || code === 'EACCES' || code === 'EBUSY') && attempt < 5) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20 * (attempt + 1))
+        continue
+      }
+      throw error
+    }
+  }
 }
 
 /**

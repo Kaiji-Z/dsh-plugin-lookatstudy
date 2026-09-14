@@ -53,10 +53,13 @@ class FakeResponse implements ResponseLike {
 class FakeRequest implements RequestLike {
   method: string
   url: string
+  /** Defaults mimic the panel's own same-origin calls (A2 gate: local Host + the POST marker). */
+  headers: Record<string, string>
   private listeners = new Map<string, Array<(chunk?: Buffer) => void>>()
-  constructor(method: string, url: string, body?: unknown) {
+  constructor(method: string, url: string, body?: unknown, headers?: Record<string, string>) {
     this.method = method
     this.url = url
+    this.headers = { host: 'localhost:3080', 'x-lks-request': '1', ...(headers ?? {}) }
     if (typeof body === 'string') this.pendingBody = Buffer.from(body, 'utf8')
     else if (body !== undefined) this.pendingBody = Buffer.from(JSON.stringify(body), 'utf8')
   }
@@ -82,6 +85,29 @@ async function handle(routes: Array<{ kind: string; path: string; handler: (req:
   await done
   return res
 }
+
+test('A2 auth gate: unmarked POSTs, foreign hosts, and foreign origins are refused', async () => {
+  const { state } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  state.active = true
+  const post = async (headers?: Record<string, string>): Promise<number> => {
+    const res = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/active', { active: false }, headers), new FakeResponse())
+    return res.status
+  }
+  assert.equal(await post({ 'x-lks-request': '' }), 403, 'a POST without the plugin marker is refused (drive-by fetch needs no preflight)')
+  assert.equal(state.active, true, 'the refused POST did not mutate state')
+  assert.equal(await post({ host: 'evil.example' }), 403, 'a foreign Host header is refused (DNS rebinding)')
+  assert.equal(await post({ origin: 'http://evil.example' }), 403, 'a foreign Origin is refused even with the marker')
+  assert.equal(await post({ origin: 'http://localhost:3080' }), 200, "the panel's own same-origin POST passes")
+  assert.equal(state.active, false)
+  const rebinding = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state', undefined, { host: 'evil.example' }), new FakeResponse())
+  assert.equal(rebinding.status, 403, 'GETs carry the Host check too')
+  const localGet = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state', undefined, { 'x-lks-request': '' }), new FakeResponse())
+  assert.equal(localGet.status, 200, 'GETs from the host page need no marker (img tags cannot send one)')
+  const attachment = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/attachment/ghost.png', undefined, { 'x-lks-request': '' }), new FakeResponse())
+  assert.equal(attachment.status, 404, 'attachment GET passes the gate and misses on the file (404, not 403)')
+})
 
 test('workbenchState assembles map, lesson html, notes, proposals, and due list', () => {
   const { state, courseId, lessonId } = fixture()
