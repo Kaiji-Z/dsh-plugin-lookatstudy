@@ -72,10 +72,20 @@ export function sanitizeQuiz(raw: unknown): SanitizeResult {
   list.slice(0, MAX_QUESTIONS).forEach((q, index) => {
     const item = (q ?? {}) as { prompt?: unknown; options?: unknown; answer?: unknown; explanation?: unknown }
     const prompt = typeof item.prompt === 'string' ? item.prompt.trim() : ''
-    const options = Array.isArray(item.options)
-      ? item.options.map(o => (typeof o === 'string' ? o.trim() : '')).filter(o => o !== '')
-      : []
-    const answer = typeof item.answer === 'number' && Number.isInteger(item.answer) ? item.answer : -1
+    // Audit C18: empty/whitespace options are dropped BEFORE the answer check,
+    // so the answer index must follow its ORIGINAL position through the filter
+    // — otherwise ["","B","C"] + answer:1 silently re-grades "C" as correct.
+    const kept: string[] = []
+    const indexMap = new Map<number, number>()
+    for (const [i, o] of (Array.isArray(item.options) ? item.options : []).entries()) {
+      if (typeof o === 'string' && o.trim() !== '') {
+        indexMap.set(i, kept.length)
+        kept.push(o.trim())
+      }
+    }
+    const options = kept
+    const rawAnswer = typeof item.answer === 'number' && Number.isInteger(item.answer) ? item.answer : -1
+    const answer = indexMap.get(rawAnswer) ?? -1
     const explanation = typeof item.explanation === 'string' ? item.explanation.trim() : ''
     if (prompt === '') {
       warnings.push(`question ${index + 1}: empty prompt dropped`)

@@ -203,3 +203,16 @@ test('issue #8 lifecycle storage: guess picks and fold states survive remounts a
   store.set('dsh-plugin-lookatstudy:acard-folded', '[]')
   assert.equal(acardFoldStoredOf('a1', storage), null, 'junk storage degrades to the default')
 })
+
+test('audit C18: dropped options remap the answer index instead of re-grading', async () => {
+  const { sanitizeQuiz } = await import('../src/artifacts.ts')
+  const res = sanitizeQuiz({ title: 'T', questions: [{ prompt: 'p', options: ['', 'B', 'C'], answer: 1, explanation: '' }] })
+  const q = (res.data.questions as Array<{ options: string[]; answer: number }>)[0]!
+  assert.deepEqual(q.options, ['B', 'C'])
+  assert.equal(q.answer, 0, 'answer 1 (original "B") follows its option through the filter — judged "B", not "C"')
+  assert.throws(
+    () => sanitizeQuiz({ title: 'T', questions: [{ prompt: 'p', options: ['', 'B'], answer: 1, explanation: '' }] }),
+    /fewer than 2 usable options/,
+    'a question left with under 2 options by the drop is itself dropped (fail-loud, never mis-graded)',
+  )
+})

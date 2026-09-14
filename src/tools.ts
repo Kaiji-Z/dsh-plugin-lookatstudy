@@ -362,6 +362,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
             courseTitle: { type: 'string', required: true },
             fileCount: { type: 'integer', required: true },
             fullTreeCount: { type: 'integer', required: true },
+            designSeq: { type: 'integer', description: 'Pending-design sequence (audit C29): renders detect stale briefs.' },
             part: { type: 'integer', description: 'Brief part this call rendered (context-budget batching).' },
             partCount: { type: 'integer', description: 'Total brief parts; >1 means design+apply per part.' },
           },
@@ -370,12 +371,22 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     },
   }
   /** Shared render: the brief rides the design_required branch; imported stays the old summary. */
-  const designOrImportedRender = (_args: unknown, value: { status: string; title?: string; sections?: number; lessons?: number; firstLessonId?: string; firstLessonTitle?: string }) => [{
+  /** Audit C29: every brief carries a sequence number; renders of a stale
+   *  value (a newer import replaced the pending design) say so instead of
+   *  presenting the wrong brief. */
+  let designSeq = 0
+  const setPendingDesign = (pd: PendingDesign | null): void => {
+    pendingDesign = pd
+    designSeq += 1
+  }
+  const designOrImportedRender = (_args: unknown, value: { status: string; designSeq?: number; title?: string; sections?: number; lessons?: number; firstLessonId?: string; firstLessonTitle?: string }) => [{
     type: 'text' as const,
     text: value.status === 'design_required'
       ? (pendingDesign === null
           ? 'Course design required — the brief is no longer pending; call the import tool again to re-fetch it.'
-          : renderDesignBrief(pendingDesign, pendingPart))
+          : (typeof value.designSeq === 'number' && value.designSeq !== designSeq
+              ? 'This design brief is STALE — a newer import replaced the pending design. Call the import tool again for the fresh brief; do not design against this one.'
+              : renderDesignBrief(pendingDesign, pendingPart)))
       : `Imported course “${value.title}” (${value.sections} sections, ${value.lessons} lessons). `
         + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}).`,
   }]
@@ -416,7 +427,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
         throw new Error(`lookatstudy-plugin: no importable files found in ${args.path}`)
       }
       const title = args.title ?? basename(args.path.replaceAll('\\', '/'))
-      pendingDesign = buildPendingDesignFromFolder(args.path, title, docs, { translations: inventory.translations, images: inventory.images })
+      setPendingDesign(buildPendingDesignFromFolder(args.path, title, docs, { translations: inventory.translations, images: inventory.images }))
       // Inline local images as data URLs (upstream scanner-images, 200KB cap per image)
       const localImages = new Map<string, string>()
       for (const img of inventory.images) {
@@ -443,6 +454,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     pd.partCount = partCount
     return {
       status: 'design_required' as const,
+      designSeq,
       repo: pd.repo,
       branch: pd.branch,
       courseTitle: partCount > 1 ? `${pd.courseTitle} (part ${part})` : pd.courseTitle,
@@ -468,7 +480,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     }
     const inventory = await fetchRepoInventory(owner, repo, resolvedBranch, fetchFn, undefined, exec.signal)
     const outlines = await fetchFileOutlines(inventory.fileList.map(f => f.path), owner, repo, inventory.branch, fetchFn, undefined, exec.signal)
-    pendingDesign = buildPendingDesign(canonicalRef, owner, repo, inventory, outlines)
+    setPendingDesign(buildPendingDesign(canonicalRef, owner, repo, inventory, outlines))
     if (pendingDesign.files.length === 0) {
       throw new Error('lookatstudy-plugin: course files were discovered but no outlines could be fetched (CDN unreachable?)')
     }
@@ -541,7 +553,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
 
 ${p.text}`))
           if (docs.length === 0) throw new Error('lookatstudy-plugin: CC subtitle text was empty after chunking')
-          pendingDesign = buildPendingDesignFromUrl(identity, cc.title, docs)
+          setPendingDesign(buildPendingDesignFromUrl(identity, cc.title, docs))
           pendingPart = part
           return designRequiredValue(pendingDesign, part)
         }
@@ -561,7 +573,7 @@ ${p.text}`))
         const part = args.part ?? 1
         const existing = part <= 1 ? store.get().courses.find(c => c.source === 'url' && c.sourceRef === route.url) : undefined
         if (existing !== undefined) return { status: 'imported' as const, ...toImportValue(existing) }
-        pendingDesign = buildPendingDesignFromUrl(route.url, `arXiv:${route.arxivId}`, docs)
+        setPendingDesign(buildPendingDesignFromUrl(route.url, `arXiv:${route.arxivId}`, docs))
         pendingPart = part
         return designRequiredValue(pendingDesign, part)
       }
@@ -579,7 +591,7 @@ ${p.text}`))
       }
       const docs = prepareSingleDoc(article.title.slice(0, 60), article.markdown)
       if (docs.length === 0) throw new Error('lookatstudy-plugin: article body was empty after chunking')
-      pendingDesign = buildPendingDesignFromUrl(identity, article.title, docs)
+      setPendingDesign(buildPendingDesignFromUrl(identity, article.title, docs))
       pendingPart = part
       return designRequiredValue(pendingDesign, part)
     },
@@ -717,7 +729,7 @@ ${p.text}`))
         const imported = toImportValue(importCourse(state, parsed, pd.source, pd.url, languageTarget))
         return { ...imported, created: state.courses.length > before }
       })
-      pendingDesign = null
+      setPendingDesign(null)
       pendingPart = 1
       return { ...value, droppedLessons: validated.droppedLessons, ...(languageTarget !== null ? { languageTarget } : {}) }
     },
@@ -1019,9 +1031,11 @@ ${p.text}`))
     },
     async execute(args) {
       return mutate((state) => {
-        // Opening IS attempting (LookatStudy markNodeAttempted): first open
-        // marks in_progress, seeds mastery 0.5, and runs the dual-track unlock.
-        const { ref } = attemptLesson(state, args.lessonId, new Date())
+        const ref = findLesson(state, args.lessonId)
+        // Audit C15: exam nodes never enter the attempt state machine —
+        // study_lesson on an exam is a read (bank status + guide), the exam
+        // surface is the bank + attempt flow.
+        if (ref.lesson.kind !== 'exam') attemptLesson(state, args.lessonId, new Date())
         state.focus = { lessonId: ref.lesson.id }
         return toLessonValue(ref, state)
       })

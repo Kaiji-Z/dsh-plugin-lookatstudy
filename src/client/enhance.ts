@@ -184,7 +184,11 @@ export async function enhanceMath(container: HTMLElement): Promise<number> {
   const targets: Text[] = []
   let node: Node | null
   while ((node = walker.nextNode()) !== null) {
-    if (findMathSpan((node as Text).data) !== null && (node as Text).parentElement?.tagName !== 'CODE') targets.push(node as Text)
+    // The CODE guard covers plain blocks; shiki's output nests token text
+    // under span.line>span, so the closest() check is what actually fences
+    // the highlighted card (audit C24 — $..$ inside code must not render).
+    const parent = (node as Text).parentElement
+    if (findMathSpan((node as Text).data) !== null && parent?.tagName !== 'CODE' && parent?.closest('.lks-shiki, .lks-mermaid') === null) targets.push(node as Text)
   }
   for (const t of targets) {
     // drain the node: a single text run can hold several spans ("$a$ and $b$")

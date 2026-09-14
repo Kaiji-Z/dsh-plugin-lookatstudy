@@ -165,6 +165,11 @@ export interface ExamAttempt {
   stars: number | null
   terminated: boolean
   perQuestion: ExamAttemptPerQuestion[] | null
+  /** Audit C16: the bank snapshot this attempt is graded against — a
+   *  regenerate mid-attempt must not cross-grade old answers onto new
+   *  questions. Absent on pre-snapshot attempts (graded against the live
+   *  bank, the old behavior). */
+  snapshot?: ExamBankQuestion[]
 }
 
 /** A section holding an ordered list of lessons. */
@@ -245,6 +250,9 @@ export interface LearningState {
   memoryGlobal: string | null
   /** Per-course friction-pattern memory. */
   memoryPatterns: Record<string, string>
+  /** Course-less friction the tutor logs before any lesson is open (audit
+   *  C20, additive): the global consolidation slot's material, capped at 50. */
+  frictionGlobal?: FrictionEntry[]
   /** Mastery proposals across courses. */
   proposals: MasteryProposal[]
   /** Lesson id → dsh session id (the legacy single-binding thread system —
@@ -294,7 +302,7 @@ const FRICTION_CAP = 10
 /** Fresh empty state for a first run: dormant until the learner clicks 开始学习. */
 export function emptyState(): LearningState {
   return {
-    version: 2, courses: [], active: false, mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, artifacts: {},
+    version: 2, courses: [], active: false, mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, frictionGlobal: [], artifacts: {},
     proposals: [], lessonSessions: {}, lessonThreads: {}, trash: [], lastConsolidatedAt: null,
     xp: { total: 0, todayKey: '', todayXp: 0 },
     streak: { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
@@ -413,6 +421,7 @@ function parseStateFile(path: string): LearningState {
     focus: raw.focus ?? null,
     memoryGlobal: raw.memoryGlobal ?? null,
     memoryPatterns: raw.memoryPatterns ?? {},
+    frictionGlobal: raw.frictionGlobal ?? [],
     proposals: raw.proposals ?? [],
     lessonSessions: raw.lessonSessions ?? {},
     // the thread-group system: existing groups load verbatim; every legacy
@@ -845,6 +854,11 @@ export function attemptLesson(
   now: Date,
 ): { ref: LessonRef; started: boolean; unlocked: Array<{ id: string; title: string }> } {
   const ref = findLesson(state, lessonId)
+  // Audit C15: exam nodes never enter the study state machine — they stay
+  // 'available' forever and are gated on sibling mastery in the UI only.
+  if (ref.lesson.kind === 'exam') {
+    throw new Error(`lookatstudy-plugin: exam node ${JSON.stringify(lessonId)} never enters the study state machine (it stays available; the exam surface is the bank + attempt flow)`)
+  }
   if (ref.lesson.status === 'locked') {
     throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is locked; complete earlier lessons first`)
   }
@@ -956,12 +970,14 @@ export function applyExamBank(state: LearningState, lessonId: string, questions:
   return { questionCount: bank.length, kcCount: new Set(bank.map(q => q.kcTitle).filter(k => k !== null)).size }
 }
 
-/** Drop the bank back to idle (regenerate; history snapshots stay self-contained). */
+/** Drop the bank back to idle (regenerate; open attempts settle against their
+ * snapshots first — audit C16: never cross-grade a live attempt). */
 export function regenerateExamBank(state: LearningState, lessonId: string): void {
   const ref = findLesson(state, lessonId)
   if (ref.lesson.kind !== 'exam') {
     throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is not an exam node`)
   }
+  settleDanglingAttempts(state, lessonId)
   ref.lesson.examBank = { status: 'idle', questions: [] }
 }
 
@@ -1001,8 +1017,12 @@ export function startExamAttempt(state: LearningState, lessonId: string, now: Da
     stars: null,
     terminated: false,
     perQuestion: null,
+    // C16: grading runs against THIS snapshot. C28: snapshots are the heaviest
+    // persisted state — the log keeps only the newest 20 attempts.
+    snapshot: ref.lesson.examBank.questions.map(q => ({ ...q, options: [...q.options] })),
   }
-  ref.lesson.examAttemptLog = [...log, attempt]
+  const kept = [...log, attempt]
+  ref.lesson.examAttemptLog = kept.length > 20 ? kept.slice(kept.length - 20) : kept
   return { attemptId: attempt.id, questions: ref.lesson.examBank.questions }
 }
 
@@ -1016,7 +1036,8 @@ export function recordExamAnswer(state: LearningState, lessonId: string, attempt
   if (attempt.finishedAt !== null) {
     throw new Error(`lookatstudy-plugin: exam attempt ${JSON.stringify(attemptId)} already finished`)
   }
-  const question = ref.lesson.examBank?.questions.find(q => q.id === questionId)
+  // C16: answers validate against the attempt's snapshot when one exists.
+  const question = (attempt.snapshot ?? (ref.lesson.examBank?.status === 'ready' ? ref.lesson.examBank.questions : [])).find(q => q.id === questionId)
   if (question === undefined) {
     throw new Error(`lookatstudy-plugin: exam question ${JSON.stringify(questionId)} not in the bank`)
   }
@@ -1043,8 +1064,9 @@ export function submitExamAttempt(state: LearningState, lessonId: string, attemp
   if (attempt.finishedAt !== null) {
     throw new Error(`lookatstudy-plugin: exam attempt ${JSON.stringify(attemptId)} already finished`)
   }
-  const bank = ref.lesson.examBank
-  const questions = bank?.status === 'ready' ? bank.questions : []
+  // Audit C16: grade against the attempt-time snapshot — a mid-attempt
+  // regenerate must not cross-grade old answers onto new questions.
+  const questions = attempt.snapshot ?? (ref.lesson.examBank?.status === 'ready' ? ref.lesson.examBank.questions : [])
   const perQuestion: ExamAttemptPerQuestion[] = questions.map(q => {
     const user = attempt.answers[q.id] ?? ''
     return {
@@ -1096,6 +1118,10 @@ export function recordAnswer(
   now: Date,
 ): AnswerResult {
   const ref = findLesson(state, lessonId)
+  // Audit C15: exam mastery is the bank/attempt surface, never recordAnswer's.
+  if (ref.lesson.kind === 'exam') {
+    throw new Error(`lookatstudy-plugin: exam node ${JSON.stringify(lessonId)} takes exam attempts (start/submit), not study_record_answer`)
+  }
   if (ref.lesson.status === 'locked') {
     throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is locked; open it with study_lesson first`)
   }
@@ -1311,7 +1337,9 @@ export function addFriction(
 ): void {
   const entry: FrictionEntry = { category, summary, at: now.toISOString() }
   if (lessonId === null) {
-    // Course-less friction still counts toward the global pattern slot material.
+    // Audit C20: course-less friction lands in the global slot — the comment
+    // used to claim this while the entry silently vanished.
+    state.frictionGlobal = [...(state.frictionGlobal ?? []), entry].slice(-50)
     return
   }
   const ref = findLesson(state, lessonId)
@@ -1419,8 +1447,10 @@ export function recordArtifact(state: LearningState, lessonId: string, artifact:
   const existing = state.artifacts[lessonId] ?? []
   const hit = existing.find(a => a.hash === artifact.hash)
   if (hit !== undefined) return { artifact: hit, created: false }
+  // Audit C28: one lesson keeps its 100 newest artifacts — content-hash dedup
+  // bounds duplicates, not volume.
   const next = [...existing, artifact]
-  state.artifacts[lessonId] = next
+  state.artifacts[lessonId] = next.length > 100 ? next.slice(next.length - 100) : next
   return { artifact, created: true }
 }
 
@@ -1518,6 +1548,13 @@ export function resolveProposal(state: LearningState, proposalId: string, accept
     }
   }
   proposal.status = accept ? 'applied' : 'rejected'
+  // Audit C28: resolved proposals are sediment — keep the newest 20 plus every
+  // pending one, so state.json does not grow monotonically with the campaign.
+  const resolved = state.proposals.filter(p => p.status !== 'pending')
+  if (resolved.length > 20) {
+    const keep = new Set(resolved.slice(resolved.length - 20).map(p => p.id))
+    state.proposals = state.proposals.filter(p => p.status === 'pending' || keep.has(p.id))
+  }
   return proposal
 }
 
@@ -1766,6 +1803,12 @@ export function gatherConsolidationWindow(state: LearningState, capPerLesson = 1
   const entries: ConsolidationWindow['entries'] = []
   let frictionCount = 0
   let practiceCount = 0
+  // Audit C20: course-less friction joins the window (the global pattern slot's material).
+  for (const f of state.frictionGlobal ?? []) {
+    if (since !== null && f.at <= since) continue
+    entries.push({ lessonId: '', lessonTitle: '(课级)', kind: 'friction', category: f.category, text: f.summary ?? '(no summary)', at: f.at })
+    frictionCount++
+  }
   for (const course of state.courses) {
     for (const section of course.sections) {
       for (const lesson of section.lessons) {

@@ -32,3 +32,30 @@ test('audit C19 grep gate: no prompt surface points at the phantom study_view to
     assert.ok(!body.includes('study_view'), `${f} references study_view — the tool does not exist; recovery text must point at study_lesson`)
   }
 })
+
+test('audit C24: the KaTeX walker fences shiki/mermaid cards (source gate)', async () => {
+  const { readFileSync: read } = await import('node:fs')
+  const body = read(new URL('../src/client/enhance.ts', import.meta.url), 'utf8')
+  assert.ok(body.includes("closest('.lks-shiki, .lks-mermaid')"), 'the math walker skips highlighted code and diagram cards — $..$ inside shiki tokens must not render')
+})
+
+test('audit C29: a stale design brief renders as stale after a newer import', async () => {
+  const { studyTools } = await import('../src/tools.ts')
+  const { emptyState } = await import('../src/state.ts')
+  const articleHtml = () => {
+    const paras = Array.from({ length: 12 }, (_v, i) => `<p>Paragraph ${i} of a real article body with teaching substance.</p>`).join('')
+    return `<html><head><title>Stub Article ${String(Math.random()).slice(2, 6)}</title></head><body><article><h1>Stub</h1>${paras}</article></body></html>`
+  }
+  const state = emptyState()
+  const tools = studyTools({ get: () => state, save: () => {} }, { fetch: async () => new Response(articleHtml(), { status: 200 }) })
+  const byName = new Map(tools.map(t => [t.name, t]))
+  const run = async (name: string, args: Record<string, unknown>): Promise<any> => byName.get(name)!.execute(args, { signal: new AbortController().signal } as never)
+  const first = await run('study_import_url', { url: 'https://a.example/one' })
+  const second = await run('study_import_url', { url: 'https://b.example/two' })
+  const tool = byName.get('study_import_url')!
+  const stale = tool.output.render({ url: 'x' }, first)[0]!.text
+  assert.ok(stale.includes('STALE'), 'the superseded brief renders as stale instead of the newer import\'s brief')
+  const fresh = tool.output.render({ url: 'y' }, second)[0]!.text
+  assert.ok(!fresh.includes('STALE'), 'the current brief renders normally')
+  assert.ok(first.designSeq !== second.designSeq, 'the two briefs carry distinct sequence numbers')
+})
