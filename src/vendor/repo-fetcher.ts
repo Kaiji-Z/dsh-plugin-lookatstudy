@@ -575,7 +575,7 @@ export function docsToDiscoveredFiles(docs: { path: string; title?: string }[]):
 /**
  * 用 Node 的 https 模块拉取（可单独控制 SSL 验证）。
  * GitHub Tree API 的证书链在部分环境（Node 内置 CA）验证失败（中间证书缺失），
- * 对这一个获取公开文件树的请求用 rejectUnauthorized:false 绕过。
+ * TLS 校验默认开启 (audit C27);仅 LKS_INSECURE_TLS=1 时显式放宽。
  * 风险可控：获取的是公开文件路径列表（无敏感数据），且只用于此请求。
  */
 // Plugin-side test seam (documented divergence from upstream): the tree APIs
