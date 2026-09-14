@@ -23,10 +23,10 @@ const COURSE_MD = [
   '### Review', 'review body',
 ].join('\n')
 
-function setup(fetch?: typeof fetch): { byName: Map<string, ToolDefinition>; state: LearningState; saves: () => number } {
+function setup(fetchImpl?: typeof globalThis.fetch): { byName: Map<string, ToolDefinition>; state: LearningState; saves: () => number } {
   const state = emptyState()
   let saves = 0
-  const tools = studyTools({ get: () => state, save: () => { saves += 1 } }, fetch ? { fetch } : {})
+  const tools = studyTools({ get: () => state, save: () => { saves += 1 } }, fetchImpl ? { fetch: fetchImpl } : {})
   const byName = new Map(tools.map(t => [t.name, t]))
   return { byName, state, saves: () => saves }
 }
@@ -131,11 +131,11 @@ test('presentCall and presentResult are total over representative values', async
     const tool = byName.get(name)!
     const call = tool.presentCall?.(args)
     assert.ok(call === undefined || typeof call.card === 'string')
-    const meta = tool.output.presentationMeta?.(args, value)
+    const meta = tool.output.presentationMeta?.(args, value as never)
     if (tool.presentResult && meta !== undefined) {
       const result = { content: [], isError: false, meta }
       const view = tool.presentResult!(args, result as never)
-      assert.equal(view.card, 'generic')
+      assert.equal(view!.card, 'generic')
       assert.ok((view as { content?: Array<{ text: string }> }).content!.length > 0)
     }
   }

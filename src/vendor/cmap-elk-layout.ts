@@ -459,7 +459,7 @@ let elkPromise: Promise<ElkInstance> | null = null;
 
 /** elkjs 单例:elk.bundled.js 主线程版(无 Worker,打包器友好,React Flow 生态同款)。 */
 function loadElk(): Promise<ElkInstance> {
-  elkPromise ??= import(/* @vite-ignore */ "https://esm.sh/elkjs@0.12/lib/elk.bundled.js").then((mod: { default: unknown }) => {
+  elkPromise ??= import(/* @vite-ignore */ "https://esm.sh/elkjs@0.12/lib/elk.bundled.js" as string).then((mod: { default: unknown }) => {
     // interop 双环境:CJS(Node/tsx)default 在 mod.default;打包后 ESM 可能整包即构造器
     const m = mod as unknown as Record<string, unknown>;
     const Ctor = (m.default ?? m) as new () => ElkInstance;

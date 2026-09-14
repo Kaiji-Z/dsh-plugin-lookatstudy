@@ -64,7 +64,7 @@ test('deleteNote removes one entry; ids stay collision-free across deletions; un
   const courseId = state.courses[0]!.id
   const lessonId = `${courseId}:0:0`
   const first = addNote(state, lessonId, 'understand', 'a', 'body a', 'ai', null, T0)
-  const second = addNote(state, lessonId, 'record', 'b', 'body b', 'learner', 'quote b', T0)
+  const second = addNote(state, lessonId, 'record', 'b', 'body b', 'content', 'quote b', T0)
   const third = addNote(state, lessonId, 'understand', 'c', 'body c', 'ai', null, T0)
   assert.notEqual(first.id, second.id)
 
@@ -165,7 +165,7 @@ test('recordAnswer refuses locked lessons', () => {
 test('the whole path completes and reports course completion', () => {
   const { state, courseId } = importedFixture()
   const ids = [`${courseId}:0:0`, `${courseId}:0:1`, `${courseId}:1:0`]
-  const last = ids.reduce((_prev, id) => completeLesson(state, id, T0), null)
+  const last = ids.reduce<ReturnType<typeof completeLesson> | null>((_prev, id) => completeLesson(state, id, T0), null)
   assert.equal(last?.courseComplete, true, 'every STUDY lesson mastered (the exam node never gates completion)')
   assert.deepEqual(last?.unlocked, [])
   assert.equal(nextLesson(findCourse(state, courseId), ids[2]!), null)
@@ -207,9 +207,8 @@ test('v1 state migrates: completed→mastered, kind defaults, exam nodes backfil
     // Degrade to a v1 shape: completed statuses, no kind fields.
     state.version = 1 as never
     const v1 = JSON.parse(JSON.stringify(state), (k, v) => k === 'kind' ? undefined : v) as typeof state
-    v1.courses[0]!.sections[0]!.lessons[0]!.status = 'completed' as never
-    v1.sections = undefined as never
-    writeFileSync(path, JSON.stringify(v1), 'utf8')
+  v1.courses[0]!.sections[0]!.lessons[0]!.status = 'completed' as never
+  writeFileSync(path, JSON.stringify(v1), 'utf8')
     const migrated = loadState(path)
     assert.equal(migrated.version, 2)
     const section = migrated.courses[0]!.sections[0]!

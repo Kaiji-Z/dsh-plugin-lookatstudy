@@ -31,7 +31,8 @@ export function unseenArtifacts(lessonId: string, artifacts: readonly ArtifactRo
   let seen: Set<string>
   try {
     const raw = storage.getItem(seenArtifactsKey(lessonId))
-    seen = new Set(Array.isArray(JSON.parse(raw ?? '[]')) ? JSON.parse(raw ?? '[]') as unknown[] : [])
+    const parsed = JSON.parse(raw ?? '[]') as unknown
+    seen = new Set(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [])
   } catch {
     seen = new Set()
   }
@@ -39,7 +40,7 @@ export function unseenArtifacts(lessonId: string, artifacts: readonly ArtifactRo
 }
 
 /** Mark artifact ids seen (opening the notebook counts as seeing them). */
-export function markArtifactsSeen(lessonId: string, ids: string[], storage: Pick<Storage, 'setItem'> = localStorage): void {
+export function markArtifactsSeen(lessonId: string, ids: string[], storage: Pick<Storage, 'getItem' | 'setItem'> = localStorage): void {
   try {
     let seen: string[] = []
     try {
@@ -184,7 +185,7 @@ export function DiagramCard({ artifact }: { artifact: ArtifactRow }): ReactNode 
             ? createElement('pre', { className: 'lks-acard-code' }, mermaid)
             : createElement(CanvasStage, { testid: 'diagram-modal-stage' }, createElement('div', {
                 className: 'lks14-modal-diagram',
-                ref: (el: HTMLDivElement | null) => {
+                ref: (el: HTMLDivElement | null): void => {
                   if (el !== null) void renderMermaidInto(el, mermaid, () => { setFailed(true) })
                 },
               }))))

@@ -80,7 +80,7 @@ export function apply(ctx: Context, config: Config): void {
   type HostModelInfo = { id: string; provider: string; contextWindow: number | null }
   let resolveModelInfo: (() => Promise<HostModelInfo | null>) | null = null
   ctx.inject(['agentDefaultModel', 'llm'], (modelCtx) => {
-    const faces = modelCtx as {
+    const faces = modelCtx as unknown as {
       agentDefaultModel: { currentSelection(): { provider: string; model: string } }
       llm: { resolveModelInfo(provider: string, model: string): Promise<{ id: string; context?: { contextWindow?: number } }> }
     }
@@ -101,7 +101,7 @@ export function apply(ctx: Context, config: Config): void {
     // state file, created eagerly so the client can adopt it as a workspace.
     const studyAreaPath = join(dirname(statePath), 'study-area')
     mkdirSync(studyAreaPath, { recursive: true })
-    const disposeDashboard = registerDashboard(webCtx.webServer, { store, studyAreaPath, statePath, onActiveChange: surface.sync, modelInfo })
+    const disposeDashboard = registerDashboard((webCtx as unknown as { webServer: import('./dashboard.ts').RouteRegistry }).webServer, { store, studyAreaPath, statePath, onActiveChange: surface.sync, modelInfo })
     webCtx.effect(() => disposeDashboard, 'lookatstudy.dashboard()')
   })
 }

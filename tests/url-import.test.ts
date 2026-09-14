@@ -18,9 +18,9 @@ import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
 
 const exec = { signal: new AbortController().signal } as unknown as ToolRunContext
 
-function setup(fetch?: typeof fetch): { byName: Map<string, ToolDefinition>; state: LearningState } {
+function setup(fetchImpl?: typeof globalThis.fetch): { byName: Map<string, ToolDefinition>; state: LearningState } {
   const state = emptyState()
-  const tools = studyTools({ get: () => state, save: () => {} }, fetch ? { fetch } : {})
+  const tools = studyTools({ get: () => state, save: () => {} }, fetchImpl ? { fetch: fetchImpl } : {})
   return { byName: new Map(tools.map(t => [t.name, t])), state }
 }
 
@@ -97,7 +97,7 @@ test('arXiv URL: PDF text layer becomes the design source', async () => {
 const WBI_NAV = JSON.stringify({ code: 0, data: { wbi_img: { img_url: 'https://i0.hdslb.com/bfs/wbi/abcd1234.png', sub_url: 'https://i0.hdslb.com/bfs/wbi/efgh5678.png' } } })
 const CC_BODY = JSON.stringify({ body: Array.from({ length: 60 }, (_v, i) => ({ from: i, to: i + 1, content: `第${i}句梯度下降的直觉讲解。` })) })
 
-function biliFetch(pages: { cid: number; page?: number; part?: string }[], ccByCid: Record<number, { lan: string; url: string }[]>): typeof fetch {
+function biliFetch(pages: { cid: number; page?: number; part?: string }[], ccByCid: Record<number, { lan?: string; lan_doc?: string; subtitle_url?: string }[]>): typeof fetch {
   return async (input) => {
     const url = String(input)
     if (url.includes('/x/web-interface/view')) {

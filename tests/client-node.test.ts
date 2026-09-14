@@ -80,6 +80,7 @@ test('quizOptions extracts the last consecutive A–D block and rejects noise', 
 function statePayload(mode: StudyState['mode']): StudyState {
   return {
     mode,
+    active: true,
     courses: [],
     focusLessonId: null,
     lesson: null,
@@ -87,6 +88,12 @@ function statePayload(mode: StudyState['mode']): StudyState {
     due: [],
     pendingProposals: [],
     memory: { global: null, lesson: null, pattern: null },
+    lessonSessions: {},
+    lessonThreads: {},
+    progress: { totalXp: 0, level: 1, levelPct: 0, todayXp: 0, dailyGoal: 30, streak: 0, longestStreak: 0, freezeCount: 0 },
+    statePath: 'C:/state.json',
+    version: 'test',
+    model: null,
   }
 }
 
@@ -544,7 +551,7 @@ test('E1/E6: the workbench state carries the budget flag; the surface directive 
   const { emptyState, importCourse } = await import('../src/state.ts')
   const state = emptyState()
   state.active = true
-  importCourse(state, { title: '预算测试', source: 'markdown', sourceRef: 'test:budget', createdAt: '2026-09-07T00:00:00Z', sections: [{ title: '一', lessons: [{ title: '甲', anchor: null, body: '正文' }] }] })
+  importCourse(state, { title: '预算测试', sections: [{ title: '一', anchor: '一', lessons: [{ title: '甲', anchor: '甲', body: '正文' }] }] }, 'markdown', 'test:budget')
   state.focus = { lessonId: state.courses[0]!.sections[0]!.lessons[0]!.id }
   assert.equal(workbenchState(state, new Date()).historyBudget, false, 'absent flag reads false')
   state.historyBudget = true

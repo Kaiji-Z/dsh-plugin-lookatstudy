@@ -17,7 +17,7 @@ export interface FeedEvent {
   readonly seq: number
   readonly data?: {
     readonly content?: readonly { readonly type?: string; readonly text?: string }[]
-    readonly message?: { readonly content?: readonly { readonly kind?: string; readonly type?: string; readonly text?: string; readonly content?: readonly { readonly type?: string; readonly text?: string }[] }[]; readonly blocks?: readonly { readonly kind?: string; readonly text?: string }[]; readonly isError?: boolean; readonly source?: { readonly callId?: string } }
+    readonly message?: { readonly content?: readonly { readonly kind?: string; readonly type?: string; readonly text?: string; readonly content?: readonly { readonly type?: string; readonly text?: string }[] }[]; readonly blocks?: readonly { readonly kind?: string; readonly type?: string; readonly text?: string; readonly content?: readonly { readonly type?: string; readonly text?: string }[] }[]; readonly isError?: boolean; readonly source?: { readonly callId?: string } }
     readonly chunk?: { readonly type?: string; readonly text?: string }
     readonly attemptId?: string
     readonly source?: { readonly kind?: string }
@@ -206,10 +206,10 @@ export function hydrateArtifactRows(rows: readonly ChatRow[], artifacts?: readon
   const claimed = new Set<string>()
   const out: ChatRow[] = []
   for (const row of rows) {
-    const type = row.role === 'tool' && row.toolState === 'done' && row.resultText !== undefined
+    const type = row.role === 'tool' && row.toolState === 'done' && row.resultText !== undefined && row.text !== undefined
       ? ARTIFACT_TOOLS[row.text]
       : undefined
-    if (type === undefined) { out.push(row); continue }
+    if (type === undefined || row.resultText === undefined) { out.push(row); continue }
     const parsed = parseRendered(type, row.resultText)
     const unclaimed = artifacts.filter(a => a.artifactType === type && !claimed.has(a.id))
     let match: ArtifactLike | undefined

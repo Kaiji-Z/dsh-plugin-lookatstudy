@@ -262,8 +262,8 @@ class StudyStore {
   }
 
   /** Full-text lesson search (rail fallback when local title matching misses). */
-  async searchLessons(query: string): Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>> {
-    const body = await fetchJson(`/lookatstudy/api/search?q=${encodeURIComponent(query)}`) as { matches?: Array<{ lessonId: string; lessonTitle: string; snippet: string }> }
+  async searchLessons(query: string): Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string; courseTitle: string }>> {
+    const body = await fetchJson(`/lookatstudy/api/search?q=${encodeURIComponent(query)}`) as { matches?: Array<{ lessonId: string; lessonTitle: string; snippet: string; courseTitle: string }> }
     return body.matches ?? []
   }
 
@@ -417,7 +417,7 @@ class StudyStore {
   }
 
   /** Synthesize one speakable chunk to MP3 (host-side Edge TTS, cache-first). */
-  async tts(text: string, voice?: string): Promise<ArrayBuffer> {
+  async tts(text: string, voice?: string): Promise<Uint8Array> {
     const body = await fetchJson('/lookatstudy/api/tts', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -429,7 +429,7 @@ class StudyStore {
     const bin = atob(raw)
     const bytes = new Uint8Array(bin.length)
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-    return bytes.buffer
+    return bytes
   }
 }
 
@@ -478,7 +478,7 @@ export function useStudy(): {
   setHistoryBudget: (on: boolean) => Promise<void>
   uploadAttachment: (name: string, dataBase64: string) => Promise<string>
   setFocus: (lessonId: string) => Promise<void>
-  searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>
+  searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string; courseTitle: string }>>
   deleteCourse: (courseId: string) => Promise<void>
   deleteNote: (lessonId: string, noteId: string) => Promise<void>
   editNote: (lessonId: string, noteId: string, text: string) => Promise<void>
@@ -493,6 +493,7 @@ export function useStudy(): {
   recordReview: (lessonId: string, quality: 1 | 4 | 5) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string | null, title?: string) => Promise<void>
   lessonThreadOp: (lessonId: string, sessionId: string, op: 'rename' | 'archive' | 'delete', extra?: { title?: string; archived?: boolean }) => Promise<{ active: string | null; threads: number }>
+  tts: (text: string, voice?: string) => Promise<Uint8Array>
 } {
   const data = useSyncExternalStore(studyStore.subscribe, studyStore.getSnapshot, studyStore.getSnapshot)
   return {
@@ -503,6 +504,7 @@ export function useStudy(): {
     uploadAttachment: studyStore.uploadAttachment.bind(studyStore),
     setFocus: studyStore.setFocus.bind(studyStore),
     searchLessons: studyStore.searchLessons.bind(studyStore),
+    tts: studyStore.tts.bind(studyStore),
     deleteCourse: studyStore.deleteCourse.bind(studyStore),
     deleteNote: studyStore.deleteNote.bind(studyStore),
     editNote: studyStore.editNote.bind(studyStore),

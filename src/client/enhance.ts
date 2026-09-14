@@ -180,9 +180,10 @@ function findMathSpan(text: string): { before: string; tex: string; after: strin
   const display = /\$\$([^$]+)\$\$/.exec(text)
   const inline = /\$([^$\n]+)\$/.exec(text)
   if (display === null && inline === null) return null
-  const m = display !== null && (inline === null || display.index <= inline.index) ? { ...display, display: true } : inline === null ? null : { ...inline, display: false }
+  const useDisplay = display !== null && (inline === null || display.index <= inline.index)
+  const m = useDisplay ? display : inline
   if (m === null) return null
-  return { before: text.slice(0, m.index), tex: m[1]!, after: text.slice(m.index + m[0].length), display: m.display }
+  return { before: text.slice(0, m.index), tex: m[1]!, after: text.slice(m.index + m[0].length), display: useDisplay }
 }
 
 /** KaTeX every $..$ / $$..$$ in the container; degrades to plain text on any failure. */

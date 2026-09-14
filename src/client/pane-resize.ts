@@ -62,7 +62,7 @@ export function parseStoredWidth(v: string | null | undefined, min: number, max:
  * no zoom; this is the one place our port must normalize).
  */
 export function panelZoomOf(el: HTMLElement | null): number {
-  const z = el?.closest('.lks14')?.style.zoom
+  const z = (el?.closest('.lks14') as HTMLElement | null)?.style.zoom
   const n = z === undefined || z === '' ? NaN : Number(z)
   return Number.isFinite(n) && n > 0 ? n : 1
 }

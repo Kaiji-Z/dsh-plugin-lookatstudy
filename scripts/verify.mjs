@@ -33,20 +33,18 @@ gate('tests', () => ({
 }))
 
 gate('typecheck', () => {
-  // Audit C23: full strict tsc opened at 444 errors; the request-body
-  // object-guard fix brought it to 250. The dominant block is the dsh-tools
-  // schema-inference mismatch across the 32-tool surface (render value types
-  // collapse to `never` against plain object literals — the upstream-intended
-  // schemastery constructor form would restore inference). Zeroing it is a
-  // rewrite-scale decision PARKED WITH THE OWNER (goal stop condition
-  // ">200"). Until then this gate RATCHETS: the count may never exceed the
-  // frozen budget, so type rot cannot grow silently in either half.
-  const BUDGET = 250
+  // Audit C23, owner decision 2026-09-14 (option A): the 32-tool schema
+  // surface was rewritten onto dsh-tools' own literal DSL with
+  // as-const-satisfies inference (NOT schemastery — dsh-tools ships no
+  // schemastery constructor; the framing in the parked note was wrong), and
+  // the whole tree (src + tests) was driven to ZERO strict errors. The
+  // ratchet is now a hard gate: any new error fails verify.
+  const BUDGET = 0
   const res = spawnSync('pnpm', ['exec', 'tsc', '--noEmit'], { encoding: 'utf8', shell: process.platform === 'win32' })
   const errors = ((res.stdout ?? '') + (res.stderr ?? '')).split('\n').filter(l => l.includes(': error TS')).length
   return {
     exit: errors > BUDGET || res.status === null ? 1 : 0,
-    checks: [{ ok: errors <= BUDGET, label: `tsc strict errors: ${errors} ≤ frozen budget ${BUDGET} (C23 ratchet — the schema-inference rewrite is an owner decision)` }],
+    checks: [{ ok: errors <= BUDGET, label: `tsc strict errors: ${errors} ≤ frozen budget ${BUDGET} (C23 hard gate since the schema rewrite)` }],
   }
 })
 

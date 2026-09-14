@@ -32,7 +32,8 @@ test('folder scan reads md/ipynb/code and the tree assembly groups lessons', asy
       'utf8',
     )
 
-    const docs = await scanFolder(dir)
+    const scanned = await scanFolder(dir)
+    const docs = Array.isArray(scanned) ? scanned : scanned.docs
     const paths = docs.map(d => d.path)
     assert.ok(paths.includes('week1-intro/README.md'), 'per-directory READMEs must survive dedup')
     const kinds = docs.map(d => d.kind).sort()

@@ -13,7 +13,7 @@ import { readFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
+import type { ToolDefinition, ValueSchemaSpec, OneOfValueSchemaSpec, ObjectValueSchemaSpec, ParameterPropertySpec, ParameterSchemaSpec } from '@deepseek-ai/dsh-tools'
 import { parseMarkdownToCourse } from './vendor/markdown-course.ts'
 import type { ParsedCourse } from './vendor/markdown-course.ts'
 import { scanFolder, buildLocalInventory } from './vendor/local-folder-scanner.ts'
@@ -98,8 +98,12 @@ const NOTE_ZONES = ['understand', 'record', 'practice'] as const
 const NOTE_SOURCES = ['ai', 'content', 'chat'] as const
 const MODES = ['direct', 'guide', 'practice'] as const
 
-const nullableInteger = { oneOf: [{ type: 'integer' as const }, { type: 'null' as const }] }
-const nullableString = { oneOf: [{ type: 'string' as const }, { type: 'null' as const }] }
+const nullableInteger = { oneOf: [{ type: 'integer' }, { type: 'null' }] } as const satisfies ValueSchemaSpec
+// Audit C23: the shared schema fragments carry their dsh-tools spec types so
+// literal types survive the spreads — unannotated intermediates widened
+// `type: 'object'` to `string`, collapsing InferValue to `never` across the
+// whole tool surface.
+const nullableString = { oneOf: [{ type: 'string' }, { type: 'null' }] } as const satisfies ValueSchemaSpec
 
 /**
  * Fail loud when an importer produced no lessons — a course with an empty
@@ -299,11 +303,13 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
         firstLessonTitle: { type: 'string', required: true },
       },
     },
-  }
+  } as const satisfies { schema: ObjectValueSchemaSpec }
+  // C23: presentationMeta belongs INSIDE output (the top-level slot does not
+  // exist on DefineToolOptions — these were dead code the type gate caught).
+  const importPresentationMeta = (_args: unknown, value: cards.ImportValue) => cards.importLines(value)
   const importPresent = {
-    presentationMeta: (_args: unknown, value: cards.ImportValue) => cards.importLines(value),
-    presentResult: (_args: unknown, result: { meta: unknown }) => ({
-      card: 'generic',
+    presentResult: (_args: unknown, result: { meta?: unknown }) => ({
+      card: 'generic' as const,
       content: textBlocks(result.meta as string[]),
     }),
   }
@@ -319,6 +325,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     },
     output: {
       ...importOutput,
+      presentationMeta: importPresentationMeta,
       render: (_args, value) => [{
         type: 'text',
         text: `Imported course “${value.title}” (${value.sections} sections, ${value.lessons} lessons). `
@@ -331,7 +338,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       requireParsedLessons(parsed)
       return mutate(state => toImportValue(importCourse(state, parsed, 'markdown', 'pasted markdown')))
     },
-    presentCall: args => ({ card: 'generic', title: `Import markdown course${args.title === undefined ? '' : `: ${args.title}`}`, kind: 'read' }),
+    presentCall: args => ({ card: 'generic' as const, title: `Import markdown course${args.title === undefined ? '' : `: ${args.title}`}`, kind: 'read' }),
     ...importPresent,
   })
 
@@ -369,7 +376,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
         },
       ],
     },
-  }
+  } as const satisfies { schema: OneOfValueSchemaSpec }
   /** Shared render: the brief rides the design_required branch; imported stays the old summary. */
   /** Audit C29: every brief carries a sequence number; renders of a stale
    *  value (a newer import replaced the pending design) say so instead of
@@ -390,11 +397,11 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       : `Imported course “${value.title}” (${value.sections} sections, ${value.lessons} lessons). `
         + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}).`,
   }]
+  const designOrImportedPresentationMeta = (_args: unknown, value: cards.ImportValue | ({ status: 'design_required' } & cards.DesignBriefValue)) =>
+    value.status === 'design_required' ? cards.designBriefLines(value) : cards.importLines(value)
   const designOrImportedPresent = {
-    presentationMeta: (_args: unknown, value: { status: string }) =>
-      value.status === 'design_required' ? cards.designBriefLines(value as cards.DesignBriefValue) : cards.importLines(value as cards.ImportValue),
-    presentResult: (_args: unknown, result: { meta: unknown }) => ({
-      card: 'generic',
+    presentResult: (_args: unknown, result: { meta?: unknown }) => ({
+      card: 'generic' as const,
       content: textBlocks(result.meta as string[]),
     }),
   }
@@ -411,7 +418,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       title: { type: 'string', description: 'Optional course title overriding the folder name / README H1.' },
       part: { type: 'integer', description: 'Which context-budget brief part to render (1-based); relevant only when the folder is huge.' },
     },
-    output: { ...designOrImportedOutput, render: designOrImportedRender },
+    output: { ...designOrImportedOutput, presentationMeta: designOrImportedPresentationMeta, render: designOrImportedRender },
     async execute(args) {
       if (!existsSync(args.path)) {
         throw new Error(`lookatstudy-plugin: folder does not exist: ${args.path}`)
@@ -427,7 +434,8 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
         throw new Error(`lookatstudy-plugin: no importable files found in ${args.path}`)
       }
       const title = args.title ?? basename(args.path.replaceAll('\\', '/'))
-      setPendingDesign(buildPendingDesignFromFolder(args.path, title, docs, { translations: inventory.translations, images: inventory.images }))
+      const pd = buildPendingDesignFromFolder(args.path, title, docs, { translations: inventory.translations, images: inventory.images })
+      setPendingDesign(pd)
       // Inline local images as data URLs (upstream scanner-images, 200KB cap per image)
       const localImages = new Map<string, string>()
       for (const img of inventory.images) {
@@ -438,12 +446,12 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
           localImages.set(img.path, `data:${img.mime};base64,${buf.toString('base64')}`)
         } catch { /* unreadable image skipped */ }
       }
-      if (localImages.size > 0) pendingDesign.localImages = localImages
+      if (localImages.size > 0) pd.localImages = localImages
       pendingPart = part
-      return designRequiredValue(pendingDesign, part)
+      return designRequiredValue(pd, part)
     },
     timeoutMs: 60_000,
-    presentCall: args => ({ card: 'generic', title: `Scan folder: ${args.path}`, kind: 'read', rawInput: args.path }),
+    presentCall: args => ({ card: 'generic' as const, title: `Scan folder: ${args.path}`, kind: 'read', rawInput: args.path }),
     ...designOrImportedPresent,
   })
 
@@ -480,12 +488,13 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     }
     const inventory = await fetchRepoInventory(owner, repo, resolvedBranch, fetchFn, undefined, exec.signal)
     const outlines = await fetchFileOutlines(inventory.fileList.map(f => f.path), owner, repo, inventory.branch, fetchFn, undefined, exec.signal)
-    setPendingDesign(buildPendingDesign(canonicalRef, owner, repo, inventory, outlines))
-    if (pendingDesign.files.length === 0) {
+    const pd = buildPendingDesign(canonicalRef, owner, repo, inventory, outlines)
+    setPendingDesign(pd)
+    if (pd.files.length === 0) {
       throw new Error('lookatstudy-plugin: course files were discovered but no outlines could be fetched (CDN unreachable?)')
     }
     pendingPart = part
-    return designRequiredValue(pendingDesign, part)
+    return designRequiredValue(pd, part)
   }
 
   const importGithub = defineTool({
@@ -501,10 +510,10 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       branch: { type: 'string', description: 'Branch to read (main tried, then master); defaults to main.' },
       part: { type: 'integer', description: 'Which context-budget brief part to render (1-based); relevant only for huge repos.' },
     },
-    output: { ...designOrImportedOutput, render: designOrImportedRender },
+    output: { ...designOrImportedOutput, presentationMeta: designOrImportedPresentationMeta, render: designOrImportedRender },
     execute: (args, exec) => runGithubImport(args.url, args.branch, exec, args.part ?? 1),
     timeoutMs: 180_000,
-    presentCall: args => ({ card: 'generic', title: `Import GitHub course: ${args.url}`, kind: 'fetch' }),
+    presentCall: args => ({ card: 'generic' as const, title: `Import GitHub course: ${args.url}`, kind: 'fetch' }),
     ...designOrImportedPresent,
   })
 
@@ -522,7 +531,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       url: { type: 'string', required: true, description: 'The URL to import: github.com repo, arxiv.org paper, or any web article page.' },
       part: { type: 'integer', description: 'Which context-budget brief part to render (1-based); relevant only for enormous documents.' },
     },
-    output: { ...designOrImportedOutput, render: designOrImportedRender },
+    output: { ...designOrImportedOutput, presentationMeta: designOrImportedPresentationMeta, render: designOrImportedRender },
     async execute(args, exec) {
       const route = routeImportUrl(args.url)
       if (route === null) {
@@ -553,9 +562,10 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
 
 ${p.text}`))
           if (docs.length === 0) throw new Error('lookatstudy-plugin: CC subtitle text was empty after chunking')
-          setPendingDesign(buildPendingDesignFromUrl(identity, cc.title, docs))
+          const pd = buildPendingDesignFromUrl(identity, cc.title, docs)
+          setPendingDesign(pd)
           pendingPart = part
-          return designRequiredValue(pendingDesign, part)
+          return designRequiredValue(pd, part)
         }
         throw new Error(
           `lookatstudy-plugin: ${route.url} 是视频链接(YouTube/抖音需要 yt-dlp,插件环境不可用)。`
@@ -575,9 +585,10 @@ ${p.text}`))
         }
         const docs = prepareSingleDoc(`arxiv-${route.arxivId}`, `# arXiv:${route.arxivId}\n\n${text}`)
         if (docs.length === 0) throw new Error('lookatstudy-plugin: arXiv PDF text was empty after chunking')
-        setPendingDesign(buildPendingDesignFromUrl(route.url, `arXiv:${route.arxivId}`, docs))
+        const pd = buildPendingDesignFromUrl(route.url, `arXiv:${route.arxivId}`, docs)
+        setPendingDesign(pd)
         pendingPart = part
-        return designRequiredValue(pendingDesign, part)
+        return designRequiredValue(pd, part)
       }
       // article:网页正文抽取
       const part = args.part ?? 1
@@ -593,12 +604,13 @@ ${p.text}`))
       }
       const docs = prepareSingleDoc(article.title.slice(0, 60), article.markdown)
       if (docs.length === 0) throw new Error('lookatstudy-plugin: article body was empty after chunking')
-      setPendingDesign(buildPendingDesignFromUrl(identity, article.title, docs))
+      const pd = buildPendingDesignFromUrl(identity, article.title, docs)
+      setPendingDesign(pd)
       pendingPart = part
-      return designRequiredValue(pendingDesign, part)
+      return designRequiredValue(pd, part)
     },
     timeoutMs: 180_000,
-    presentCall: args => ({ card: 'generic', title: `Import URL: ${args.url}`, kind: 'fetch' }),
+    presentCall: args => ({ card: 'generic' as const, title: `Import URL: ${args.url}`, kind: 'fetch' }),
     ...designOrImportedPresent,
   })
 
@@ -657,8 +669,10 @@ ${p.text}`))
           title: { type: 'string', required: true },
           sections: { type: 'integer', required: true },
           lessons: { type: 'integer', required: true },
-          firstLessonId: { type: 'string', required: true },
-          firstLessonTitle: { type: 'string', required: true },
+          // C23: honestly nullable — a fully-dropped design has no first lesson
+          // (the old declaration lied about the runtime shape).
+          firstLessonId: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true },
+          firstLessonTitle: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true },
           droppedLessons: { type: 'integer', required: true },
           created: { type: 'boolean', required: true, description: 'False when an existing course short-circuited the import (same title) — the design did NOT land as a new course.' },
           languageTarget: { type: 'string', description: 'Present only when the course teaches a language itself (BCP-47); the tutor then keeps quiz material in the target language.' },
@@ -736,12 +750,8 @@ ${p.text}`))
       return { ...value, droppedLessons: validated.droppedLessons, ...(languageTarget !== null ? { languageTarget } : {}) }
     },
     timeoutMs: 180_000,
-    presentCall: () => ({ card: 'generic', title: 'Apply course design', kind: 'edit' }),
-    presentationMeta: (_args, value) => [
-      ...cards.importLines(value),
-      ...(value.droppedLessons > 0 ? [`${value.droppedLessons} dropped (files outside the brief)`] : []),
-    ],
-    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+    presentCall: () => ({ card: 'generic' as const, title: 'Apply course design', kind: 'edit' }),
+    presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
   })
 
   const listCourses = defineTool({
@@ -858,7 +868,7 @@ ${p.text}`))
       }
     },
     isConcurrencySafe: () => true,
-    presentCall: args => ({ card: 'generic', title: args.query === undefined ? 'List courses' : `Search lessons: ${args.query}`, kind: 'read' }),
+    presentCall: args => ({ card: 'generic' as const, title: args.query === undefined ? 'List courses' : `Search lessons: ${args.query}`, kind: 'read' }),
   })
 
   const courseMap = defineTool({
@@ -870,6 +880,7 @@ ${p.text}`))
       courseId: { type: 'string', required: true, description: 'Course id from an import result or study_courses.' },
     },
     output: {
+  presentationMeta: (_args, value) => cards.mapLines(value),
       schema: {
         type: 'object',
         additionalProperties: false,
@@ -923,9 +934,8 @@ ${p.text}`))
       return toMapValue(findCourse(store.get(), args.courseId))
     },
     isConcurrencySafe: () => true,
-    presentCall: args => ({ card: 'generic', title: `Course map: ${args.courseId}`, kind: 'read' }),
-    presentationMeta: (_args, value) => cards.mapLines(value),
-    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+    presentCall: args => ({ card: 'generic' as const, title: `Course map: ${args.courseId}`, kind: 'read' }),
+    presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
   })
 
   const lessonContent = defineTool({
@@ -1042,7 +1052,7 @@ ${p.text}`))
         return toLessonValue(ref, state)
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Open lesson: ${args.lessonId}`, kind: 'read' }),
+    presentCall: args => ({ card: 'generic' as const, title: `Open lesson: ${args.lessonId}`, kind: 'read' }),
   })
 
   const recordAnswerTool = defineTool({
@@ -1062,6 +1072,7 @@ ${p.text}`))
       givenAnswer: { type: 'string', description: 'The learner\'s answer, for the practice log.' },
     },
     output: {
+  presentationMeta: (_args, value) => [cards.answerLine(value)],
       schema: {
         type: 'object',
         additionalProperties: false,
@@ -1130,11 +1141,10 @@ ${p.text}`))
       })
     },
     presentCall: args => ({
-      card: 'generic',
+      card: 'generic' as const,
       title: `Record answer (${args.correct ? 'correct' : 'incorrect'}): ${args.lessonId}`,
     }),
-    presentationMeta: (_args, value) => [cards.answerLine(value)],
-    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+    presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
   })
 
   const examResultTool = defineTool({
@@ -1150,6 +1160,7 @@ ${p.text}`))
       total: { type: 'integer', required: true, description: 'Questions asked in this attempt (must be > 0).' },
     },
     output: {
+  presentationMeta: (_args, value) => [`${value.stars}★`],
       schema: {
         type: 'object',
         additionalProperties: false,
@@ -1183,7 +1194,7 @@ ${p.text}`))
           + (value.nextLessonId === null ? '' : ` Next topic: ${value.nextLessonId}.`),
       }],
     },
-    execute(args) {
+    async execute(args) {
       return mutate((state) => {
         const r = recordExamResult(state, args.lessonId, args.correct, args.total)
         const actions = getPostQuizActions({ correct: args.correct, total: args.total }, r.ref.lesson.mastery)
@@ -1210,9 +1221,8 @@ ${p.text}`))
         }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Exam result: ${args.correct}/${args.total}` }),
-    presentationMeta: (_args, value) => [`${value.stars}★`],
-    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+    presentCall: args => ({ card: 'generic' as const, title: `Exam result: ${args.correct}/${args.total}` }),
+    presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
   })
 
   const examBankApplyTool = defineTool({
@@ -1244,6 +1254,7 @@ ${p.text}`))
       },
     },
     output: {
+  presentationMeta: (_args, value) => [`${value.questionCount}Q`],
       schema: {
         type: 'object',
         additionalProperties: false,
@@ -1260,15 +1271,14 @@ ${p.text}`))
           + `The exam page settles into its ready state — tell the learner to hit 开始考试.`,
       }],
     },
-    execute(args) {
+    async execute(args) {
       return mutate((state) => {
         const r = applyExamBank(state, args.lessonId, args.questions, new Date())
         return { lessonId: args.lessonId, questionCount: r.questionCount, kcCount: r.kcCount, status: 'ready' }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Exam bank: ${Array.isArray(args.questions) ? String(args.questions.length) : '?'} questions` }),
-    presentationMeta: (_args, value) => [`${value.questionCount}Q`],
-    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+    presentCall: args => ({ card: 'generic' as const, title: `Exam bank: ${Array.isArray(args.questions) ? String(args.questions.length) : '?'} questions` }),
+    presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
   })
 
   const completeLessonTool = defineTool({
@@ -1281,6 +1291,7 @@ ${p.text}`))
       lessonId: { type: 'string', required: true, description: 'Lesson to complete.' },
     },
     output: {
+  presentationMeta: (_args, value) => cards.completeLines(value),
       schema: {
         type: 'object',
         additionalProperties: false,
@@ -1311,9 +1322,8 @@ ${p.text}`))
         }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Complete lesson: ${args.lessonId}` }),
-    presentationMeta: (_args, value) => cards.completeLines(value),
-    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+    presentCall: args => ({ card: 'generic' as const, title: `Complete lesson: ${args.lessonId}` }),
+    presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
   })
 
   const dueReviewsTool = defineTool({
@@ -1323,6 +1333,7 @@ ${p.text}`))
       courseId: { type: 'string', description: 'Restrict to one course; omit to scan all courses.' },
     },
     output: {
+  presentationMeta: (_args, value) => cards.dueLines(value),
       schema: {
         type: 'object',
         additionalProperties: false,
@@ -1361,9 +1372,8 @@ ${p.text}`))
       }
     },
     isConcurrencySafe: () => true,
-    presentCall: () => ({ card: 'generic', title: 'List due reviews', kind: 'search' }),
-    presentationMeta: (_args, value) => cards.dueLines(value),
-    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+    presentCall: () => ({ card: 'generic' as const, title: 'List due reviews', kind: 'search' }),
+    presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
   })
 
   const recordReviewTool = defineTool({
@@ -1377,6 +1387,7 @@ ${p.text}`))
       quality: { type: 'integer', required: true, enum: [...QUALITIES], description: 'SM-2 recall quality, 0 (blackout) to 5 (perfect).' },
     },
     output: {
+  presentationMeta: (_args, value) => [cards.reviewLine(value)],
       schema: {
         type: 'object',
         additionalProperties: false,
@@ -1406,9 +1417,8 @@ ${p.text}`))
         }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Record review (quality ${args.quality}): ${args.lessonId}` }),
-    presentationMeta: (_args, value) => [cards.reviewLine(value)],
-    presentResult: (_args, result) => ({ card: 'generic', content: textBlocks(result.meta as string[]) }),
+    presentCall: args => ({ card: 'generic' as const, title: `Record review (quality ${args.quality}): ${args.lessonId}` }),
+    presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
   })
 
   const deleteCourseTool = defineTool({
@@ -1457,7 +1467,7 @@ ${p.text}`))
         return { status: 'deleted' as const, courseId: args.courseId, deletedCourseId: args.courseId, remaining: state.courses.length }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Delete course: ${args.courseId}`, kind: 'delete', rawInput: args.courseId }),
+    presentCall: args => ({ card: 'generic' as const, title: `Delete course: ${args.courseId}`, kind: 'delete', rawInput: args.courseId }),
   })
 
   const restoreCourseTool = defineTool({
@@ -1482,13 +1492,13 @@ ${p.text}`))
         text: `Restored course “${value.title}” from the trash (${value.lessonCount} lessons back; ${value.remainingTrash} still trashed).`,
       }],
     },
-    execute(args) {
+    async execute(args) {
       return mutate((state) => {
         const course = restoreCourse(state, args.courseId)
         return { restoredCourseId: course.id, title: course.title, lessonCount: course.sections.flatMap(s => s.lessons).length, remainingTrash: (state.trash ?? []).length }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Restore course: ${args.courseId}`, kind: 'read' }),
+    presentCall: args => ({ card: 'generic' as const, title: `Restore course: ${args.courseId}`, kind: 'read' }),
   })
 
   const defineConceptsTool = defineTool({
@@ -1547,7 +1557,7 @@ ${p.text}`))
         }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Define concepts: ${args.lessonId}` }),
+    presentCall: args => ({ card: 'generic' as const, title: `Define concepts: ${args.lessonId}` }),
   })
 
   const proposeMasteryTool = defineTool({
@@ -1562,6 +1572,12 @@ ${p.text}`))
       rationale: { type: 'string', required: true, description: 'Why you believe it is mastered — the learner reads this.' },
     },
     output: {
+  presentationMeta: (_args, value) => ({
+    kind: 'study-proposal-created',
+    proposalId: value.proposalId,
+    lessonTitle: value.lessonTitle,
+    rationale: value.rationale,
+  }),
       schema: {
         type: 'object',
         additionalProperties: false,
@@ -1584,15 +1600,9 @@ ${p.text}`))
         return { proposalId: proposal.id, lessonTitle: ref.lesson.title, status: proposal.status, rationale: proposal.rationale }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Propose mastery: ${args.lessonId}` }),
-    presentationMeta: (_args, value) => ({
-      kind: 'study-proposal-created',
-      proposalId: value.proposalId,
-      lessonTitle: value.lessonTitle,
-      rationale: value.rationale,
-    }),
+    presentCall: args => ({ card: 'generic' as const, title: `Propose mastery: ${args.lessonId}` }),
     presentResult: (_args, result) => ({
-      card: 'generic',
+      card: 'generic' as const,
       content: textBlocks([`🎓 Proposed mastery for “${(result.meta as { lessonTitle?: string } | undefined)?.lessonTitle ?? 'lesson'}”: ${(result.meta as { rationale?: string } | undefined)?.rationale ?? ''}`]),
     }),
   })
@@ -1607,6 +1617,11 @@ ${p.text}`))
       accept: { type: 'boolean', required: true, description: 'The learner\'s decision.' },
     },
     output: {
+  presentationMeta: (_args, value) => ({
+    kind: 'study-proposal-resolved',
+    proposalId: value.proposalId,
+    status: value.status,
+  }),
       schema: {
         type: 'object',
         additionalProperties: false,
@@ -1626,17 +1641,12 @@ ${p.text}`))
     async execute(args) {
       return mutate((state) => {
         const proposal = resolveProposal(state, args.proposalId, args.accept, new Date())
-        return { proposalId: proposal.id, lessonId: proposal.lessonId, status: proposal.status }
+        return { proposalId: proposal.id, lessonId: proposal.lessonId, status: proposal.status as 'applied' | 'rejected' }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Resolve proposal: ${args.proposalId}` }),
-    presentationMeta: (_args, value) => ({
-      kind: 'study-proposal-resolved',
-      proposalId: value.proposalId,
-      status: value.status,
-    }),
+    presentCall: args => ({ card: 'generic' as const, title: `Resolve proposal: ${args.proposalId}` }),
     presentResult: (_args, result) => ({
-      card: 'generic',
+      card: 'generic' as const,
       content: textBlocks([`Proposal ${(result.meta as { proposalId?: string } | undefined)?.proposalId ?? '?'} ${(result.meta as { status?: string } | undefined)?.status ?? ''}.`]),
     }),
   })
@@ -1666,7 +1676,7 @@ ${p.text}`))
         return { logged: true }
       })
     },
-    presentCall: () => ({ card: 'generic', title: 'Log friction' }),
+    presentCall: () => ({ card: 'generic' as const, title: 'Log friction' }),
   })
 
   const rememberTool = defineTool({
@@ -1698,7 +1708,7 @@ ${p.text}`))
         stored: args.content,
       }))
     },
-    presentCall: () => ({ card: 'generic', title: 'Update learner memory' }),
+    presentCall: () => ({ card: 'generic' as const, title: 'Update learner memory' }),
   })
 
   const translateLessonTool = defineTool({
@@ -1729,7 +1739,7 @@ ${p.text}`))
         text: `Translation stored for “${value.lessonTitle}” (${value.lang}, ${value.chars} chars) — the blackboard now interleaves the original with it.`,
       }],
     },
-    execute(args) {
+    async execute(args) {
       return mutate((state) => {
         const ref = findLesson(state, args.lessonId)
         if (args.markdown.trim() === '') throw new Error('lookatstudy-plugin: translation markdown is empty')
@@ -1738,7 +1748,7 @@ ${p.text}`))
         return { lessonId: ref.lesson.id, lessonTitle: ref.lesson.title, lang: args.lang, chars: args.markdown.length }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Translate lesson: ${args.lessonId} → ${args.lang}` }),
+    presentCall: args => ({ card: 'generic' as const, title: `Translate lesson: ${args.lessonId} → ${args.lang}` }),
   })
 
   const consolidateTool = defineTool({
@@ -1788,7 +1798,7 @@ ${p.text}`))
           + (value.entries.length === 0 ? ' Nothing to distill — tell the learner their memory is up to date.' : ' Distill these into 0–3 study_remember writes (global / pattern / lesson), then summarize in one line.'),
       }],
     },
-    execute() {
+    async execute() {
       return mutate((state) => {
         const window = gatherConsolidationWindow(state)
         const watermark = new Date().toISOString()
@@ -1796,7 +1806,7 @@ ${p.text}`))
         return { since: window.since, entries: window.entries, counts: window.counts, watermark }
       })
     },
-    presentCall: () => ({ card: 'generic', title: 'Consolidate learner memory' }),
+    presentCall: () => ({ card: 'generic' as const, title: 'Consolidate learner memory' }),
   })
 
   const exportTool = defineTool({
@@ -1831,7 +1841,7 @@ ${p.text}`))
           + value.markdown,
       }],
     },
-    execute(args) {
+    async execute(args) {
       const course = findCourse(store.get(), args.courseId)
       const full = courseToPackMarkdown(course)
       const lessonCount = course.sections.reduce((n, sec) => n + sec.lessons.filter(l => l.kind !== 'exam').length, 0)
@@ -1843,7 +1853,7 @@ ${p.text}`))
       }
     },
     isConcurrencySafe: () => true,
-    presentCall: args => ({ card: 'generic', title: `Export course: ${args.courseId}`, kind: 'read' }),
+    presentCall: args => ({ card: 'generic' as const, title: `Export course: ${args.courseId}`, kind: 'read' }),
   })
 
   const noteSaveTool = defineTool({
@@ -1876,7 +1886,7 @@ ${p.text}`))
         return { noteId: note.id, zone: note.zone }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Save ${args.zone} note: ${args.title}` }),
+    presentCall: args => ({ card: 'generic' as const, title: `Save ${args.zone} note: ${args.title}` }),
   })
 
   const notesTool = defineTool({
@@ -1934,7 +1944,7 @@ ${p.text}`))
       return { total: notes.length, notes }
     },
     isConcurrencySafe: () => true,
-    presentCall: () => ({ card: 'generic', title: 'Read notebook', kind: 'read' }),
+    presentCall: () => ({ card: 'generic' as const, title: 'Read notebook', kind: 'read' }),
   })
 
   const setModeTool = defineTool({
@@ -1960,7 +1970,7 @@ ${p.text}`))
         return { mode: state.mode }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Switch soul: ${args.mode}` }),
+    presentCall: args => ({ card: 'generic' as const, title: `Switch soul: ${args.mode}` }),
   })
 
   const generateQuizTool = defineTool({
@@ -2045,12 +2055,14 @@ ${p.text}`))
         }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Generate practice card: ${typeof args.title === 'string' ? args.title : '练习'} (${args.questions?.length ?? 0} questions)` }),
+    presentCall: args => ({ card: 'generic' as const, title: `Generate practice card: ${typeof args.title === 'string' ? args.title : '练习'} (${args.questions?.length ?? 0} questions)` }),
   })
 
-  /** Record one sanitized artifact on its lesson (shared by the artifact tools). */
-  const recordSanitized = (lessonId: string, result: SanitizeResult, type: StudyArtifact['artifactType']): Promise<Record<string, unknown>> =>
-    mutate((state) => {
+  /** Record one sanitized artifact on its lesson (shared by the artifact tools).
+   *  C23: generic over the sanitized shape so each tool's execute returns its
+   *  own literal (checked against the tool's inferred output type). */
+  const recordSanitized = async <T extends Record<string, unknown>>(lessonId: string, result: SanitizeResult, type: StudyArtifact['artifactType']): Promise<T> => {
+    return await mutate((state) => {
       const id = artifactId(type, result.data)
       const artifact: StudyArtifact = {
         id,
@@ -2061,8 +2073,9 @@ ${p.text}`))
         data: result.data,
       }
       const stored = recordArtifact(state, lessonId, artifact)
-      return { artifactType: type, artifactId: stored.artifact.id, created: stored.created, ...stored.artifact.data }
+      return { artifactType: type, artifactId: stored.artifact.id, created: stored.created, ...stored.artifact.data } as unknown as T
     })
+  }
 
   const poseGuessTool = defineTool({
     name: 'study_pose_guess',
@@ -2102,9 +2115,9 @@ ${p.text}`))
       render: (_args, value) => [{ type: 'text', text: `Guess posed: ${value.prompt}` }],
     },
     async execute(args) {
-      return recordSanitized(args.lessonId, sanitizeGuess(args), 'guess')
+      return recordSanitized<{ artifactType: 'guess'; prompt: string; options: Array<{ id: string; label: string }>; created: boolean; artifactId: string }>(args.lessonId, sanitizeGuess(args), 'guess')
     },
-    presentCall: args => ({ card: 'generic', title: `Pose guess: ${typeof args.prompt === 'string' ? args.prompt.slice(0, 40) : ''}` }),
+    presentCall: args => ({ card: 'generic' as const, title: `Pose guess: ${typeof args.prompt === 'string' ? args.prompt.slice(0, 40) : ''}` }),
   })
 
   const compareTableTool = defineTool({
@@ -2134,9 +2147,9 @@ ${p.text}`))
       render: (_args, value) => [{ type: 'text', text: `Compare table: ${value.title} (${(value.rows as unknown[]).length} rows)` }],
     },
     async execute(args) {
-      return recordSanitized(args.lessonId, sanitizeCompareTable(args), 'compare_table')
+      return recordSanitized<{ artifactType: 'compare_table'; title: string; headers: string[]; rows: string[][]; created: boolean; artifactId: string; warnings?: string[] }>(args.lessonId, sanitizeCompareTable(args), 'compare_table')
     },
-    presentCall: args => ({ card: 'generic', title: `Compare table: ${typeof args.title === 'string' ? args.title : ''}` }),
+    presentCall: args => ({ card: 'generic' as const, title: `Compare table: ${typeof args.title === 'string' ? args.title : ''}` }),
   })
 
   const drawDiagramTool = defineTool({
@@ -2166,9 +2179,9 @@ ${p.text}`))
       render: (_args, value) => [{ type: 'text', text: `Diagram: ${value.title} (${value.diagramType})` }],
     },
     async execute(args) {
-      return recordSanitized(args.lessonId, sanitizeDiagram(args), 'diagram')
+      return recordSanitized<{ artifactType: 'diagram'; title: string; diagramType: string; mermaid: string; created: boolean; artifactId: string }>(args.lessonId, sanitizeDiagram(args), 'diagram')
     },
-    presentCall: args => ({ card: 'generic', title: `Draw diagram: ${typeof args.title === 'string' ? args.title : ''}` }),
+    presentCall: args => ({ card: 'generic' as const, title: `Draw diagram: ${typeof args.title === 'string' ? args.title : ''}` }),
   })
 
   const codeWalkthroughTool = defineTool({
@@ -2220,9 +2233,9 @@ ${p.text}`))
       render: (_args, value) => [{ type: 'text', text: `Code walkthrough: ${value.title} (${(value.annotations as unknown[]).length} segments)` }],
     },
     async execute(args) {
-      return recordSanitized(args.lessonId, sanitizeCodeWalkthrough(args), 'code_walkthrough')
+      return recordSanitized<{ artifactType: 'code_walkthrough'; title: string; language: string; code: string; annotations: Array<{ note: string; lineStart: number; lineEnd: number }>; created: boolean; artifactId: string; warnings?: string[] }>(args.lessonId, sanitizeCodeWalkthrough(args), 'code_walkthrough')
     },
-    presentCall: args => ({ card: 'generic', title: `Code walkthrough: ${typeof args.title === 'string' ? args.title : ''}` }),
+    presentCall: args => ({ card: 'generic' as const, title: `Code walkthrough: ${typeof args.title === 'string' ? args.title : ''}` }),
   })
 
   return [

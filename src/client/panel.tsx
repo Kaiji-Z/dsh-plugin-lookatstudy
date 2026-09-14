@@ -190,7 +190,7 @@ function chatRow(row: { key: string; role: string; text: string; toolState?: 'lo
       ...options.map(opt => createElement('button', {
         key: opt.letter,
         className: 'lks14-opt',
-        onClick: () => { interactive.send(tr('quiz.answer', { letter: opt.letter, text: opt.text })) },
+        onClick: () => { interactive?.send(tr('quiz.answer', { letter: opt.letter, text: opt.text })) },
       },
         createElement('span', { className: 'lks14-optletter' }, opt.letter),
         createElement('span', null, opt.text))),
@@ -874,7 +874,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
  * studying — all funneling the panel's own actions.
  */
 function CommandPalette({ searchLessons, courses, onClose, onLesson, onCourse, onReview, onStudy }: {
-  searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>
+  searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string; courseTitle: string }>>
   courses: ReadonlyArray<{ id: string; title: string }>
   onClose: () => void
   onLesson: (lessonId: string) => void
@@ -897,10 +897,10 @@ function CommandPalette({ searchLessons, courses, onClose, onLesson, onCourse, o
   }, [query, searchLessons])
   const q = query.trim().toLowerCase()
   const courseRows = courses.filter(c => q === '' || c.title.toLowerCase().includes(q)).slice(0, 3)
-  const actions: Array<{ id: 'review' | 'study'; label: string; run: () => void }> = [
+  const actions: Array<{ id: 'review' | 'study'; label: string; run: () => void }> = ([
     { id: 'review', label: tr('palette.review'), run: onReview },
     { id: 'study', label: tr('palette.study'), run: onStudy },
-  ].filter(a => q === '' || a.label.toLowerCase().includes(q))
+  ] as Array<{ id: 'review' | 'study'; label: string; run: () => void }>).filter(a => q === '' || a.label.toLowerCase().includes(q))
   const first = lessons[0]
   const onKey = (e: ReactKeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Escape') onClose()
@@ -1073,7 +1073,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   data: StudyData
   activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
-  searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string }>>
+  searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string; courseTitle: string }>>
   deleteCourse: (courseId: string) => Promise<void>
   send: PanelSend
   /** C7: fired after a bubble jump (narrow layout switches to the chat pane). */
@@ -1713,7 +1713,7 @@ export function epubFolderPath(path: string): string {
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
 function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, onThreadRename, onThreadArchive, onThreadDelete, contextMeter, contextBreakdown, uploadAttachment }: {
   data: StudyData
-  lesson: StudyData['lesson']
+  lesson: NonNullable<StudyData>['lesson']
   rows: ReturnType<typeof feedRows>
   feedAttached: boolean
   bound: boolean
@@ -1879,7 +1879,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     }
     const edgeEngine: SpeechEngine = {
       speak: (text: string) => fetchAudio(text).then(buf => new Promise<void>((resolve, reject) => {
-        const blobUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }))
+        const blobUrl = URL.createObjectURL(new Blob([buf as BlobPart], { type: 'audio/mpeg' }))
         const audio = new Audio(blobUrl)
         currentAudio = audio
         audio.onended = () => { URL.revokeObjectURL(blobUrl); if (currentAudio === audio) currentAudio = null; resolve() }
@@ -1931,7 +1931,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   const backlog = useMemo(() => lesson !== null ? sedimentBacklog(lesson.artifacts, inlineIds, unseenArtifacts(lesson.lessonId, lesson.artifacts)) : [], [lesson, inlineIds])
   const inlineArtifactCard = (row: typeof rowsView[number], revealed = false): ReactNode => {
     if (lesson === null || row.artifactId === undefined) return null
-    const artifact = lesson.artifacts.find(a => a.id === row.artifactId)
+    const artifact = lesson.artifacts.find((a: { id: string }) => a.id === row.artifactId)
     // The state feed fell behind the fold — the chip stands in until it lands.
     if (artifact === undefined) return chatRow({ ...row, role: 'tool', toolState: 'done' })
     return createElement('div', { className: 'lks14-inline-artifact' },
@@ -2188,7 +2188,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     // them on messages>0 — the empty state carries the CTA instead).
     rows.length > 0
       ? createElement('div', { className: 'lks14-starters' },
-        ...starters.map(s => createElement('button', {
+        ...starters.map((s: { label: string; message: string }) => createElement('button', {
           key: s.label,
           className: 'lks14-starter',
           'aria-disabled': dormant || undefined,
@@ -2499,7 +2499,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
     const edgeEngine: SpeechEngine = {
       speak(text: string): Promise<void> {
         return fetchAudio(text).then(buf => new Promise<void>((resolve, reject) => {
-          const blobUrl = URL.createObjectURL(new Blob([buf], { type: 'audio/mpeg' }))
+          const blobUrl = URL.createObjectURL(new Blob([buf as BlobPart], { type: 'audio/mpeg' }))
           const audio = new Audio(blobUrl)
           currentAudio = audio
           audio.onended = () => { URL.revokeObjectURL(blobUrl); if (currentAudio === audio) currentAudio = null; resolve() }
@@ -2566,7 +2566,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
       .finally(() => {
         // the highlight model must be computed post-enhance (shiki/katex/mermaid
         // mutate the DOM, changing the text model)
-        applyHighlights(proseRef.current, recordQuotes)
+        if (proseRef.current !== null) applyHighlights(proseRef.current, recordQuotes)
         setEnhanceTick(Date.now())
       })
   }, [tab, lesson?.html]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -2733,7 +2733,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                   createElement(CanvasStage, { testid: 'cmap-modal-stage' },
                     createElement('div', {
                       className: 'lks14-modal-diagram',
-                      ref: (el: HTMLDivElement | null) => {
+                      ref: (el: HTMLDivElement | null): void => {
                         if (el !== null) {
                           el.textContent = ''
                           void renderLessonConceptMap(el, lesson.title, lesson.concepts.map(c => ({ title: c.title, masteryPct: c.masteryPct }))).catch(() => { el.textContent = tr('bb.fallback.cmap') })
@@ -2781,8 +2781,11 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                       'data-tooltip': tr('note.locate'),
                       'aria-label': tr('note.locate'),
                       onClick: () => {
-                        if (tab !== 'teach') { setTab('teach'); setPendingLocate(n.quote ?? '') }
-                        else locateNoteQuote(n.quote ?? '', proseRef.current)
+                        // this button lives only in the notes tab — the
+                        // teach view must come up first, then the pending
+                        // locate fires on mount
+                        setTab('teach')
+                        setPendingLocate(n.quote ?? '')
                       },
                       }, createElement(IconGoalOutline16, { size: 12 }))
                       : null,
@@ -2830,7 +2833,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                         // the feed (normalize → markdown → enhance pass); the
                         // ref fires on mount — zone opens, tab switches, and
                         // the edit-rev remount all re-enhance, polls don't
-                        ref: (el: HTMLDivElement | null) => {
+                        ref: (el: HTMLDivElement | null): void => {
                           if (el !== null) void enhanceRendered(el).catch(() => { /* degrade */ })
                         },
                         dangerouslySetInnerHTML: { __html: renderMarkdown(normalizeMathNotation(n.text)) },

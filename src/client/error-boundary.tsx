@@ -15,7 +15,7 @@ import { IconWarningOutline16 } from './icons.tsx'
 import { tr } from './locale.ts'
 
 interface BoundaryProps {
-  children: ReactNode
+  children?: ReactNode
   /** Render-prop override (upstream signature: error + retry). */
   fallback?: (error: Error, retry: () => void) => ReactNode
 }
@@ -55,7 +55,7 @@ export class ErrorBoundary extends Component<BoundaryProps, BoundaryState> {
 export function ContentBoundary({ content, boundaryKey, children }: {
   content: string
   boundaryKey: string
-  children: ReactNode
+  children?: ReactNode
 }): ReactNode {
   return createElement(ErrorBoundary, {
     key: boundaryKey,

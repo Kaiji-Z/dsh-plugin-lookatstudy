@@ -290,6 +290,7 @@ export async function scanFolder(
   for (const doc of dedupedDocs) {
     if (doc.kind !== "pdf") continue;
     try {
+      // @ts-expect-error C23: optional runtime-only module, absent by design (external in tsdown)
       const { processPdf } = await import("../../lib/pdf-renderer.js");
       const pdfBuf = await readFile(join(rootDir, doc.path));
       const result = await processPdf(pdfBuf);

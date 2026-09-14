@@ -367,7 +367,7 @@ test('review route: records the SM-2 self-rating, 400 on bad quality, 404 withou
   const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/review', { lessonId, quality: 4 }), new FakeResponse())
   assert.equal(ok.status, 200)
   assert.equal(saved, 1, 'the rating persists')
-  assert.ok(findLesson(state, lessonId).lesson.dueAt > '2026-08-15', 'the next review is scheduled')
+  assert.ok((findLesson(state, lessonId)!.lesson.dueAt ?? '') > '2026-08-15', 'the next review is scheduled')
 })
 
 test('attachment route: base64 payload rides a lifted body cap, the 20 MiB ceiling and the 64 kB default stay armed (issue #4)', async () => {
@@ -581,7 +581,7 @@ test('/study activates a dormant install and queues the kickoff through followup
 test('the state feed carries the plugin version read from the running package.json', async () => {
   const state = emptyState()
   state.active = true
-  const routes: Array<{ kind: string; path: string; handler: (req: RouteMethod, res: unknown) => unknown }> = []
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: unknown) => unknown }> = []
   registerDashboard({ register: (route) => { routes.push(route as never); return () => {} } },
     { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null } as never)
   const api = await handle(routes as never, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
@@ -592,7 +592,7 @@ test('the state feed carries the plugin version read from the running package.js
 test('the state feed carries the host-resolved model facts (real context capacity for the meter)', async () => {
   const state = emptyState()
   state.active = true
-  const routes: Array<{ kind: string; path: string; handler: (req: RouteMethod, res: unknown) => unknown }> = []
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: unknown) => unknown }> = []
   registerDashboard({ register: (route) => { routes.push(route as never); return () => {} } },
     {
       store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {},
@@ -602,7 +602,7 @@ test('the state feed carries the host-resolved model facts (real context capacit
   const model = (api.json() as { model: { id: string; provider: string; contextWindow: number | null } | null }).model
   assert.deepEqual(model, { id: 'glm-5.2', provider: 'glm-coding', contextWindow: 128000 }, 'the feed exposes the host-resolved capacity verbatim')
   // a face-less composition degrades to null, never throws the route down
-  const routes2: Array<{ kind: string; path: string; handler: (req: RouteMethod, res: unknown) => unknown }> = []
+  const routes2: Array<{ kind: string; path: string; handler: (req: RequestLike, res: unknown) => unknown }> = []
   registerDashboard({ register: (route) => { routes2.push(route as never); return () => {} } },
     { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null } as never)
   const api2 = await handle(routes2 as never, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
@@ -660,7 +660,7 @@ test('routes: the exam-v2 lifecycle rides the dashboard API (P12)', async () => 
 
   // the state feed's lesson projection carries the exam summary + kind
   state.focus = { lessonId: exam.id }
-  const wb = workbenchState(state, 'C:/state.json')
+  const wb = workbenchState(state, new Date())
   assert.equal(wb.lesson!.kind, 'exam')
   assert.equal(wb.lesson!.exam!.status, 'idle')
   assert.equal(wb.lesson!.exam!.attemptCount, 1)

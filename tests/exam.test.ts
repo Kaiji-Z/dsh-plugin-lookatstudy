@@ -131,7 +131,7 @@ test('the rendered lesson text carries the examGuide (live-test defect fix: rend
   const { byName, examId } = await preparedCourse()
   const tool = byName.get('study_lesson')!
   const value = await tool.execute({ lessonId: examId }, { signal: new AbortController().signal } as never)
-  const rendered = tool.output!.render!({ lessonId: examId }, value).map(b => (b as { text: string }).text).join('\n')
+  const rendered = tool.output!.render!({ lessonId: examId }, value as never).map(b => (b as { text: string }).text).join('\n')
   assert.ok(rendered.includes('exam: 5 questions'), `render must surface the guide: ${rendered.slice(0, 200)}`)
   assert.ok(rendered.includes('clamp 60–300'))
 })

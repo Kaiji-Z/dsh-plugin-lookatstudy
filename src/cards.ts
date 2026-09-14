@@ -7,12 +7,16 @@
 
 /** Canonical value of the three import tools. */
 export interface ImportValue {
+  /** Present on the schema-inferred union (the design_or_imported oneOf arm). */
+  status?: 'imported'
   courseId: string
   title: string
   sections: number
   lessons: number
-  firstLessonId: string | null
-  firstLessonTitle: string | null
+  // Audit C23: imports reject 0-lesson courses, so the first lesson ALWAYS
+  // exists — the old `string | null` lied against the tool schemas.
+  firstLessonId: string
+  firstLessonTitle: string
 }
 
 /** Canonical value of `study_map`. */
@@ -25,8 +29,8 @@ export interface MapValue {
     lessons: Array<{
       id: string
       title: string
-      kind: string
-      status: string
+      kind: 'study' | 'practice' | 'exam'
+      status: 'locked' | 'available' | 'in_progress' | 'mastered'
       masteryPct: number | null
       crown: number
       weakConcepts: number

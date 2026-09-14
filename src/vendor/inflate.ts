@@ -67,8 +67,8 @@ class BitReader {
 class Huffman {
   private readonly count = new Array<number>(16).fill(0);
   private readonly symbols: number[] = [];
-  constructor(lengths: readonly number[]) {
-    for (const l of lengths) this.count[l]!++;
+  constructor(lengths: ArrayLike<number>) {
+    for (let li = 0; li < lengths.length; li++) this.count[lengths[li]!]!++;
     this.count[0] = 0;
     const offs = new Array<number>(16).fill(0);
     for (let len = 1; len < 16; len++) offs[len] = offs[len - 1]! + this.count[len - 1]!;

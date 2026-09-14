@@ -64,18 +64,20 @@ export function quizOptions(text: string): ReadonlyArray<{ letter: string; text:
     // options stayed unclickable).
     const plain = /^([A-D])[.、:)]\s*(.+)$/.exec(line.trim())
     const table = /^\|\s*\*{0,2}([A-D])\*{0,2}\s*\|\s*(.+?)\s*\|$/.exec(line.trim())
-    const match = plain ?? (table !== null
-      ? [table[0]!, table[1]!, table[2]!.replaceAll('**', '').replaceAll('`', '')] as RegExpExecArray
-      : null)
+    const match: readonly [letter: string, text: string] | null = plain !== null
+      ? [plain[1]!, plain[2]!]
+      : table !== null
+        ? [table[1]!, table[2]!.replaceAll('**', '').replaceAll('`', '')]
+        : null
     if (match === null) {
       flush()
       continue
     }
     const nextLetter = run.length === 0 ? 'A' : String.fromCharCode(run[run.length - 1]!.letter.charCodeAt(0) + 1)
-    if (match[1] === nextLetter) run.push({ letter: match[1], text: match[2]! })
+    if (match[0] === nextLetter) run.push({ letter: match[0], text: match[1] })
     else {
       flush()
-      if (match[1] === 'A') run.push({ letter: match[1], text: match[2]! })
+      if (match[0] === 'A') run.push({ letter: match[0], text: match[1] })
     }
   }
   flush()
@@ -244,12 +246,14 @@ export interface CtxSegment { key: string; cls: string; width: number }
  */
 export function ctxSegments(pct: number, breakdown: { systemTokens: number; toolsTokens: number; messageTokens: number } | null): CtxSegment[] {
   if (pct <= 0) return []
-  const total = breakdown === null ? 0 : breakdown.systemTokens + breakdown.toolsTokens + breakdown.messageTokens
+  if (breakdown === null) return [{ key: 'total', cls: '', width: pct }]
+  const bd = breakdown
+  const total = bd.systemTokens + bd.toolsTokens + bd.messageTokens
   if (total <= 0) return [{ key: 'total', cls: '', width: pct }]
   return ([
-    ['sys', breakdown.systemTokens],
-    ['tools', breakdown.toolsTokens],
-    ['msgs', breakdown.messageTokens],
+    ['sys', bd.systemTokens],
+    ['tools', bd.toolsTokens],
+    ['msgs', bd.messageTokens],
   ] as const)
     .map(([key, tokens]) => ({ key, cls: key, width: pct * tokens / total }))
     .filter(s => s.width > 0)

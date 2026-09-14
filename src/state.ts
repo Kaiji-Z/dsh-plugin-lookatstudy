@@ -252,7 +252,7 @@ export interface LearningState {
   memoryPatterns: Record<string, string>
   /** Course-less friction the tutor logs before any lesson is open (audit
    *  C20, additive): the global consolidation slot's material, capped at 50. */
-  frictionGlobal?: FrictionEntry[]
+  frictionGlobal: FrictionEntry[]
   /** Mastery proposals across courses. */
   proposals: MasteryProposal[]
   /** Lesson id → dsh session id (the legacy single-binding thread system —
@@ -264,14 +264,14 @@ export interface LearningState {
    *  auto-created on first send, auto-titled from the first message.
    *  Additive; v2 files without it load with empty groups (and any legacy
    *  lessonSessions binding migrates into a one-thread group at load). */
-  lessonThreads?: Record<string, LessonThreadGroup>
+  lessonThreads: Record<string, LessonThreadGroup>
   /** Lesson id → recorded artifacts (upstream canvas_items: the panel's
    *  interactive cards — practice quizzes, compare tables, walkthroughs).
    *  Additive in 0.15.0; v2 files without it load with {}. */
   artifacts: Record<string, StudyArtifact[]>
   /** Deleted courses awaiting recovery (audit B7, additive): the 10 most
    *  recent deletes ride here; v2 files without it load with []. */
-  trash?: TrashedCourse[]
+  trash: TrashedCourse[]
   /** Consolidation watermark (ISO): study_consolidate gathers friction/notes
    *  after this instant and advances it (upstream memory-service watermark). */
   lastConsolidatedAt: string | null
@@ -835,6 +835,8 @@ export interface AnswerResult {
   crown: number
   mastered: boolean
   progression: Progression
+  /** XP ledger after this answer (C23: the runtime shape always carried it). */
+  xp: ReturnType<typeof noteXpActivity>
 }
 
 /**

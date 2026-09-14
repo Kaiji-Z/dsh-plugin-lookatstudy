@@ -91,8 +91,9 @@ test('new formats reach the tutor design brief (the protocol surface)', async ()
   assert.ok(brief.includes('book.epub'))
   assert.ok(brief.includes('handout.docx'))
   // bodyPreview rides the brief only for github source; folder briefs carry bodies via localContents
-  assert.ok(pending.localContents.has('book.epub'))
-  assert.ok(pending.localContents.get('book.epub')!.includes('第二章 进阶'))
+  assert.ok(pending.localContents !== undefined, 'folder briefs carry bodies via localContents')
+  assert.ok(pending.localContents!.has('book.epub'))
+  assert.ok(pending.localContents!.get('book.epub')!.includes('第二章 进阶'))
 })
 
 test('scanFolder still skips broken containers without crashing the whole scan', async () => {

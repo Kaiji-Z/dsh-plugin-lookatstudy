@@ -48,7 +48,7 @@ function ccJson(n: number): string {
   return JSON.stringify({ body: Array.from({ length: n }, (_v, i) => ({ from: i, to: i + 1, content: `第${i}句梯度下降的直觉讲解。` })) })
 }
 
-function biliTransport(pages: { cid: number; page?: number; part?: string }[], ccByCid: Record<number, { lan: string; url: string }[]>, seen: string[] = []): typeof fetch {
+function biliTransport(pages: { cid: number; page?: number; part?: string }[], ccByCid: Record<number, { lan?: string; lan_doc?: string; subtitle_url?: string }[]>, seen: string[] = []): typeof fetch {
   return async (input) => {
     const url = String(input)
     seen.push(url)
@@ -67,7 +67,7 @@ function biliTransport(pages: { cid: number; page?: number; part?: string }[], c
 }
 
 test('fetchBilibiliSubtitles: multi-P whole-season — CC parts import, CC-less parts land in missing', async () => {
-  const cc: Record<number, { lan: string; url: string }[]> = {
+  const cc: Record<number, { lan?: string; lan_doc?: string; subtitle_url?: string }[]> = {
     11: [{ lan: 'zh-CN', subtitle_url: '//aisubtitle.hdslb.com/cc1.json' }],
   }
   const res = await fetchBilibiliSubtitles('https://www.bilibili.com/video/BV1ab411c2dE', biliTransport([{ cid: 11, page: 1, part: '第一讲' }, { cid: 22, page: 2, part: '第二讲' }], cc))
@@ -80,7 +80,7 @@ test('fetchBilibiliSubtitles: multi-P whole-season — CC parts import, CC-less 
 })
 
 test('fetchBilibiliSubtitles: ?p=N targets exactly that episode (single-P naming falls back to the course title)', async () => {
-  const cc: Record<number, { lan: string; url: string }[]> = {
+  const cc: Record<number, { lan?: string; lan_doc?: string; subtitle_url?: string }[]> = {
     11: [{ lan: 'zh-CN', subtitle_url: '//aisubtitle.hdslb.com/cc1.json' }],
     22: [{ lan: 'ai-zh', subtitle_url: '//aisubtitle.hdslb.com/cc2.json' }],
   }

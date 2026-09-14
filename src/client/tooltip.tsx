@@ -41,7 +41,7 @@ export function GlobalTooltip(): ReactNode {
     // by the live zoom and keep the offset tight (0.19 owner note: the tip
     // sits at the mouse).
     const panelZoom = (): number => {
-      const z = parseFloat(document.querySelector('.lks-ui')?.style.zoom ?? '1')
+      const z = parseFloat(document.querySelector<HTMLElement>('.lks-ui')?.style.zoom ?? '1')
       return Number.isFinite(z) && z > 0 ? z : 1
     }
     const onMove = (e: PointerEvent): void => {
@@ -90,7 +90,7 @@ export function GlobalTooltip(): ReactNode {
   }, [])
 
   if (tip === null) return null
-  const z = parseFloat(document.querySelector('.lks-ui')?.style.zoom ?? '1') || 1
+  const z = parseFloat(document.querySelector<HTMLElement>('.lks-ui')?.style.zoom ?? '1') || 1
   const clamped = clampTip(tip.x, tip.y, 200, 40, window.innerWidth / z, window.innerHeight / z)
   return createElement('div', { className: 'lks-tip', role: 'tooltip', style: { left: `${String(clamped.x)}px`, top: `${String(clamped.y)}px` } }, tip.text)
 }

@@ -22,6 +22,8 @@ export interface SessionPromptFace {
   cancel?(): Promise<
     { ok: true } | { ok: false; error: { readonly code: string; readonly message: string } }
   >
+  /** Rename the host-side session title (issue #11 dual-write; best-effort). */
+  rename?(title: string): Promise<void>
 }
 
 /** The injected client root: cordis context plus the services the manifest pulls in. */

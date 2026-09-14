@@ -24,7 +24,7 @@ const MAX_SCALE = 4
 const STEP = 1.25
 
 export function CanvasStage({ children, grid = true, testid }: {
-  children: ReactNode
+  children?: ReactNode
   /** 画布点阵底纹(黑板/弹窗 true;窄容器可关)。 */
   grid?: boolean
   testid?: string
