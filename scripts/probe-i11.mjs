@@ -67,8 +67,25 @@ const turnOver = () => {
   if (document.querySelector('.lks14-composer .lks-btn-send.stop') !== null) return false
   return document.querySelectorAll('.lks14-msg-assistant:not(.streaming)').length >= 1
 }
+// the tutor may open with ask_user_question (off-course redline / resume
+// choice); the panel has no answer UI yet, so answer it in the hidden host
+// column — a pending ask parks the turn mid-step and the stop twin never
+// clears on its own (live 2026-09-14 catch)
+const answerPendingAsk = async () => page.evaluate(() => {
+  const el = [...document.querySelectorAll('[class*="_option"]')].find(b => b.closest('.lks14-shell-view') === null)
+  if (el === undefined) return false
+  el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  return true
+})
 const settleTurn = async () => {
-  await page.waitForFunction(turnOver, undefined, { timeout: 180000 })
+  const deadline = Date.now() + 180000
+  let settled = false
+  while (Date.now() < deadline) {
+    try { await page.waitForFunction(turnOver, undefined, { timeout: 40000 }); settled = true; break } catch {
+      if (await answerPendingAsk()) await page.waitForTimeout(4000)
+    }
+  }
+  if (!settled) await page.waitForFunction(turnOver, undefined, { timeout: 30000 })
   await page.waitForTimeout(1500)
   await page.waitForFunction(turnOver, undefined, { timeout: 30000 })
 }
@@ -130,7 +147,18 @@ probe('3 switch-back: the menu marks thread 1 as the current one', nowRow?.on ==
 // —— 4. reload persistence ——
 await page.reload({ waitUntil: 'domcontentloaded' })
 await openPanel()
-await page.waitForFunction((needle) => [...document.querySelectorAll('.lks14-msg-user')].some(m => (m.textContent ?? '').includes(needle)), MSG1, { timeout: 45000 })
+try {
+  await page.waitForFunction((needle) => [...document.querySelectorAll('.lks14-msg-user')].some(m => (m.textContent ?? '').includes(needle)), MSG1, { timeout: 45000 })
+} catch {
+  const diag = await page.evaluate(() => ({
+    feed: document.querySelector('[data-lks-feed]')?.getAttribute('data-lks-feed') ?? null,
+    chip: document.querySelector('.lks14-threadchip')?.textContent ?? null,
+    active: document.documentElement.getAttribute('data-dsh-lookatstudy-active'),
+    userRows: document.querySelectorAll('.lks14-msg-user').length,
+  }))
+  console.log('  (item-4 diag:', JSON.stringify(diag), ')')
+  throw new Error('item 4: history not visible after reload')
+}
 const chip4 = await page.textContent('.lks14-threadchip')
 probe('4 reload: the active thread rebinds after reload (history visible)', chip4?.includes('2') === true, `chip="${chip4?.trim()}"`)
 const g4 = readState().lessonThreads?.['course:0:1']
@@ -142,6 +170,7 @@ probe('4 reload: state.json keeps 2 threads with thread 1 active', g4?.threads?.
 const feed = await (await fetch(`${base}/lookatstudy/api/state`)).json()
 const legacyTitle = feed.courses.flatMap(c => c.sections).flatMap(s => s.lessons).find(l => l.id === 'course:0:0')?.title ?? ''
 await page.click('[data-node-id="course:0:0"]')
+await page.waitForTimeout(2000) // the chip count rides the state poll — settle past the focus-switch race
 await page.waitForSelector('.lks14-threadchip', { timeout: 15000 })
 const chip5 = await page.textContent('.lks14-threadchip')
 const migrated = (await menuTitles()).find(r => !r.isNew)
