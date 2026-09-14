@@ -28,6 +28,7 @@ import {
   recordExamAnswer,
   submitExamAttempt,
   deleteCourse,
+  restoreCourse,
   addNote,
   deleteNote,
   recordReview,
@@ -488,6 +489,24 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
           }
           deps.store.save()
           sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/course/restore') {
+        // Audit B7: the trash's restore face (the delete route now lands in
+        // the restorable trash too).
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.courseId !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'courseId (string) required' })
+          return
+        }
+        try {
+          const course = restoreCourse(deps.store.get(), body.courseId)
+          deps.store.save()
+          sendJson(res, 200, { ok: true, courseId: course.id, title: course.title })
         } catch (error) {
           sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
         }

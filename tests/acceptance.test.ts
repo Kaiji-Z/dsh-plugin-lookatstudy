@@ -90,10 +90,12 @@ test('acceptance: the core learning loop, frozen', async () => {
     assert.ok(review.dueAt > new Date().toISOString(), 'a correct review pushes the due date out')
     assert.ok(stateTomorrow.courses[0]!.sections[0]!.lessons[0]!.dueAt !== null, 'the schedule is durable in state.json')
 
-    // Phase 6 — course deletion cascades cleanly.
-    await run(byName, 'study_delete_course', { courseId: imported.courseId })
+    // Phase 6 — course deletion cascades cleanly (audit B7: two-step + trash).
+    const queued = await run(byName, 'study_delete_course', { courseId: imported.courseId })
+    await run(byName, 'study_delete_course', { courseId: imported.courseId, confirmToken: queued.confirmToken })
     assert.equal(state.courses.length, 0)
     assert.equal(state.proposals.length, 0)
+    assert.ok((state.trash ?? []).length === 1, 'the course waits in the restorable trash')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

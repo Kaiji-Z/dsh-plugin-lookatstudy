@@ -108,6 +108,19 @@ export function soulText(state: LearningState): string {
 }
 
 /**
+ * Audit B7: imported titles, friction summaries, and proposal rationales are
+ * untrusted text (repo names, article titles, repo-derived content) landing
+ * in the per-turn system prompt — flatten to one line, strip control
+ * characters, and cap the length so nothing can forge prompt structure
+ * mid-section (newlines + fake section markers).
+ */
+function sanitizePromptText(value: string | null | undefined, max = 120): string {
+  if (value === null || value === undefined) return ''
+  const flat = value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim()
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat
+}
+
+/**
  * Render the learner snapshot (LookatStudy's per-turn volatile tail) as the
  * dynamic runtime context: focus, strategy band, concepts with weak flags,
  * recent friction, memory slots, due count, pending proposal. Dormant
@@ -120,22 +133,22 @@ export function snapshotSectionText(state: LearningState): string {
     return snap.dueCount === 0 ? '' : `【学习者当前状态】\n今日待复习: ${snap.dueCount} 项(study_due_reviews)`
   }
   const lines: string[] = ['【学习者当前状态】']
-  lines.push(`焦点: ${snap.focus.courseTitle} [courseId ${snap.focus.courseId}] / ${snap.focus.lessonTitle} [lessonId ${snap.focus.lessonId}](${snap.focus.status}${snap.focus.masteryPct === null ? '' : `, 掌握度 ${snap.focus.masteryPct}%`})`)
+  lines.push(`焦点: ${sanitizePromptText(snap.focus.courseTitle)} [courseId ${snap.focus.courseId}] / ${sanitizePromptText(snap.focus.lessonTitle)} [lessonId ${snap.focus.lessonId}](${snap.focus.status}${snap.focus.masteryPct === null ? '' : `, 掌握度 ${snap.focus.masteryPct}%`})`)
   if (snap.strategy !== null) lines.push(`教学策略: ${snap.strategy}`)
   if (snap.concepts !== null && snap.concepts.length > 0) {
-    lines.push(`知识点(课级掌握度 = 最薄弱知识点): ${snap.concepts.map(c => `${c.title} ${c.masteryPct}%${c.weak ? ' ⚡薄弱' : ''}`).join(' · ')}`)
+    lines.push(`知识点(课级掌握度 = 最薄弱知识点): ${snap.concepts.map(c => `${sanitizePromptText(c.title)} ${c.masteryPct}%${c.weak ? ' ⚡薄弱' : ''}`).join(' · ')}`)
   }
   if (snap.friction.length > 0) {
-    lines.push(`近期卡点(共 ${snap.friction.length} 条): ${snap.friction.map(f => `${f.category}${f.summary === null ? '' : `: ${f.summary}`}`).join(' / ')}`)
+    lines.push(`近期卡点(共 ${snap.friction.length} 条): ${snap.friction.map(f => `${f.category}${f.summary === null ? '' : `: ${sanitizePromptText(f.summary, 80)}`}`).join(' / ')}`)
   }
   const memory = [
-    snap.memoryGlobal === null ? '' : `整体: ${snap.memoryGlobal}`,
-    snap.memoryLesson === null ? '' : `本课: ${snap.memoryLesson}`,
-    snap.memoryPattern === null ? '' : `模式: ${snap.memoryPattern}`,
+    snap.memoryGlobal === null ? '' : `整体: ${sanitizePromptText(snap.memoryGlobal, 200)}`,
+    snap.memoryLesson === null ? '' : `本课: ${sanitizePromptText(snap.memoryLesson, 200)}`,
+    snap.memoryPattern === null ? '' : `模式: ${sanitizePromptText(snap.memoryPattern, 200)}`,
   ].filter(Boolean)
   if (memory.length > 0) lines.push(`记忆: ${memory.join(' | ')}`)
   if (snap.dueCount > 0) lines.push(`今日待复习: ${snap.dueCount} 项`)
-  if (snap.pendingProposal !== null) lines.push(`待决提案 ${snap.pendingProposal.id}: ${snap.pendingProposal.rationale}(等学习者表态)`)
+  if (snap.pendingProposal !== null) lines.push(`待决提案 ${snap.pendingProposal.id}: ${sanitizePromptText(snap.pendingProposal.rationale, 160)}(等学习者表态)`)
   // Upstream v0.33 language-course axis (ported 2026-09-12): when the focus
   // course teaches a language ITSELF, the base prompt's "answer in the
   // learner's language including quiz stems" would translate the

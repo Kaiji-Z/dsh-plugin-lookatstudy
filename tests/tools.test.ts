@@ -83,9 +83,13 @@ test('the full study loop works through the tools', async () => {
   const review = await run(byName, 'study_record_review', { lessonId: dueAgain.due[0]!.lessonId, quality: 4 })
   assert.equal(review.intervalDays, 1)
 
-  const remaining = await run(byName, 'study_delete_course', { courseId: imported.courseId })
+  const queued = await run(byName, 'study_delete_course', { courseId: imported.courseId })
+  assert.equal(queued.status, 'confirm_required', 'audit B7: a tokenless delete only queues')
+  const wrongToken = await run(byName, 'study_delete_course', { courseId: imported.courseId, confirmToken: 'forged' })
+  assert.equal(wrongToken.status, 'confirm_required', 'a forged token never deletes (it invalidates the pending one)')
+  const remaining = await run(byName, 'study_delete_course', { courseId: imported.courseId, confirmToken: wrongToken.confirmToken })
   assert.equal(remaining.remaining, 0)
-  assert.equal(saves(), 6, 'every mutating call persisted (import, focus, answer, complete, review, delete)')
+  assert.equal(saves(), 8, 'every mutating call persisted (import, focus, answer, complete, review, delete-queue, forged-requeue, delete)')
 })
 
 test('imports with no lessons fail loud and leave state untouched', async () => {
@@ -262,6 +266,18 @@ test('every tool output conforms to its declared output schema (the real tool-ca
     const output = await run(byName, name, args)
     const err = conforms(output, tool.output.schema as Schema, name)
     assert.equal(err, null, `${name} output must satisfy its schema`)
+  }
+  // Audit B7: the export cap, the delete two-step, and restore carry their own shapes.
+  {
+    const exported = await run(byName, 'study_export', { courseId: imported.courseId })
+    assert.equal(conforms(exported, byName.get('study_export')!.output.schema as Schema, 'study_export'), null)
+    const queued = await run(byName, 'study_delete_course', { courseId: imported.courseId })
+    assert.equal(conforms(queued, byName.get('study_delete_course')!.output.schema as Schema, 'study_delete_course#queued'), null)
+    const deleted = await run(byName, 'study_delete_course', { courseId: imported.courseId, confirmToken: queued.confirmToken })
+    assert.equal(conforms(deleted, byName.get('study_delete_course')!.output.schema as Schema, 'study_delete_course#deleted'), null)
+    const restored = await run(byName, 'study_restore_course', { courseId: deleted.deletedCourseId })
+    assert.equal(conforms(restored, byName.get('study_restore_course')!.output.schema as Schema, 'study_restore_course'), null)
+    assert.equal(restored.restoredCourseId, imported.courseId, 'restore brought the course back')
   }
 })
 

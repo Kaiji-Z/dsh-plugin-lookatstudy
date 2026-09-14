@@ -198,6 +198,20 @@ export interface LessonThreadGroup {
   threads: LessonThreadMeta[]
 }
 
+/** One deleted course held for recovery (audit B7: deletes never hard-splice —
+ *  the course lands here with every associated sediment so study_restore_course
+ *  can bring the whole thing back). */
+export interface TrashedCourse {
+  deletedAt: string
+  course: CourseState
+  proposals: MasteryProposal[]
+  artifacts: Array<[string, StudyArtifact[]]>
+  lessonThreads: Array<[string, LessonThreadGroup]>
+  lessonSessions: Array<[string, string]>
+  memoryPattern: [string, string] | null
+  focusLessonId: string | null
+}
+
 /** One imported course. */
 export interface CourseState {
   id: string
@@ -247,6 +261,9 @@ export interface LearningState {
    *  interactive cards — practice quizzes, compare tables, walkthroughs).
    *  Additive in 0.15.0; v2 files without it load with {}. */
   artifacts: Record<string, StudyArtifact[]>
+  /** Deleted courses awaiting recovery (audit B7, additive): the 10 most
+   *  recent deletes ride here; v2 files without it load with []. */
+  trash?: TrashedCourse[]
   /** Consolidation watermark (ISO): study_consolidate gathers friction/notes
    *  after this instant and advances it (upstream memory-service watermark). */
   lastConsolidatedAt: string | null
@@ -278,7 +295,7 @@ const FRICTION_CAP = 10
 export function emptyState(): LearningState {
   return {
     version: 2, courses: [], active: false, mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, artifacts: {},
-    proposals: [], lessonSessions: {}, lessonThreads: {}, lastConsolidatedAt: null,
+    proposals: [], lessonSessions: {}, lessonThreads: {}, trash: [], lastConsolidatedAt: null,
     xp: { total: 0, todayKey: '', todayXp: 0 },
     streak: { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
   }
@@ -423,6 +440,7 @@ function parseStateFile(path: string): LearningState {
       return groups
     })(),
     artifacts: raw.artifacts ?? {},
+    trash: raw.trash ?? [],
     lastConsolidatedAt: raw.lastConsolidatedAt ?? null,
     xp: raw.xp ?? { total: 0, todayKey: '', todayXp: 0 },
     streak: raw.streak ?? { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
@@ -576,18 +594,86 @@ export function importCourse(
 }
 
 /**
- * Drop a course from state; unknown ids fail loud.
+ * Delete one course — into the restorable trash (audit B7), carrying its
+ * proposals, artifacts, thread groups, legacy bindings, pattern memory, and
+ * focus so a restore is total (this also leaves no orphan sediment behind —
+ * audit C17). Unknown ids fail loud.
  * @param state - state to mutate.
  * @param courseId - course to remove.
  */
 export function deleteCourse(state: LearningState, courseId: string): void {
   const i = state.courses.findIndex(c => c.id === courseId)
   if (i < 0) throw new Error(`lookatstudy-plugin: unknown course id ${JSON.stringify(courseId)}`)
-  state.courses.splice(i, 1)
-  state.proposals = state.proposals.filter(p => !p.lessonId.startsWith(`${courseId}:`))
-  for (const lessonId of Object.keys(state.artifacts)) {
-    if (lessonId.startsWith(`${courseId}:`)) delete state.artifacts[lessonId]
+  const [course] = state.courses.splice(i, 1)
+  const prefix = `${courseId}:`
+  const lessonThreads: Array<[string, LessonThreadGroup]> = []
+  for (const key of Object.keys(state.lessonThreads)) {
+    if (key.startsWith(prefix)) {
+      lessonThreads.push([key, state.lessonThreads[key]!])
+      delete state.lessonThreads[key]
+    }
   }
+  const lessonSessions: Array<[string, string]> = []
+  for (const key of Object.keys(state.lessonSessions)) {
+    if (key.startsWith(prefix)) {
+      lessonSessions.push([key, state.lessonSessions[key]!])
+      delete state.lessonSessions[key]
+    }
+  }
+  const artifacts: Array<[string, StudyArtifact[]]> = []
+  for (const key of Object.keys(state.artifacts)) {
+    if (key.startsWith(prefix)) {
+      artifacts.push([key, state.artifacts[key]!])
+      delete state.artifacts[key]
+    }
+  }
+  const proposals = state.proposals.filter(p => p.lessonId.startsWith(prefix))
+  state.proposals = state.proposals.filter(p => !p.lessonId.startsWith(prefix))
+  const pattern = state.memoryPatterns[courseId]
+  const memoryPattern: [string, string] | null = pattern !== undefined ? [courseId, pattern] : null
+  if (pattern !== undefined) delete state.memoryPatterns[courseId]
+  const focusLessonId = state.focus !== null && state.focus.lessonId.startsWith(prefix) ? state.focus.lessonId : null
+  if (focusLessonId !== null) state.focus = null
+  state.trash = [{ deletedAt: new Date().toISOString(), course, proposals, artifacts, lessonThreads, lessonSessions, memoryPattern, focusLessonId }, ...(state.trash ?? [])].slice(0, 10)
+}
+
+/**
+ * Restore one course from the trash with all its sediment. The slug may have
+ * been re-taken while trashed — the tree is re-id'd and every carried key
+ * remapped in that case. Unknown ids fail loud with the restorable list.
+ * @param state - state to mutate.
+ * @param courseId - trashed course to restore.
+ * @returns the restored course.
+ */
+export function restoreCourse(state: LearningState, courseId: string): CourseState {
+  state.trash ??= []
+  const i = state.trash.findIndex(t => t.course.id === courseId)
+  if (i < 0) {
+    throw new Error(`lookatstudy-plugin: no trashed course ${JSON.stringify(courseId)} (restorable: ${state.trash.map(t => t.course.id).join(', ') || 'none'})`)
+  }
+  const entry = state.trash.splice(i, 1)[0]!
+  const course = entry.course
+  const oldId = course.id
+  let id = oldId
+  for (let n = 2; state.courses.some(c => c.id === id); n++) id = `${oldId}-${String(n)}`
+  if (id !== oldId) {
+    course.id = id
+    const remap = (key: string): string => (key.startsWith(`${oldId}:`) ? `${id}${key.slice(oldId.length)}` : key)
+    course.sections.forEach((section, si) => section.lessons.forEach((lesson, li) => { lesson.id = `${id}:${si}:${li}` }))
+    for (const p of entry.proposals) p.lessonId = remap(p.lessonId)
+    entry.artifacts = entry.artifacts.map(([k, v]) => [remap(k), v])
+    entry.lessonThreads = entry.lessonThreads.map(([k, v]) => [remap(k), v])
+    entry.lessonSessions = entry.lessonSessions.map(([k, v]) => [remap(k), v])
+    if (entry.focusLessonId !== null) entry.focusLessonId = remap(entry.focusLessonId)
+  }
+  state.courses.push(course)
+  for (const p of entry.proposals) state.proposals.push(p)
+  for (const [key, list] of entry.artifacts) state.artifacts[key] = [...(state.artifacts[key] ?? []), ...list]
+  for (const [key, group] of entry.lessonThreads) state.lessonThreads[key] = group
+  for (const [key, sessionId] of entry.lessonSessions) state.lessonSessions[key] = sessionId
+  if (entry.memoryPattern !== null) state.memoryPatterns[course.id] = entry.memoryPattern[1]
+  if (entry.focusLessonId !== null && state.focus === null) state.focus = { lessonId: entry.focusLessonId }
+  return course
 }
 
 /**

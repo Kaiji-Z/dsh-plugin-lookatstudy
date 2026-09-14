@@ -11,6 +11,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename } from 'node:path'
+import { randomBytes } from 'node:crypto'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { parseMarkdownToCourse } from './vendor/markdown-course.ts'
@@ -51,6 +52,7 @@ import {
   conceptViews,
   courseSummaries,
   deleteCourse,
+  restoreCourse,
   dueReviews,
   findCourse,
   findLesson,
@@ -242,6 +244,13 @@ function signalFetch(signal: AbortSignal, baseFetch: typeof fetch): typeof fetch
   return (input, init) => baseFetch(input, { ...init, signal })
 }
 
+/** Audit B7: imported bodies are untrusted input landing in the tutor's
+ *  context — the in-prompt lesson body and the in-chat course pack are capped
+ *  (the panel always renders the full content; oversized packs download from
+ *  the panel's course export instead of riding the conversation). */
+const LESSON_BODY_PROMPT_CAP = 24_000
+const EXPORT_PROMPT_CAP = 100_000
+
 /** Total over a missing `meta` (events logged before a presentationMeta existed): renders nothing instead of throwing into the presenter fallback. */
 const textBlocks = (lines: readonly string[] | undefined | null): Array<{ type: 'text'; text: string }> => (lines ?? []).map(text => ({ type: 'text', text }) as const)
 
@@ -268,6 +277,8 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
   let pendingDesign: PendingDesign | null = null
   /** Which context-budget part of the pending brief the tutor last asked for. */
   let pendingPart = 1
+  /** Audit B7: outstanding delete confirmations (courseId → token + expiry). */
+  const pendingDeletes = new Map<string, { token: string; expires: number }>()
   /** Run a mutating state operation and persist. */
   const mutate = <T>(fn: (state: LearningState) => T): T => {
     const result = fn(store.get())
@@ -995,7 +1006,10 @@ ${p.text}`))
           + `strategy: ${value.strategy}\n`
           + (value.concepts === null ? '' : `concepts: ${value.concepts.map(c => `${c.title} ${c.masteryPct}%${c.weak ? ' ⚡weak' : ''}`).join(' · ')}\n`)
           + (value.examGuide === undefined ? '' : `exam: ${value.examGuide.questionCount} questions (${value.examGuide.kcCount} KCs); per-question time ${value.examGuide.timeLimitRule}; stars ${value.examGuide.starsRule}\n`)
-          + `starters: ${value.starters.map(s => s.label).join(' / ')}\n\n${value.body}`
+          + `starters: ${value.starters.map(s => s.label).join(' / ')}\n\n`
+          + (value.body.length > LESSON_BODY_PROMPT_CAP
+            ? `${value.body.slice(0, LESSON_BODY_PROMPT_CAP)}\n…(lesson body truncated at ${LESSON_BODY_PROMPT_CAP} chars — the full body renders in the study panel)`
+            : value.body)
           + `${value.nextLessonId === null ? '\n\n(this is the last lesson)' : `\n\n(next lesson: ${value.nextLessonId})`}`,
       }],
     },
@@ -1379,32 +1393,82 @@ ${p.text}`))
 
   const deleteCourseTool = defineTool({
     name: 'study_delete_course',
-    description: 'Delete one course and all its progress. Ask the learner before calling.',
+    description: 'Delete one course and all its progress — TWO steps by design (audit B7): a call without confirmToken only queues the deletion and returns the token; ask the learner, and re-call with the token verbatim to execute. Deleted courses land in the restorable trash (study_restore_course), so nothing is gone forever.',
     parameters: {
       courseId: { type: 'string', required: true, description: 'Course to delete.' },
+      confirmToken: { type: 'string', description: 'The token from the confirm_required result, echoed verbatim after the learner confirms.' },
     },
     output: {
       schema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          deletedCourseId: { type: 'string', required: true },
-          remaining: { type: 'integer', required: true },
+          status: { type: 'string', required: true, description: 'confirm_required | deleted' },
+          courseId: { type: 'string', required: true },
+          title: { type: 'string', description: 'Present on confirm_required.' },
+          lessons: { type: 'integer', description: 'Present on confirm_required.' },
+          confirmToken: { type: 'string', description: 'Present on confirm_required — echo it in the second call.' },
+          deletedCourseId: { type: 'string', description: 'Present on deleted.' },
+          remaining: { type: 'integer', description: 'Present on deleted.' },
+        },
+      },
+      render: (_args, value) => value.status === 'confirm_required'
+        ? [{
+            type: 'text',
+            text: `Course “${value.title}” (${value.lessons} lessons, all progress) is queued for deletion. Ask the learner; on their explicit confirmation re-call study_delete_course with the confirmToken. Deletions land in the restorable trash (study_restore_course).`,
+          }]
+        : [{
+            type: 'text',
+            text: `Deleted course ${value.deletedCourseId}. ${value.remaining} courses remain. Recoverable from the trash via study_restore_course.`,
+          }],
+    },
+    async execute(args) {
+      return mutate((state) => {
+        const course = findCourse(state, args.courseId)
+        const pending = pendingDeletes.get(args.courseId)
+        const now = Date.now()
+        if (typeof args.confirmToken !== 'string' || pending === undefined || pending.token !== args.confirmToken || pending.expires < now) {
+          const token = randomBytes(8).toString('hex')
+          pendingDeletes.set(args.courseId, { token, expires: now + 5 * 60_000 })
+          return { status: 'confirm_required' as const, courseId: course.id, title: course.title, lessons: course.sections.flatMap(s => s.lessons).length, confirmToken: token }
+        }
+        pendingDeletes.delete(args.courseId)
+        deleteCourse(state, args.courseId)
+        return { status: 'deleted' as const, courseId: args.courseId, deletedCourseId: args.courseId, remaining: state.courses.length }
+      })
+    },
+    presentCall: args => ({ card: 'generic', title: `Delete course: ${args.courseId}`, kind: 'delete', rawInput: args.courseId }),
+  })
+
+  const restoreCourseTool = defineTool({
+    name: 'study_restore_course',
+    description: 'Restore a deleted course from the trash — progress, notes, exam banks, and thread groups all come back. A miss lists the restorable ids in its error. The trash keeps the 10 most recent deletes.',
+    parameters: {
+      courseId: { type: 'string', required: true, description: 'Trashed course id to restore.' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          restoredCourseId: { type: 'string', required: true },
+          title: { type: 'string', required: true },
+          lessonCount: { type: 'integer', required: true },
+          remainingTrash: { type: 'integer', required: true },
         },
       },
       render: (_args, value) => [{
         type: 'text',
-        text: `Deleted course ${value.deletedCourseId}. ${value.remaining} courses remain.`,
+        text: `Restored course “${value.title}” from the trash (${value.lessonCount} lessons back; ${value.remainingTrash} still trashed).`,
       }],
     },
-    async execute(args) {
+    execute(args) {
       return mutate((state) => {
-        findCourse(state, args.courseId)
-        deleteCourse(state, args.courseId)
-        return { deletedCourseId: args.courseId, remaining: state.courses.length }
+        const course = restoreCourse(state, args.courseId)
+        return { restoredCourseId: course.id, title: course.title, lessonCount: course.sections.flatMap(s => s.lessons).length, remainingTrash: (state.trash ?? []).length }
       })
     },
-    presentCall: args => ({ card: 'generic', title: `Delete course: ${args.courseId}`, kind: 'delete', rawInput: args.courseId }),
+    presentCall: args => ({ card: 'generic', title: `Restore course: ${args.courseId}`, kind: 'read' }),
   })
 
   const defineConceptsTool = defineTool({
@@ -1735,20 +1799,28 @@ ${p.text}`))
           lessonCount: { type: 'integer', required: true },
           chars: { type: 'integer', required: true },
           markdown: { type: 'string', required: true },
+          truncated: { type: 'boolean', description: 'true when the in-chat markdown was capped — the complete pack downloads from the study panel instead.' },
         },
       },
       render: (_args, value) => [{
         type: 'text',
         text: `Course pack “${value.title}” — ${value.lessonCount} lessons, ${value.chars} chars. `
-          + 'Give the learner the markdown below (copyable); importing it goes through study_import_markdown.\n\n'
+          + (value.truncated === true
+            ? 'The pack exceeds the in-chat cap — only its head is shown; the complete file downloads from the study panel (course card → 导出课程包).\n\n'
+            : 'Give the learner the markdown below (copyable); importing it goes through study_import_markdown.\n\n')
           + value.markdown,
       }],
     },
     execute(args) {
       const course = findCourse(store.get(), args.courseId)
-      const markdown = courseToPackMarkdown(course)
+      const full = courseToPackMarkdown(course)
       const lessonCount = course.sections.reduce((n, sec) => n + sec.lessons.filter(l => l.kind !== 'exam').length, 0)
-      return { courseId: course.id, title: course.title, lessonCount, chars: markdown.length, markdown }
+      const truncated = full.length > EXPORT_PROMPT_CAP
+      return {
+        courseId: course.id, title: course.title, lessonCount, chars: full.length,
+        markdown: truncated ? `${full.slice(0, EXPORT_PROMPT_CAP)}\n…(pack truncated at ${EXPORT_PROMPT_CAP} chars)` : full,
+        truncated,
+      }
     },
     isConcurrencySafe: () => true,
     presentCall: args => ({ card: 'generic', title: `Export course: ${args.courseId}`, kind: 'read' }),
@@ -2149,6 +2221,7 @@ ${p.text}`))
     dueReviewsTool,
     recordReviewTool,
     deleteCourseTool,
+    restoreCourseTool,
     defineConceptsTool,
     proposeMasteryTool,
     resolveProposalTool,
