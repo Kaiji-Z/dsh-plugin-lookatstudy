@@ -53,9 +53,9 @@ test('audit C29: a stale design brief renders as stale after a newer import', as
   const first = await run('study_import_url', { url: 'https://a.example/one' })
   const second = await run('study_import_url', { url: 'https://b.example/two' })
   const tool = byName.get('study_import_url')!
-  const stale = tool.output.render({ url: 'x' }, first)[0]!.text
+  const stale = (tool.output.render({ url: 'x' }, first)[0] as { text: string }).text
   assert.ok(stale.includes('STALE'), 'the superseded brief renders as stale instead of the newer import\'s brief')
-  const fresh = tool.output.render({ url: 'y' }, second)[0]!.text
+  const fresh = (tool.output.render({ url: 'y' }, second)[0] as { text: string }).text
   assert.ok(!fresh.includes('STALE'), 'the current brief renders normally')
   assert.ok(first.designSeq !== second.designSeq, 'the two briefs carry distinct sequence numbers')
 })
@@ -71,7 +71,7 @@ test('audit D38: exact-unique anchors win over duplicate substring matches', asy
     { level: 3, title: 'Summary', line: 0 },
     { level: 3, title: 'Deep dive details', line: 5 },
     { level: 3, title: 'Summary', line: 9 },
-  ]
+  ] as Parameters<typeof findTitleIndex>[0]
   // duplicate "Summary" anchors do NOT collapse onto the first occurrence
   assert.equal(findTitleIndex(headings, 'Deep dive details'), 1, 'an exact unique title finds itself')
   assert.equal(findTitleIndex(headings, 'Summary'), 0, 'duplicate exact matches keep the upstream first-match fallback (no unique winner)')
