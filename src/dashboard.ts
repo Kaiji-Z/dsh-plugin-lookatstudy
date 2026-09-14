@@ -369,9 +369,13 @@ function sendJson(res: ResponseLike, status: number, value: unknown): void {
  * small-json route wants (issue #4: only the attachment intake lifts it).
  * @returns the parsed value, or undefined when the response is already sent.
  */
-async function readJsonBodySafe(req: RequestLike, res: ResponseLike, maxBytes = 65_536): Promise<unknown | undefined> {
+async function readJsonBodySafe(req: RequestLike, res: ResponseLike, maxBytes = 65_536): Promise<Record<string, unknown> | undefined> {
   try {
-    return await readJsonBody(req as never, maxBytes)
+    const value = await readJsonBody(req as never, maxBytes)
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error('request body must be a JSON object')
+    }
+    return value as Record<string, unknown>
   } catch (error) {
     sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : 'bad request' })
     return undefined
