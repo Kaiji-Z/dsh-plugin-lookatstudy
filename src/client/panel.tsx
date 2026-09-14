@@ -2600,7 +2600,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
 
   const body: ReactNode = lesson === null
     ? createElement('div', { className: 'lks14-empty' }, tr('bb.empty'), createElement('br'), tr('bb.empty.hint'))
-    : createElement('div', { className: 'lks14-notebody' },
+    : createElement('div', { className: `lks14-notebody${tab === 'board' ? ' lks14-notebody-fill' : ''}` },
       createElement('div', { className: 'lks14-viewtabs' },
         createElement('button', { className: `lks14-viewtab${tab === 'teach' ? ' on' : ''}`, 'aria-pressed': String(tab === 'teach'), onClick: () => { setTab('teach') } }, tr('viewtab.teach')),
         createElement('button', { className: `lks14-viewtab${tab === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(tab === 'cmap'), 'data-tooltip': tr('viewtab.cmap.title'), onClick: () => { setTab('cmap') } }, createElement(IconGlobeOutline14, { size: 13 }), tr('viewtab.cmap')),

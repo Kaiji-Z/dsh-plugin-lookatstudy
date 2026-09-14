@@ -371,6 +371,14 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-emptycard-hint{font-size:.825rem;color:var(--ink-muted);line-height:1.6}
 /* B5: notebook tab capsule + 960px reading column */
 .lks-ui .lks14-notebody{margin:0 auto;max-width:960px;width:100%;padding:12px 20px 24px;box-sizing:border-box}
+/* #10-followup: the reading column is height:auto (the note col scrolls), so
+   .lks14-board's height:100% resolved against a content-sized parent and the
+   stage collapsed to a ~90px sliver — the never-upscale contain fit then
+   scaled tall artifacts to tens of px. On the board tab the body fills the
+   col instead (a flex column); the notes/cmap tabs keep the scrolling
+   reading column. */
+.lks-ui .lks14-notebody.lks14-notebody-fill{display:flex;flex-direction:column;flex:1 1 0;min-height:0;max-width:none;padding-bottom:8px}
+.lks-ui .lks14-notebody-fill .lks14-board{flex:1 1 0}
 .lks-ui .lks14-viewtabs{background:var(--surface-2);border-radius:10px;padding:3px;align-self:flex-start}
 .lks-ui .lks14-readbar{position:sticky;top:0;z-index:20;background:var(--surface-2);border-radius:10px}
 
