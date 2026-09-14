@@ -464,8 +464,12 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-board-artifact{padding:20px;width:fit-content;max-width:1200px}
 /* issue #10: the board stage handles oversize via zoom — the table lays out
    normally inside a bounded card (display:block + overflow was made for the
-   narrow chat column; on the canvas it broke cells into overlap) */
-.lks-ui .lks14-board-artifact .lks-acard-table{display:table;width:100%;max-width:100%;overflow:visible}
+   narrow chat column; on the canvas it broke cells into overlap).
+   #10-followup: width:100% made the table's width depend on the fit-content
+   wrapper WHILE the wrapper's width depended on the table — a circular
+   dependency that collapsed to near-zero in the wild; width:auto lets both
+   resolve from content (the wrapper hugs the table's max-content). */
+.lks-ui .lks14-board-artifact .lks-acard-table{display:table;width:auto;max-width:100%;overflow:visible}
 .lks-ui .lks14-board-artifact .lks-acard{min-width:560px;background:var(--surface-0);border:1px solid var(--border-faint);border-radius:14px}
 .lks-ui .lks14-cmapwrap{position:relative}
 .lks-ui .lks14-cmap-expand{position:absolute;top:10px;right:10px;z-index:5}
