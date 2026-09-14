@@ -23,6 +23,9 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: '>=0.1.0-rc.0'
         version: 3.18.1
+      react-dom:
+        specifier: '>=18'
+        version: 18.3.1(react@18.3.1)
     devDependencies:
       '@types/node':
         specifier: ^22.20.0

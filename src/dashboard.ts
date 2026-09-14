@@ -379,23 +379,35 @@ async function readJsonBodySafe(req: RequestLike, res: ResponseLike, maxBytes = 
 }
 
 /** Read one JSON request body with a hard cap (64 kB unless the route lifts it); malformed bodies reject. */
-function readJsonBody(req: RequestLike & { on(event: 'data' | 'end', listener: (...args: never[]) => void): void }, maxBytes = 65_536): Promise<unknown> {
+function readJsonBody(req: RequestLike & { on(event: 'data' | 'end' | 'error' | 'aborted', listener: (...args: never[]) => void): void }, maxBytes = 65_536): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = []
+    let received = 0
+    let settled = false
+    const done = (err: Error | null, value?: unknown): void => {
+      if (settled) return
+      settled = true
+      if (err !== null) reject(err)
+      else resolve(value)
+    }
     req.on('data', (chunk: Buffer) => {
+      if (settled) return
       chunks.push(chunk)
-      if (chunks.reduce((n, c) => n + c.length, 0) > maxBytes) {
-        reject(new Error('request body too large'))
-        return
-      }
+      received += chunk.length
+      if (received > maxBytes) done(new Error('request body too large'))
     })
     req.on('end', () => {
+      if (settled) return
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')))
+        done(null, JSON.parse(Buffer.concat(chunks).toString('utf8')))
       } catch {
-        reject(new Error('request body is not valid JSON'))
+        done(new Error('request body is not valid JSON'))
       }
     })
+    // Audit C13: a client aborting mid-body must settle the read — the old
+    // version never listened, hanging the route handler on the socket forever.
+    req.on('error', () => done(new Error('request aborted')))
+    req.on('aborted', () => done(new Error('request aborted')))
   })
 }
 
@@ -603,9 +615,10 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
           return
         }
         try {
-          // upstream semantics: dangling attempts are graded dead on read
-          settleDanglingAttempts(deps.store.get(), lessonId)
-          deps.store.save()
+          // upstream semantics: dangling attempts are graded dead on read.
+          // Audit C14: a GET settles state only when something actually
+          // dangled — no disk write per poll.
+          if (settleDanglingAttempts(deps.store.get(), lessonId)) deps.store.save()
           const ref = findLesson(deps.store.get(), lessonId)
           if (ref.lesson.kind !== 'exam') throw new Error('not an exam node')
           const bank = ref.lesson.examBank
@@ -728,7 +741,12 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
           return
         }
         const title = typeof body.title === 'string' ? body.title : null
-        bindLessonThread(deps.store.get(), body.lessonId, body.sessionId as string | null, title)
+        try {
+          bindLessonThread(deps.store.get(), body.lessonId, body.sessionId as string | null, title)
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+          return
+        }
         deps.store.save()
         sendJson(res, 200, { ok: true })
         return

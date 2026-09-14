@@ -60,3 +60,11 @@ test('httpsGet tears down an in-flight request on abort', async () => {
     server.close()
   }
 })
+
+test('audit C31: cdnUrl normalizes dot-segments and never leaves the repo scope', async () => {
+  const { cdnUrl } = await import('../src/vendor/repo-fetcher.ts')
+  assert.equal(cdnUrl('o', 'r', 'main', 'docs/../README.md'), 'https://cdn.jsdelivr.net/gh/o/r@main/README.md')
+  assert.equal(cdnUrl('o', 'r', 'main', './docs/./a.md'), 'https://cdn.jsdelivr.net/gh/o/r@main/docs/a.md')
+  const hostile = cdnUrl('o', 'r', 'main', '../../evil/x.md')
+  assert.equal(hostile, 'https://cdn.jsdelivr.net/gh/o/r@main/evil/x.md', 'dot-segments above the root clamp inside the repo prefix — the fetch can only 404, never reach another repo')
+})

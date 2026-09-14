@@ -941,7 +941,7 @@ export function applyExamBank(state: LearningState, lessonId: string, questions:
       throw new Error(`lookatstudy-plugin: question ${String(i)} answer index ${String(q.answer)} is out of range`)
     }
     if (q.kcTitle !== undefined && q.kcTitle !== null && q.kcTitle !== '' && !kcUnion.has(q.kcTitle)) {
-      throw new Error(`lookatstudy-plugin: question ${String(i)} kcTitle ${JSON.stringify(q.kcTitle)} is not in the section's concept union ${JSON.stringify([...kcUnion])} — read the section lessons with study_view before authoring`)
+      throw new Error(`lookatstudy-plugin: question ${String(i)} kcTitle ${JSON.stringify(q.kcTitle)} is not in the section's concept union ${JSON.stringify([...kcUnion])} — read the section lessons with study_lesson before authoring`)
     }
     return {
       id: `q${String(i)}`,
@@ -966,11 +966,16 @@ export function regenerateExamBank(state: LearningState, lessonId: string): void
 }
 
 /** Settle every dangling attempt of the lesson (grade dead — unanswered = wrong). */
-export function settleDanglingAttempts(state: LearningState, lessonId: string): void {
+export function settleDanglingAttempts(state: LearningState, lessonId: string): boolean {
   const ref = findLesson(state, lessonId)
+  let changed = false
   for (const attempt of ref.lesson.examAttemptLog ?? []) {
-    if (attempt.finishedAt === null) submitExamAttempt(state, lessonId, attempt.id, true, new Date())
+    if (attempt.finishedAt === null) {
+      submitExamAttempt(state, lessonId, attempt.id, true, new Date())
+      changed = true
+    }
   }
+  return changed
 }
 
 /** Open a new attempt against the ready bank (dangling ones are graded dead first). */
@@ -1163,6 +1168,9 @@ export function recordAnswer(
  * with the active pointer so pre-0.22 readers never disagree.
  */
 export function bindLessonThread(state: LearningState, lessonId: string, sessionId: string | null, title?: string | null): LessonThreadGroup {
+  // Audit C26: every other mutator validates existence first — an
+  // unauthenticated route must not mint orphan groups for arbitrary strings.
+  findLesson(state, lessonId)
   state.lessonThreads ??= {}
   const group = state.lessonThreads[lessonId] ?? { active: null, threads: [] }
   if (sessionId === null) {

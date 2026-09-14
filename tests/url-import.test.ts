@@ -245,3 +245,19 @@ test('audit B6: net-guard caps and hostname classification (unit)', async () => 
   )
   assert.throws(() => assertPublicHttpUrl('ftp://x/y'), /non-http/)
 })
+
+test('audit C30: decorated GitHub URL variants resolve to the canonical course identity', async () => {
+  setHttpsGetOverride(async () => ({ ok: false, status: 404, error: 'stub' }))
+  try {
+    const { byName, state } = setup(async () => new Response('gone', { status: 404 }))
+    importCourse(state, parseMarkdownToCourse('# Repo Course\n## S\n### a\nbody'), 'github', 'https://github.com/owner/repo')
+    for (const variant of ['https://github.com/owner/repo/', 'https://github.com/owner/repo.git', 'https://github.com/owner/repo?tab=readme']) {
+      const res = await run(byName, 'study_import_url', { url: variant })
+      assert.equal(res.status, 'imported', `${variant} resolves to the canonical identity (no network, no duplicate course)`)
+      assert.equal(res.title, 'Repo Course')
+    }
+    assert.equal(state.courses.length, 1)
+  } finally {
+    setHttpsGetOverride(null)
+  }
+})

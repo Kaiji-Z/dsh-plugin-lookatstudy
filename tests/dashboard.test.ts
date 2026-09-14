@@ -70,10 +70,14 @@ class FakeRequest implements RequestLike {
     if (this.pendingBody !== undefined) for (const l of data) l(this.pendingBody)
     for (const l of end) l()
   }
-  on(event: 'data' | 'end', listener: (chunk?: Buffer) => void): void {
+  on(event: 'data' | 'end' | 'error' | 'aborted', listener: (chunk?: Buffer) => void): void {
     const list = this.listeners.get(event) ?? []
     list.push(listener as (chunk?: Buffer) => void)
     this.listeners.set(event, list)
+  }
+  /** Audit C13 test hook: fire the error listeners as an aborted client would. */
+  abort(): void {
+    for (const l of this.listeners.get('error') ?? []) l()
   }
 }
 
@@ -107,6 +111,41 @@ test('A2 auth gate: unmarked POSTs, foreign hosts, and foreign origins are refus
   assert.equal(localGet.status, 200, 'GETs from the host page need no marker (img tags cannot send one)')
   const attachment = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/attachment/ghost.png', undefined, { 'x-lks-request': '' }), new FakeResponse())
   assert.equal(attachment.status, 404, 'attachment GET passes the gate and misses on the file (404, not 403)')
+})
+
+test('audit C13: a body read aborted mid-stream answers 400 instead of hanging the route', async () => {
+  const { state } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const req = new FakeRequest('POST', '/lookatstudy/api/active')
+  const res = new FakeResponse()
+  const route = routes.find(r => r.path === '/lookatstudy')!
+  const pending = route.handler(req, res)
+  req.abort()
+  await pending
+  assert.equal(res.status, 400, 'the aborted read settles as a bad request — the handler promise resolves')
+})
+
+test('audit C26: lesson-session binds refuse unknown lesson ids', async () => {
+  const { state } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const res = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/lesson-session', { lessonId: 'ghost:9:9', sessionId: 's1' }), new FakeResponse())
+  assert.equal(res.status, 404)
+  assert.equal(state.lessonThreads['ghost:9:9'], undefined, 'no orphan group was minted')
+})
+
+test('audit C14: the exam GET writes state only when an attempt actually dangled', async () => {
+  const { state } = fixture()
+  const examId = state.courses[0]!.sections[0]!.lessons.find(l => l.kind === 'exam')!.id
+  let saved = 0
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  for (let i = 0; i < 3; i++) {
+    const res = await handle(routes, new FakeRequest('GET', `/lookatstudy/api/exam?lessonId=${encodeURIComponent(examId)}`), new FakeResponse())
+    assert.equal(res.status, 200)
+  }
+  assert.equal(saved, 0, 'three polls with no dangling attempts wrote nothing (C14)')
 })
 
 test('workbenchState assembles map, lesson html, notes, proposals, and due list', () => {

@@ -29,8 +29,13 @@ const ENTITIES: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"'
 
 function decodeEntities(s: string): string {
   return s.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (_m, ent: string) => {
-    if (ent.startsWith("#x") || ent.startsWith("#X")) return String.fromCodePoint(parseInt(ent.slice(2), 16));
-    if (ent.startsWith("#")) return String.fromCodePoint(parseInt(ent.slice(1), 10));
+    // Audit C21: out-of-range numeric entities must degrade to U+FFFD, not
+    // throw RangeError out of the whole import (subtitle-parse guards this;
+    // this module now matches).
+    const codePoint = ent.startsWith("#x") || ent.startsWith("#X") ? parseInt(ent.slice(2), 16) : ent.startsWith("#") ? parseInt(ent.slice(1), 10) : Number.NaN
+    if (Number.isFinite(codePoint)) {
+      try { return String.fromCodePoint(codePoint) } catch { return "\uFFFD" }
+    }
     return ENTITIES[ent.toLowerCase()] ?? _m;
   });
 }

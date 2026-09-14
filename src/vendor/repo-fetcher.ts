@@ -59,8 +59,16 @@ export interface FetchResult {
 
 /** CDN URL 构造 */
 export function cdnUrl(owner: string, repo: string, branch: string, path: string): string {
-  const cleanPath = path.replace(/^\.\//, "").replace(/^\//, "");
-  return `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${cleanPath}`;
+  // Audit C31: normalize dot-segments and keep the fetch inside THIS repo's
+  // scope — a README link like ../../evil/x.md must not steer content loads
+  // at another repo on the CDN (the old raw interpolation let it).
+  const segments: string[] = [];
+  for (const seg of path.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") { segments.pop(); continue; }
+    segments.push(seg);
+  }
+  return `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${branch}/${segments.join("/")}`;
 }
 
 /** 代码文件扩展名（代码即教学内容） */
@@ -637,7 +645,9 @@ export async function fetchRepoFileTree(
     // 大仓库树 JSON 可达 2-4MB;部分网络直连 GitHub 被限速 ~24KB/s(实测 40s 才 948KB),
     // "活着但爬行"的传输不该被总截止掐掉 —— 树扫描单独放宽到 240s(该速度下覆盖 ~5.7MB),
     // 真挂死仍由 20s 空闲超时兜底。取消由 signal 即时撕断,不受 240s 拖累。
-    const r = await httpsGet(apiUrl, { rejectUnauthorized: false, deadlineMs: 240_000, signal });
+    // Audit C27: TLS verification stays ON (the historical CA-workaround
+    // escape is now an explicit env opt-in, never a silent default).
+    const r = await httpsGet(apiUrl, { rejectUnauthorized: process.env.LKS_INSECURE_TLS !== "1", deadlineMs: 240_000, signal });
     console.error(`[import] GitHub Tree API: HTTP ${r.status ?? r.error}`);
     if (r.ok && r.body) {
       const data = JSON.parse(r.body) as { tree?: Array<{ path: string; type: string }> };
@@ -652,7 +662,7 @@ export async function fetchRepoFileTree(
   try {
     const r2 = await httpsGet(
       `https://data.jsdelivr.com/v1/packages/gh/${owner}/${repo}@${branch}?structure=flat`,
-      { rejectUnauthorized: false, signal },
+      { rejectUnauthorized: process.env.LKS_INSECURE_TLS !== "1", signal },
     );
     if (r2.ok && r2.body) {
       const data = JSON.parse(r2.body) as { files?: Array<{ name: string }> };

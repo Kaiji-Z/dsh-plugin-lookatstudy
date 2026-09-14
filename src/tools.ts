@@ -456,15 +456,19 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
    *  study_import_url's github branch (routing is the only difference). */
   const runGithubImport = async (url: string, branch: string | undefined, exec: { signal: AbortSignal }, part = 1) => {
     const { owner, repo } = parseGithubUrl(url)
+    // Audit C30: identity is the CANONICAL owner/repo URL — trailing slashes,
+    // .git suffixes, and ?tab= decorations of the same repo must hit the same
+    // course instead of minting duplicates.
+    const canonicalRef = `https://github.com/${owner}/${repo}`
     const resolvedBranch = branch ?? 'main'
     const fetchFn = signalFetch(exec.signal, baseFetch)
-    const existing = part <= 1 ? store.get().courses.find(c => c.source === 'github' && c.sourceRef === url) : undefined
+    const existing = part <= 1 ? store.get().courses.find(c => c.source === 'github' && c.sourceRef === canonicalRef) : undefined
     if (existing !== undefined) {
       return { status: 'imported' as const, ...toImportValue(existing) }
     }
     const inventory = await fetchRepoInventory(owner, repo, resolvedBranch, fetchFn, undefined, exec.signal)
     const outlines = await fetchFileOutlines(inventory.fileList.map(f => f.path), owner, repo, inventory.branch, fetchFn, undefined, exec.signal)
-    pendingDesign = buildPendingDesign(url, owner, repo, inventory, outlines)
+    pendingDesign = buildPendingDesign(canonicalRef, owner, repo, inventory, outlines)
     if (pendingDesign.files.length === 0) {
       throw new Error('lookatstudy-plugin: course files were discovered but no outlines could be fetched (CDN unreachable?)')
     }
@@ -1201,7 +1205,7 @@ ${p.text}`))
       'Author the question bank for a section exam node (exam-v2). The exam page asks for a bank when the learner '
       + 'opens it; call this once with the full multiple-choice set. Question count follows planExamQuota on the '
       + 'section\'s KC union (clamp 5-15); each kcTitle MUST be one of the section lessons\' concept titles '
-      + '(anti-hallucination — unknown KC titles are rejected; read the section with study_view first). On a '
+      + '(anti-hallucination — unknown KC titles are rejected; read the section lessons with study_lesson first). On a '
       + 'validation error the tutor fixes the bank and simply calls again. The learner answers in the exam page; '
       + 'grading is automatic (unanswered = wrong, best-of stars kept).',
     parameters: {
