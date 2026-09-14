@@ -663,6 +663,11 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
           await bindLessonSession(bindId, sessionId, threadTitle ?? threadAutoTitle(text))
         } else {
           localBound.current = { lessonId: bindId, sessionId }
+          // 0.23.0 course scope: re-binding an EXISTING thread must still run
+          // the bind — it grows touchedLessons (the coverage label) and syncs
+          // this lesson's legacy mirror; minting-only binds left cross-lesson
+          // reuses invisible to the group (probe 2c/3 catch)
+          await bindLessonSession(bindId, sessionId)
         }
         // Stage the thread (its event window only opens while current); the
         // internal navigation must not hand the panel back.
@@ -2100,15 +2105,18 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         // pill strip of lesson titles read as mystery buttons); the menu lists
         // every minted thread, the current one marked, others jump on click.
         // issue #11: the group switcher — the chip always shows once the
-        // lesson owns threads (the ＋新建 row inside the menu mints fresh)
-        threadPills.length > 0
+        // lesson owns threads (the ＋新建 row inside the menu mints fresh).
+        // 0.23.0: under course scope the chip shows even at ZERO threads —
+        // otherwise the toggle would be unreachable before the first send
+        // (the very moment the learner wants to enable it)
+        threadPills.length > 0 || courseScope === 'course'
           ? createElement('div', { className: 'lks14-threadswitch' },
             createElement('button', {
               className: 'lks14-threadchip',
               'aria-expanded': String(threadsOpen),
               'data-tooltip': tr('threads.label'),
               onClick: () => { setThreadsOpen(v => !v) },
-            }, tr('threads.open', { n: String(threadPills.length) }), createElement('span', { className: 'lks14-threadchip-caret' }, threadsOpen ? '▾' : '▸')),
+            }, threadPills.length > 0 ? tr('threads.open', { n: String(threadPills.length) }) : tr('threads.scope'), createElement('span', { className: 'lks14-threadchip-caret' }, threadsOpen ? '▾' : '▸')),
             threadsOpen
               ? createElement('div', { className: 'lks14-threadmenu', role: 'menu' },
                 ...threadPills.map(p => createElement('div', {
