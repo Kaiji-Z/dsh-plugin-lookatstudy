@@ -43,6 +43,17 @@ const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
 const current = pkg.version
 const next = /^\d+\.\d+\.\d+$/.test(target) ? target : bump(current, target)
 if (next === null || next === current) {
+  // Audit B9: the common re-run window — a previous release bumped+committed+tagged
+  // but the PUSH failed. package.json already sits at the target, so the old
+  // "cannot go from X to X" message sent the operator nowhere. Detect the
+  // pending local tag and hand over the exact recovery.
+  if (next === current) {
+    const tagHere = spawnSync('git', ['tag', '-l', `v${current}`], { encoding: 'utf8' })
+    if (tagHere.status === 0 && (tagHere.stdout ?? '').trim() !== '') {
+      console.error(`release: package.json is already ${current} and tag v${current} exists locally — if the previous push failed, recover with: git push origin main v${current}`)
+      process.exit(1)
+    }
+  }
   console.error(`release: cannot go from ${current} to ${JSON.stringify(target)}`)
   process.exit(1)
 }
@@ -51,13 +62,27 @@ const message = messageParts.join(' ') || `${tag}: release`
 
 console.log(`RELEASE ${current} -> ${next} (${tag})`)
 
-// GATE 0 — clean tree. This script commits ONLY package.json; every source
-// change must already be committed or the tag ships a version bump over stale
-// code (this exact incident shipped a broken 0.11.0 on 2026-08-23).
+// GATE 0 — clean tree, on main, in sync with origin (audit B9: a feature-branch
+// release pushes the STALE local main + the tag — the tag triggers publish, so
+// npm gets a version main never contains). This script commits ONLY
+// package.json; every source change must already be committed or the tag ships
+// a version bump over stale code (this exact incident shipped a broken 0.11.0
+// on 2026-08-23).
 const dirty = spawnSync('git', ['status', '--porcelain'], { encoding: 'utf8' })
 if (dirty.status !== 0 || (dirty.stdout ?? '').trim() !== '') {
   console.error('release: working tree is dirty — commit your changes first')
   console.error('  (the release commit carries only the version bump; uncommitted code would NOT reach the tag)')
+  process.exit(1)
+}
+const branch = spawnSync('git', ['branch', '--show-current'], { encoding: 'utf8' })
+if ((branch.stdout ?? '').trim() !== 'main') {
+  console.error(`release: refusing to release from branch ${JSON.stringify((branch.stdout ?? '').trim() || '(detached)')} — switch to main first (a branch release would publish the stale local main under the tag)`)
+  process.exit(1)
+}
+const head = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' })
+const originMain = spawnSync('git', ['rev-parse', 'origin/main'], { encoding: 'utf8' })
+if (head.status !== 0 || originMain.status !== 0 || (head.stdout ?? '').trim() !== (originMain.stdout ?? '').trim()) {
+  console.error('release: local main is not in sync with origin/main — pull (or push) first')
   process.exit(1)
 }
 

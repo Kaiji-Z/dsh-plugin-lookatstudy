@@ -9,7 +9,9 @@ const host = defineConfig({
   format: 'esm',
   dts: true,
   outDir: 'lib',
-  clean: false,
+  // Audit B10: clean:true — stale hash-suffixed chunks once accumulated here
+  // (three epub-parser-* variants) and shipped in local pnpm pack tarballs.
+  clean: true,
   external: [/^@deepseek-ai\//, /^react$/, /^(\.\.\/)+lib\//],
 })
 
@@ -24,7 +26,7 @@ const client = defineConfig({
   format: 'cjs',
   platform: 'browser',
   dts: false,
-  clean: false,
+  clean: true,
   sourcemap: true,
   external: ['react', '@deepseek-ai/dsh-client-runtime/client'],
   outputOptions: {

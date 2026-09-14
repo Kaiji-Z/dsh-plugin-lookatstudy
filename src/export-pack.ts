@@ -65,7 +65,17 @@ export function coursePackMarkdown(course: CourseState): string {
     for (const lesson of section.lessons) {
       if (lesson.kind === 'exam') continue
       out.push(`### ${lesson.title}`, '')
-      const body = lesson.body.replace(/\s+$/, '')
+      // Audit B12: design-imported bodies BEGIN at their anchor heading and
+      // carry their own H2/H3 lines — escape those so the pack re-parses into
+      // the SAME tree instead of spawning phantom sections (and silently
+      // dropping the prose before the first phantom ###). The parser's heading
+      // match requires the line to open with #, so a leading backslash defuses
+      // it; readers un-escape with the documented ^\\(#{1,3}) form.
+      const body = lesson.body
+        .replace(/\s+$/, '')
+        .split('\n')
+        .map(line => (/^#{1,3}(\s|$)/.test(line) ? `\\${line}` : line))
+        .join('\n')
       if (body !== '') out.push(body, '')
     }
   }

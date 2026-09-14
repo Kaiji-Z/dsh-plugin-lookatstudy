@@ -5,13 +5,22 @@
 // canonical Huffman decoding. Decompression only; all of epub/docx/pptx (zip
 // containers) and pdf content streams read through here.
 
+/** Default hard OUTPUT ceiling (audit B11): wire-side caps bound only the
+ *  compressed bytes, but DEFLATE can expand ~1032:1 — without an output
+ *  ceiling a crafted arXiv PDF or epub wedges the host in a synchronous
+ *  multi-GB grow loop (the same event-loop-freeze class as the 0.22.1 TJ
+ *  regex fix). */
+export const INFLATE_MAX_OUTPUT = 64 * 1024 * 1024;
+
 /** Growable output buffer; back-references read bytes this pass already wrote. */
 class Out {
   private buf = new Uint8Array(1024);
   len = 0;
+  constructor(private readonly maxBytes: number) {}
   pushByte(b: number): void {
+    if (this.len + 1 > this.maxBytes) throw new Error("inflate: 输出超过上限 (audit B11 解压炸弹护栏)");
     if (this.len === this.buf.length) {
-      const next = new Uint8Array(this.buf.length * 2);
+      const next = new Uint8Array(Math.max(this.len + 1, Math.min(this.buf.length * 2, this.maxBytes)));
       next.set(this.buf);
       this.buf = next;
     }
@@ -120,10 +129,11 @@ function inflateBlock(br: BitReader, out: Out, lit: Huffman, dist: Huffman): voi
   }
 }
 
-/** Decompress a raw DEFLATE stream (zip method 8, no zlib header). Throws on truncation/corruption. */
-export function inflateRaw(src: Uint8Array): Uint8Array {
+/** Decompress a raw DEFLATE stream (zip method 8, no zlib header). Throws on
+ * truncation/corruption and on exceeding the output ceiling. */
+export function inflateRaw(src: Uint8Array, maxBytes: number = INFLATE_MAX_OUTPUT): Uint8Array {
   const br = new BitReader(src);
-  const out = new Out();
+  const out = new Out(maxBytes);
   for (;;) {
     const bfinal = br.readBit();
     const btype = br.readBits(2);
@@ -171,11 +181,11 @@ export function inflateRaw(src: Uint8Array): Uint8Array {
 }
 
 /** Decompress a zlib (RFC 1950) stream: 2-byte header + raw deflate (+ ignored adler32). */
-export function inflateZlib(src: Uint8Array): Uint8Array {
+export function inflateZlib(src: Uint8Array, maxBytes: number = INFLATE_MAX_OUTPUT): Uint8Array {
   if (src.length < 6) throw new Error("inflate: zlib 流过短");
   const cmf = src[0]!, flg = src[1]!;
   if ((cmf & 0x0f) !== 8) throw new Error("inflate: 非 deflate 的 zlib CM");
   if (((cmf << 8) | flg) % 31 !== 0) throw new Error("inflate: zlib 头校验失败");
   if (flg & 0x20) throw new Error("inflate: 预置字典不支持");
-  return inflateRaw(src.subarray(2));
+  return inflateRaw(src.subarray(2), maxBytes);
 }

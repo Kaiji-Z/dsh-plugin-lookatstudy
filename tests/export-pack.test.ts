@@ -95,6 +95,32 @@ test('a lesson-less course exports a header-only markdown that still round-trips
   assert.equal(back.sections.length, 0)
 })
 
+test('audit B12: design-imported bodies carrying H2/H3 lines round-trip without phantom sections', () => {
+  // The design-apply path slices bodies STARTING at the anchor heading line
+  // (import-design sliceLessonBody), so bodies legitimately contain ## / ###
+  // lines — the markdown pack must escape them, not restructure around them.
+  const state = emptyState()
+  const designed = {
+    title: '设计导入课',
+    sections: [{
+      title: '章',
+      anchor: 'zhang',
+      lessons: [
+        { title: '首课', anchor: 'a', body: '## 深入\n首课正文,含小节:\n### 细节\n细节正文' },
+        { title: '次课', anchor: 'b', body: '次课正文' },
+      ],
+    }],
+  }
+  const course = importCourse(state, designed as Parameters<typeof importCourse>[1], 'github', 'https://github.com/o/r')
+  const md = coursePackMarkdown(course)
+  const back = parseMarkdownToCourse(md)
+  assert.equal(back.title, '设计导入课')
+  assert.deepEqual(back.sections.map(s => s.title), ['章'], 'no phantom sections from the body headings')
+  assert.deepEqual(back.sections[0]!.lessons.map(l => l.title), ['首课', '次课'], 'the tree keeps exactly the packed lessons')
+  const roundTripped = back.sections[0]!.lessons[0]!.body.replace(/^\\(#{1,3})/gm, '$1')
+  assert.equal(roundTripped, designed.sections[0]!.lessons[0]!.body, 'un-escaping the documented form restores the body verbatim')
+})
+
 test('packFileName: an all-special-chars title falls back to the bare suffix', () => {
   const state = emptyState()
   const course = importCourse(state, parseMarkdownToCourse('# ???'), 'markdown', 'f')

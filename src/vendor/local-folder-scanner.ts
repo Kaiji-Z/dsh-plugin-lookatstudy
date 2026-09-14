@@ -20,7 +20,7 @@
  * scanFolder 本身用 fs(异步),verify 用临时目录造文件测。
  */
 import { readFile, readdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { join, relative, sep, basename, dirname } from "node:path";
 
 export interface ScannedDoc {
@@ -554,6 +554,13 @@ async function readFileWithKind(
     if (parsePdf) return parsePdf(buf);
     const { parsePdfText } = await import("./pdf-text.js");
     return parsePdfText(buf);
+  }
+  // Audit B11: local binary containers are bounded on INPUT too — a 64 MiB
+  // ceiling keeps a hostile local epub/pptx from monopolizing memory before
+  // the inflate output guard even engages.
+  const inputCap = 64 * 1024 * 1024;
+  if (statSync(absPath).size > inputCap) {
+    throw new Error(`文件超过 64MiB 上限 (audit B11): ${absPath}`);
   }
   if (kind === "pptx") {
     // .pptx → OOXML 解析 → markdown(每 slide 一个 ##, 讲者备注随 slide 走)。

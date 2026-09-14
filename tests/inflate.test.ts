@@ -91,3 +91,18 @@ test('inflateRaw round-trips a large document-shaped buffer (200KB, multi-block)
   const restored = inflateRaw(new Uint8Array(deflateRawSync(payload, { level: 6 })))
   assert.deepEqual(restored, payload)
 })
+
+test('audit B11: decompression bombs are refused at the output ceiling', async () => {
+  // 1 MiB of zeros deflates to ~1 KB — a ~1000:1 ratio stream; a ceiling
+  // below the expansion must throw instead of growing the buffer.
+  const bomb = new Uint8Array(deflateRawSync(Buffer.alloc(1024 * 1024), { level: 9 }))
+  assert.ok(bomb.length < 32 * 1024, 'the compressed carrier is tiny (the whole point)')
+  assert.throws(() => inflateRaw(bomb, 64 * 1024), /上限|B11/, 'the output guard fires mid-stream')
+  const full = inflateRaw(bomb, 2 * 1024 * 1024)
+  assert.equal(full.length, 1024 * 1024, 'a ceiling above the expansion completes normally')
+  const zBomb = new Uint8Array(deflateSync(Buffer.alloc(1024 * 1024), { level: 9 }))
+  assert.throws(() => inflateZlib(zBomb, 64 * 1024), /上限|B11/, 'the zlib wrapper carries the ceiling')
+  // the default ceiling is the exported 64 MiB constant
+  const { INFLATE_MAX_OUTPUT } = await import('../src/vendor/inflate.ts')
+  assert.equal(INFLATE_MAX_OUTPUT, 64 * 1024 * 1024)
+})

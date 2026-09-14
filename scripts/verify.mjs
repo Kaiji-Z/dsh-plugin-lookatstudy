@@ -6,7 +6,7 @@
  * asserted bundle content. Prints a GATE line per step; any failure exits 1.
  */
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
 const failed = []
 
@@ -32,13 +32,28 @@ gate('tests', () => ({
   checks: [{ ok: true, label: 'node:test suite (glob quoted for git-bash)' }],
 }))
 
-gate('build', () => ({
-  exit: sh('pnpm', ['run', 'build']),
-  checks: [
+gate('build', () => {
+  const buildExit = sh('pnpm', ['run', 'build'])
+  const checks = [
     { ok: existsSync('lib/index.mjs'), label: 'lib/index.mjs exists' },
     { ok: existsSync('lib/client.js'), label: 'lib/client.js exists' },
-  ],
-}))
+    { ok: existsSync('lib/index.d.mts'), label: 'lib/index.d.mts exists (the exports map types target — audit D36)' },
+  ]
+  if (buildExit === 0 && existsSync('lib')) {
+    // Audit B10: the SHIPPED lib/ is gate surface — clean:true ended the stale
+    // hash-suffixed chunk accumulation (three epub-parser-* variants once
+    // shipped in local pnpm pack tarballs uninspected); this check holds it.
+    const code = readdirSync('lib').map(String).filter(f => !f.endsWith('.map'))
+    const bases = new Map()
+    for (const f of code) {
+      const base = f.replace(/-[A-Za-z0-9_$-]{8}\.(mjs|js)$/, '.$1')
+      bases.set(base, (bases.get(base) ?? 0) + 1)
+    }
+    const dupes = [...bases].filter(([, n]) => n > 1).map(([b, n]) => `${b}×${n}`)
+    checks.push({ ok: dupes.length === 0, label: dupes.length === 0 ? `lib/ carries no stale chunk variants (${code.length} code files)` : `stale chunk variants in lib/: ${dupes.join(', ')}` })
+  }
+  return { exit: buildExit, checks }
+})
 
 gate('bundle', () => {
   if (!existsSync('lib/client.js')) return { exit: 1, checks: [{ ok: false, label: 'client bundle missing' }] }
@@ -285,9 +300,12 @@ gate('bundle', () => {
 
 gate('secrets', () => {
   // "The key never enters the public repo" as a machine gate, not a promise.
-  // Scans every git-tracked file for (a) KEY=value assignments, (b) sk- token
-  // patterns, (c) the actual Z_AI_API_KEY value when it is present in this
-  // shell's env (CI has no key → (c) self-skips). Hits report file + kind only,
+  // Scans every git-tracked file AND every built lib/ artifact (audit B10: the
+  // tarball bytes — what `pnpm pack` actually ships — were never scanned
+  // before) for (a) KEY=value assignments, (b) well-known token value shapes,
+  // (c) the actual Z_AI_API_KEY value when present in this shell's env (CI has
+  // no key → (c) self-skips there; wiring it into CI secrets is an owner
+  // decision — the env-only red line stands). Hits report file + kind only,
   // never the matched text — the gate must not become the leak.
   // PUBLIC_PROTOCOL_CONSTANTS are allowlisted by exact literal before scanning:
   // Microsoft's Edge read-aloud client token ships inside the public Edge
@@ -296,28 +314,33 @@ gate('secrets', () => {
   const PUBLIC_PROTOCOL_CONSTANTS = ['6A5AA1D4EAFF4E9FB37E23D68491D6F4']
   const ls = spawnSync('git', ['ls-files'], { encoding: 'utf8' })
   if (ls.status !== 0) return { exit: 1, checks: [{ ok: false, label: `git ls-files failed: ${ls.stderr?.trim()}` }] }
-  const files = ls.stdout.split('\n').map(s => s.trim()).filter(Boolean)
+  const tracked = ls.stdout.split('\n').map(s => s.trim()).filter(Boolean)
+  const libArtifacts = existsSync('lib') ? readdirSync('lib').map(f => `lib/${String(f)}`) : []
   const ASSIGNMENT = /(API_KEY|SECRET|TOKEN|PASSWORD)[ \t]*=[ \t]*['"]?[A-Za-z0-9_\-+/=]{8,}/
-  const TOKEN = /sk-[A-Za-z0-9]{16,}/
+  // Audit C25: config-shaped leaks (YAML/JSON `token: "..."`, camelCase keys)
+  // and well-known token value prefixes the old patterns missed entirely.
+  const CONFIG_LEAK = /(api[_-]?key|secret|token|password|passwd|credential)[ \t]*[:=][ \t]*['"][A-Za-z0-9_\-+/=.]{16,}['"]/i
+  const TOKEN = /sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_\-]{30,}/
   const live = process.env.Z_AI_API_KEY
-  const hits = []
-  for (const f of files) {
+  const scan = (f) => {
     let body
-    try { body = readFileSync(f, 'utf8') } catch { continue }
+    try { body = readFileSync(f, 'utf8') } catch { return null }
     for (const c of PUBLIC_PROTOCOL_CONSTANTS) body = body.replaceAll(c, '<public-protocol-constant>')
     const kinds = []
     if (ASSIGNMENT.test(body)) kinds.push('key-assignment')
-    if (TOKEN.test(body)) kinds.push('sk-token-pattern')
+    if (CONFIG_LEAK.test(body)) kinds.push('config-leak')
+    if (TOKEN.test(body)) kinds.push('token-pattern')
     if (live && live.length >= 8 && body.includes(live)) kinds.push('live-key-value')
-    if (kinds.length > 0) hits.push(`${f} (${kinds.join(', ')})`)
+    return kinds.length > 0 ? `${f} (${kinds.join(', ')})` : null
   }
+  const hits = [...tracked, ...libArtifacts].map(scan).filter(Boolean)
   const artifacts = ['livetest-output.md', 'livetest-judge-output.md', 'livetest-design-output.md', 'livetest-design-state.json', 'livetest-design-err.log']
-  const tracked = artifacts.filter(a => files.includes(a))
+  const trackedLive = artifacts.filter(a => tracked.includes(a))
   return {
     exit: 0,
     checks: [
-      { ok: hits.length === 0, label: hits.length === 0 ? `scanned ${files.length} tracked files — no key assignments, no token patterns${live ? ', live key value absent' : ''}` : `LEAK: ${hits.join(' | ')}` },
-      { ok: tracked.length === 0, label: tracked.length === 0 ? 'live artifacts (livetest/judge outputs, state) stay untracked' : `tracked live artifacts: ${tracked.join(', ')}` },
+      { ok: hits.length === 0, label: hits.length === 0 ? `scanned ${tracked.length} tracked + ${libArtifacts.length} built files — no key assignments, no token patterns${live ? ', live key value absent' : ''}` : `LEAK: ${hits.join(' | ')}` },
+      { ok: trackedLive.length === 0, label: trackedLive.length === 0 ? 'live artifacts (livetest/judge outputs, state) stay untracked' : `tracked live artifacts: ${trackedLive.join(', ')}` },
     ],
   }
 })
