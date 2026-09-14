@@ -521,12 +521,20 @@ export function importCourse(
   languageTarget?: string | null,
 ): CourseState {
   const base = slugify(parsed.title)
-  // Issue #5: a matching id is only an idempotent re-import when the TITLE
-  // matches too — pure-CJK titles all slugified to "course", so the second
-  // course silently returned the first one (data loss reported as success).
-  // Same title → same course (re-import dedup); different title → suffixed id.
-  const sameTitle = state.courses.find(c => c.id === base && c.title === parsed.title)
-  if (sameTitle !== undefined) return sameTitle
+  // Audit B8: idempotency keys on IDENTITY for sourced imports —
+  // (source, sourceRef, title): a re-import of the same source returns the
+  // existing course (updates require deleting first — never a silent
+  // swallow), two different sources sharing a title mint separate courses,
+  // and multi-part imports (arXiv parts, folder parts) that share one
+  // sourceRef with distinct titles still mint one course per part. Markdown
+  // keeps LookatStudy's pasted-title contract: same title = same course.
+  if (source !== 'markdown') {
+    const sameIdentity = state.courses.find(c => c.source === source && c.sourceRef === sourceRef && c.title === parsed.title)
+    if (sameIdentity !== undefined) return sameIdentity
+  } else {
+    const sameTitle = state.courses.find(c => c.source === 'markdown' && c.title === parsed.title)
+    if (sameTitle !== undefined) return sameTitle
+  }
   let id = base
   for (let n = 2; state.courses.some(c => c.id === id); n++) id = `${base}-${String(n)}`
   const course: CourseState = {
@@ -1238,7 +1246,11 @@ export function setMemory(
     return prev
   }
   if (category === 'pattern') {
-    const course = findCourse(state, lessonId === undefined ? '' : lessonId.slice(0, lessonId.lastIndexOf(':')))
+    // Audit B5: lesson ids are courseId:sectionIdx:lessonIdx — the course id
+    // ends at the FIRST colon. (lastIndexOf sliced 'courseId:si', which
+    // findCourse always rejected, killing every pattern-slot write.)
+    const cut = lessonId === undefined ? -1 : lessonId.indexOf(':')
+    const course = findCourse(state, cut === -1 ? (lessonId ?? '') : lessonId!.slice(0, cut))
     const prev = state.memoryPatterns[course.id] ?? null
     state.memoryPatterns[course.id] = content
     return prev

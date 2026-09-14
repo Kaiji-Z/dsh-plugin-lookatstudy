@@ -9,13 +9,17 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { parseMarkdownToCourse } from '../src/vendor/markdown-course.ts'
 import {
+  archiveLessonThread,
   attemptLesson,
+  bindLessonThread,
   completeLesson,
+  deleteLessonThread,
   emptyState,
   importCourse,
   proposeMastery,
   recordAnswer,
   recordReview,
+  renameLessonThread,
   resolveProposal,
   type LearningState,
   type LessonState,
@@ -91,6 +95,12 @@ test('thread-group invariant fuzz: random bind/archive/delete/rename mixes keep 
     }
   }
   const ids: string[] = []
+  // Audit B4 anti-vacuity guard: every op kind must really execute at least
+  // once. The original version of this test called four functions it never
+  // imported — every op died in a swallowed ReferenceError and the "fuzz"
+  // passed having tested nothing (20 ms of no-ops). Per-kind execution
+  // counts make that failure mode loud.
+  const executed = new Map<string, number>(([['bind', 0], ['bind-old', 0], ['archive', 0], ['unarchive', 0], ['delete', 0], ['rename', 0], ['clear', 0]] as const).map(([k]) => [k, 0]))
   for (let step = 0; step < 300; step++) {
     const op = pick(['bind', 'bind-old', 'archive', 'unarchive', 'delete', 'rename', 'clear'] as const)
     const target = ids.length > 0 ? pick(ids) : 's0'
@@ -102,10 +112,14 @@ test('thread-group invariant fuzz: random bind/archive/delete/rename mixes keep 
       else if (op === 'delete') { deleteLessonThread(state, lessonId, target); ids.splice(ids.indexOf(target), 1) }
       else if (op === 'rename') renameLessonThread(state, lessonId, target, `改名${String(step)}`)
       else bindLessonThread(state, lessonId, null)
+      executed.set(op, (executed.get(op) ?? 0) + 1)
     } catch { /* ops on since-deleted ids throw loud — the invariant still holds */ }
     assertSane()
   }
   assertSane()
+  for (const [op, count] of executed) {
+    assert.ok(count > 0, `thread fuzz executed ${op} ${count} times — a missing import turns ops into swallowed ReferenceErrors (audit B4)`)
+  }
 })
 
 test('invariant fuzz: 400 random ops never break the state machine', () => {

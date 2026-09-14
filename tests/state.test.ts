@@ -507,6 +507,35 @@ test('a corrupt state file degrades instead of killing the plugin (audit A3)', (
   }
 })
 
+test("setMemory pattern: the per-course slot round-trips on real lesson ids (audit B5 — lastIndexOf sliced 'courseId:si' and always threw)", () => {
+  const { state, courseId } = importedFixture()
+  const prev = setMemory(state, 'pattern', '需要更多图示', `${courseId}:0:0`)
+  assert.equal(prev, null, 'the first write returns the empty previous slot')
+  assert.equal(state.memoryPatterns[courseId], '需要更多图示', 'the slot lands under the COURSE id')
+  setMemory(state, 'pattern', '更新后的模式', `${courseId}:1:0`)
+  assert.equal(state.memoryPatterns[courseId], '更新后的模式', 'a second lesson of the same course shares the slot')
+  const other = importCourse(state, parseMarkdownToCourse('# Another Course\n## X\n### y\nbody'), 'markdown', 'other')
+  setMemory(state, 'pattern', '另一门课的模式', `${other.id}:0:0`)
+  assert.equal(state.memoryPatterns[other.id], '另一门课的模式')
+  assert.equal(state.memoryPatterns[courseId], '更新后的模式', 'courses stay isolated')
+  assert.throws(() => setMemory(state, 'pattern', 'x', 'ghost:0:0'), /unknown course id/)
+})
+
+test('sourced imports are idempotent by identity, not title (audit B8)', () => {
+  const state = emptyState()
+  const parsed = parseMarkdownToCourse('# Same Title\n## S\n### a\nbody')
+  const c1 = importCourse(state, parsed, 'url', 'https://example.com/one')
+  const c2 = importCourse(state, parsed, 'url', 'https://example.com/two')
+  assert.equal(state.courses.length, 2, 'the same title from a DIFFERENT source mints its own course instead of silently returning the first')
+  assert.notEqual(c1.id, c2.id)
+  const again = importCourse(state, parsed, 'url', 'https://example.com/one')
+  assert.equal(again.id, c1.id, 're-importing the same source is idempotent (an update requires deleting first — never a silent swallow)')
+  assert.equal(state.courses.length, 2)
+  const m1 = importCourse(state, parsed, 'markdown', 'file-a')
+  const m2 = importCourse(state, parsed, 'markdown', 'file-b')
+  assert.equal(m2.id, m1.id, 'markdown keeps the pasted-title contract')
+})
+
 test('deleting a course removes it; unknown ids fail loud', () => {
   const { state, courseId } = importedFixture()
   deleteCourse(state, courseId)

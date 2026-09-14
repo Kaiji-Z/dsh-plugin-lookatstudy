@@ -192,3 +192,56 @@ test('bilibili URL: an already-imported course (source url + normalized ref) ret
   assert.equal(res.status, 'imported')
   assert.equal(res.title, '机器学习入门')
 })
+
+test('audit B6: private-address fetch targets are refused before any fetch (SSRF guard)', async () => {
+  // the fake transport would happily "succeed" — the guard must refuse first
+  const { byName } = setup(async () => new Response(articleHtml(), { status: 200 }))
+  for (const url of [
+    'http://127.0.0.1:3080/lookatstudy/api/state',
+    'http://localhost:3080/lookatstudy/api/state',
+    'http://169.254.169.254/latest/meta-data/',
+    'http://192.168.1.1/admin',
+    'http://10.0.0.5/internal',
+    'http://172.16.0.9/x',
+    'http://100.64.0.1/x',
+    'http://0.0.0.0/x',
+    'http://[::1]:8080/x',
+    'http://[fe80::1]:8080/x',
+  ]) {
+    await assert.rejects(() => run(byName, 'study_import_url', { url }), /SSRF guard/, url)
+  }
+})
+
+test('audit B6: redirects are followed manually and re-checked per hop', async () => {
+  const fetchFn: typeof fetch = async (input) => {
+    const url = String(input)
+    if (url.includes('example.com/redirect')) {
+      return new Response(null, { status: 302, headers: { location: 'http://127.0.0.1:3080/lookatstudy/api/state' } })
+    }
+    return new Response(articleHtml(), { status: 200 })
+  }
+  const { byName } = setup(fetchFn)
+  await assert.rejects(
+    () => run(byName, 'study_import_url', { url: 'https://example.com/redirect' }),
+    /SSRF guard/,
+    'a public URL redirecting into a loopback target must not be followed',
+  )
+})
+
+test('audit B6: net-guard caps and hostname classification (unit)', async () => {
+  const { guardedFetchText, isPrivateHostname, assertPublicHttpUrl } = await import('../src/vendor/net-guard.ts')
+  assert.equal(isPrivateHostname('example.com'), false)
+  assert.equal(isPrivateHostname('169.254.169.254'), true)
+  assert.equal(isPrivateHostname('[::1]'), true)
+  assert.equal(isPrivateHostname('8.8.8.8'), false)
+  assert.equal(isPrivateHostname('localhost'), true)
+  const big = 'x'.repeat(3 * 1024)
+  const text = await guardedFetchText('https://a.example/big', { fetchImpl: async () => new Response(big), maxBytes: 1024 })
+  assert.equal(text.length, 1024, 'the body is truncated at the cap, not buffered whole')
+  await assert.rejects(
+    () => guardedFetchText('https://a.example/declared', { fetchImpl: async () => new Response('x', { status: 200, headers: { 'content-length': '999999' } }), maxBytes: 1024 }),
+    /cap/,
+    'a declared content-length over the cap is refused outright',
+  )
+  assert.throws(() => assertPublicHttpUrl('ftp://x/y'), /non-http/)
+})

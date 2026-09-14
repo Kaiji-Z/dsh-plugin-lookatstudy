@@ -18,6 +18,7 @@ import type { ParsedCourse } from './vendor/markdown-course.ts'
 import { scanFolder, buildLocalInventory } from './vendor/local-folder-scanner.ts'
 import { downloadToBuffer, fetchFileOutlines, fetchRepoInventory, fetchSingleFileContent } from './vendor/repo-fetcher.ts'
 import { routeImportUrl, normalizeUrlIdentity } from './vendor/url-route.ts'
+import { guardedFetchText } from './vendor/net-guard.ts'
 import { parsePdfText } from './vendor/pdf-text.ts'
 import { prepareSingleDoc } from './vendor/text-chunk.ts'
 import { extractArticle } from './vendor/html-article.ts'
@@ -554,9 +555,9 @@ ${p.text}`))
       const identity = normalizeUrlIdentity(route.url)
       const existing = part <= 1 ? store.get().courses.find(c => c.source === 'url' && c.sourceRef === identity) : undefined
       if (existing !== undefined) return { status: 'imported' as const, ...toImportValue(existing) }
-      const resp = await fetchFn(route.url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LookatStudyPlugin/0.9)' } })
-      if (!resp.ok) throw new Error(`lookatstudy-plugin: page fetch failed (HTTP ${resp.status}): ${route.url}`)
-      const html = await resp.text()
+      // Audit B6: SSRF guards — private/loopback targets refused, redirects
+      // followed manually with per-hop re-checks, body capped before memory.
+      const html = await guardedFetchText(route.url, { fetchImpl: fetchFn, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; LookatStudyPlugin/0.9)' } })
       const article = extractArticle(html, route.url)
       if (article === null) {
         throw new Error(`lookatstudy-plugin: ${route.url} does not look like an article page (no readable body found) — login walls, indexes and app shells are rejected honestly rather than imported as noise`)

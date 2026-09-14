@@ -1,11 +1,14 @@
 // Vendored/adapted from LookatStudy src/main/services/video-import-service.ts (MIT License, https://github.com/Kaiji-Z/LookatStudy).
 import { encWbi, extractKeysFromNavUrl, getMixinKey } from './bilibili-wbi.ts'
 import { parseSubtitleToText } from './subtitle-parse.ts'
+import { guardedFetchText } from './net-guard.ts'
 // Only the classification/metadata surface (SPEC 1.2: 音视频"分类与元数据"部分):
 // parseBilibiliId is verbatim; fetchBilibiliMeta is the plugin-side adaptation of
 // upstream's view-API call (title/desc/owner metadata only — the audio download
 // and ASR transcription paths need a model client / spawn and stay out per the
 // no-model-client iron rule).
+// Audit B6 patch (2026-09-14): the CC-subtitle body fetch rides net-guard
+// (private-target refusal + capped read) instead of a bare .text().
 
 export const BILI_HEADERS: Record<string, string> = {
   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
@@ -161,7 +164,17 @@ export async function fetchBilibiliSubtitles(
       continue;
     }
     const subUrl = lane.url.startsWith("//") ? `https:${lane.url}` : lane.url;
-    const raw = await (await fetchFn(subUrl, { signal, headers: BILI_HEADERS })).text();
+    // Audit B6 (vendored patch, 2026-09-14): the subtitle URL arrives from an
+    // API response — fetch it under the net guards (private-target refusal,
+    // capped body). A failed subtitle fetch marks the part missing instead of
+    // failing the whole import (the pre-patch tolerance on flaky URLs).
+    let raw = "";
+    try {
+      raw = await guardedFetchText(subUrl, { fetchImpl: fetchFn, signal, headers: BILI_HEADERS });
+    } catch {
+      missing.push(t.name);
+      continue;
+    }
     let text = "";
     try {
       const cc = JSON.parse(raw) as { body?: { content?: string }[] };
