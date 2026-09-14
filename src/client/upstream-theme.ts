@@ -776,6 +776,22 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-threadmenu-scope-state{flex:none;margin-left:auto;font-size:10.5px;font-weight:700;color:var(--ink-faint);padding:1px 7px;border-radius:999px;border:1px solid var(--border)}
 .lks-ui .lks14-threadmenu-scope-state.on{color:var(--brand);border-color:rgb(var(--brand-rgb)/0.45);background:rgb(var(--brand-rgb)/0.08)}
 .lks-ui .lks14-threadmenu-row.new{margin-top:1px;border-top:1px solid var(--border-faint);border-radius:0 0 7px 7px;padding-top:7px}
+/* 0.23.0: the ask_user_question answer row — the panel's own answer UI for
+   the host's pending clarifying question (the hidden host column used to be
+   the only place its options lived) */
+.lks-ui .lks14-askrow{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border:1px solid rgb(var(--brand-rgb)/0.35);border-radius:12px;background:rgb(var(--brand-rgb)/0.05)}
+.lks-ui .lks14-askrow.answered{opacity:.62;border-color:var(--border-faint);background:none}
+.lks-ui .lks14-askhead{font-size:12px;font-weight:800;color:var(--brand)}
+.lks-ui .lks14-askrow.answered .lks14-askhead{color:var(--ink-muted)}
+.lks-ui .lks14-askq{display:flex;flex-direction:column;gap:6px}
+.lks-ui .lks14-askq-h{font-size:13px;font-weight:700;color:var(--ink)}
+.lks-ui .lks14-askopt{display:flex;flex-direction:column;gap:2px;align-items:flex-start;padding:8px 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface-0);cursor:pointer;text-align:left;font:inherit}
+.lks-ui .lks14-askopt:hover:not(:disabled){border-color:rgb(var(--brand-rgb)/0.55);background:rgb(var(--brand-rgb)/0.07)}
+.lks-ui .lks14-askopt:disabled{cursor:default;opacity:.75}
+.lks-ui .lks14-askopt-label{font-size:12.5px;font-weight:600;color:var(--ink)}
+.lks-ui .lks14-askopt-desc{font-size:11px;color:var(--ink-muted);line-height:1.5}
+.lks-ui .lks14-askfree{font-size:12px;color:var(--ink-muted)}
+.lks-ui .lks14-askdone{font-size:11px;color:var(--ink-faint)}
 .lks-ui .lks14-threadmenu-row{position:relative}
 .lks-ui .lks14-threadmenu-gear{flex:none;margin-left:auto;border:none;background:none;color:var(--ink-faint);font-size:13px;line-height:1;cursor:pointer;padding:2px 5px;border-radius:5px;opacity:0;transition:opacity .12s,color .12s}
 .lks-ui .lks14-threadmenu-row:hover .lks14-threadmenu-gear,.lks-ui .lks14-threadmenu-gear:focus-visible{opacity:1}

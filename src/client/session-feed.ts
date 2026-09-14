@@ -25,6 +25,8 @@ export interface FeedEvent {
     readonly name?: string
     readonly callId?: string
     readonly toolCallId?: string
+    /** tool/call only: the raw arguments (the live journal carries a JSON string). */
+    readonly arguments?: string
     readonly error?: { readonly message?: string } | string
   }
 }
@@ -318,7 +320,16 @@ export function feedRows(window: FeedWindow | undefined): ChatRow[] {
       } else if (event.type === 'tool/call') {
         // C14: the three-state chip — loading until its result lands.
         const name = event.data?.tool?.name ?? event.data?.name ?? 'tool'
-        rows.push({ key: `t${event.data?.callId ?? event.data?.toolCallId ?? event.seq}`, role: 'tool', text: name, toolState: 'loading' })
+        const callId = event.data?.callId ?? event.data?.toolCallId
+        // 0.23.0: the host's ask_user_question becomes an ANSWERABLE row —
+        // the tool parks the turn until the learner picks an option, and the
+        // panel (not the hidden host column) owns the answer UI
+        if (name === 'ask_user_question') {
+          const ask = parseAskArguments(event.data?.arguments, callId ?? String(event.seq))
+          rows.push({ key: `t${String(callId ?? event.seq)}`, role: 'ask', text: ask.summary, toolState: 'loading', ask })
+          continue
+        }
+        rows.push({ key: `t${String(callId ?? event.seq)}`, role: 'tool', text: name, toolState: 'loading' })
       } else if (event.type === 'tool/result') {
         // Orphan results (no matching call row — e.g. pre-window history) stay
         // in the host toolviews; only a known call's chip settles. Live host
@@ -328,12 +339,13 @@ export function feedRows(window: FeedWindow | undefined): ChatRow[] {
         // test fixtures.
         const rid = event.data?.message?.source?.callId ?? event.data?.callId ?? event.data?.toolCallId
         if (rid !== undefined) {
-          const idx = rows.findIndex(r => r.key === `t${rid}` && r.role === 'tool')
+          const idx = rows.findIndex(r => r.key === `t${rid}` && (r.role === 'tool' || r.role === 'ask'))
           if (idx >= 0) {
             const failed = event.data?.message?.isError === true || event.data?.error !== undefined
             // D4: keep the rendered text — artifact-tool results hydrate into
             // inline cards (the structured payload lives in the state feed).
-            rows[idx] = { ...rows[idx]!, toolState: failed ? 'error' : 'done', resultText: failed ? undefined : resultRenderedText(event) }
+            rows[idx] = { ...rows[idx]!, toolState: failed ? 'error' : 'done', resultText: failed ? undefined : resultRenderedText(event),
+              ...(rows[idx]!.role === 'ask' && rows[idx]!.ask !== undefined && !failed ? { ask: { ...rows[idx]!.ask!, answered: true } } : {}) }
           }
         }
       }
@@ -357,10 +369,60 @@ export function feedRows(window: FeedWindow | undefined): ChatRow[] {
     else stream.text += chunk.text ?? ''
     latest = attemptId
   }
+  // 0.23.0: an ask row with a LATER learner row in the window was answered
+  // (history case — the answer's tool result may sit outside the window)
+  let askOpen = false
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i]!
+    if (r.role === 'user') askOpen = true
+    else if (r.role === 'ask' && r.ask !== undefined && askOpen && !r.ask.answered) {
+      rows[i] = { ...r, ask: { ...r.ask, answered: true } }
+    }
+  }
   const stream = latest !== undefined ? streams.get(latest) : undefined
   if (stream !== undefined && !stream.settled) {
     const text = stream.text.trim()
     if (text !== '') rows.splice(stream.anchor, 0, { key: 'streaming', role: 'streaming', text })
   }
   return rows
+}
+
+
+/**
+ * Parse an ask_user_question call's arguments into the answerable row payload
+ * (0.23.0). The live journal carries a JSON STRING (verified against real
+ * journals 2026-09-14: {questions:[{header,id,multi_select,options:[{label,
+ * description}]}]}); tolerate an already-parsed object arm for robustness.
+ * Unparseable shapes degrade to a header-only row (the composer still answers
+ * in free text). Pure.
+ */
+export function parseAskArguments(raw: string | undefined, callId: string): { callId: string, summary: string, questions: Array<{ id: string, header: string, multiSelect: boolean, options: Array<{ label: string, description: string }> }>, answered: boolean } {
+  const empty = { callId, summary: '', questions: [], answered: false }
+  if (raw === undefined || raw === '') return empty
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return empty
+  }
+  if (typeof parsed !== 'object' || parsed === null || !Array.isArray((parsed as { questions?: unknown }).questions)) return empty
+  const questions: Array<{ id: string, header: string, multiSelect: boolean, options: Array<{ label: string, description: string }> }> = []
+  for (const q of (parsed as { questions: unknown[] }).questions) {
+    if (typeof q !== 'object' || q === null) continue
+    const rec = q as { id?: unknown, header?: unknown, question?: unknown, multi_select?: unknown, options?: unknown }
+    const id = typeof rec.id === 'string' ? rec.id : String(questions.length)
+    const header = typeof rec.header === 'string' && rec.header !== '' ? rec.header : typeof rec.question === 'string' ? rec.question : ''
+    const multiSelect = rec.multi_select === true
+    const options: Array<{ label: string, description: string }> = []
+    if (Array.isArray(rec.options)) {
+      for (const o of rec.options) {
+        if (typeof o !== 'object' || o === null) continue
+        const orec = o as { label?: unknown, description?: unknown }
+        if (typeof orec.label === 'string' && orec.label !== '') options.push({ label: orec.label, description: typeof orec.description === 'string' ? orec.description : '' })
+      }
+    }
+    questions.push({ id, header, multiSelect, options })
+  }
+  if (questions.length === 0) return empty
+  return { callId, summary: questions.map(q => q.header).filter(h => h !== '').join(' / '), questions, answered: false }
 }

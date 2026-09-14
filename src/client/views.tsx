@@ -10,11 +10,28 @@ import { createElement } from 'react'
 import type { ReactNode } from 'react'
 import { tr, type StudyT } from './locale.ts'
 
+/** One pending ask_user_question option (the host tool's own shape). */
+export interface AskOption {
+  readonly label: string
+  readonly description: string
+}
+
+/** One question of a pending ask_user_question call. */
+export interface AskQuestion {
+  readonly id: string
+  readonly header: string
+  readonly multiSelect: boolean
+  readonly options: readonly AskOption[]
+}
+
 /** One rendered tutor chat row (fed by session-feed's fold). */
 export interface ChatRow {
   readonly key: string
-  readonly role: 'user' | 'assistant' | 'error' | 'streaming' | 'thinking' | 'reasoning' | 'tool' | 'artifact'
+  readonly role: 'user' | 'assistant' | 'error' | 'streaming' | 'thinking' | 'reasoning' | 'tool' | 'artifact' | 'ask'
   readonly text: string
+  /** ask rows only (0.23.0): the host's pending clarifying question with its
+   *  clickable options — the panel's answer UI for ask_user_question. */
+  readonly ask?: { readonly callId: string, readonly questions: readonly AskQuestion[], readonly answered: boolean }
   /** tool rows only: the chip's state (loading → done/error). */
   readonly toolState?: 'loading' | 'done' | 'error'
   /** settled tool rows only: the rendered result text (D4 hydration input). */

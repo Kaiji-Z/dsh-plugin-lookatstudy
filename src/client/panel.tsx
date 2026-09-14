@@ -45,7 +45,7 @@ import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, FoldableArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, type ChatRow } from './views.tsx'
 import { ListSectionView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
@@ -142,7 +142,7 @@ interface RowAudio {
   onStop: () => void
 }
 
-function chatRow(row: { key: string; role: string; text: string; toolState?: 'loading' | 'done' | 'error' }, interactive?: { send: PanelSend }, audio?: RowAudio): ReactNode {
+function chatRow(row: ChatRow, interactive?: { send: PanelSend, answerAsk?: (label: string) => void }, audio?: RowAudio): ReactNode {
   if (row.role === 'user') {
     return createElement('div', { key: row.key, className: 'lks14-msg lks14-msg-user' }, row.text)
   }
@@ -156,6 +156,32 @@ function chatRow(row: { key: string; role: string; text: string; toolState?: 'lo
     return createElement('div', { key: row.key, className: 'lks14-toolchip' + ' ' + String(row.toolState ?? 'loading') },
       row.toolState === 'done' ? '✓' : row.toolState === 'error' ? '×' : createElement('i', null),
       createElement('span', null, row.text))
+  }
+  if (row.role === 'ask' && row.ask !== undefined) {
+    // 0.23.0: the host's ask_user_question answers IN THE PANEL. The tool
+    // parks the turn until a human picks an option — before this row the
+    // options only lived in the hidden host column and a pending ask read as
+    // the panel freezing (owner-visible gap, live-caught 2026-09-14). The
+    // answer rides cancel+send: a parked turn never drains a queued message
+    // on its own, so the bridge cancels the parked turn first (the abort is
+    // clean — ASK_ABORTED) and sends the option label as the reply; the
+    // tutor just asked, so the label is a fully coherent answer.
+    const answered = row.ask.answered
+    return createElement('div', { key: row.key, className: `lks14-askrow${answered ? ' answered' : ''}`, 'data-testid': 'ask-row' },
+      createElement('div', { className: 'lks14-askhead' }, tr('ask.title')),
+      ...row.ask.questions.map(q => createElement('div', { key: q.id, className: 'lks14-askq' },
+        q.header !== '' ? createElement('div', { className: 'lks14-askq-h' }, q.header) : null,
+        ...q.options.map(opt => createElement('button', {
+          key: opt.label,
+          className: 'lks14-askopt',
+          disabled: answered || interactive?.answerAsk === undefined,
+          'data-testid': 'ask-option',
+          onClick: () => { interactive?.answerAsk?.(opt.label) },
+        },
+          createElement('span', { className: 'lks14-askopt-label' }, opt.label),
+          opt.description !== '' ? createElement('span', { className: 'lks14-askopt-desc' }, opt.description) : null)),
+        q.options.length === 0 ? createElement('div', { className: 'lks14-askfree' }, tr('ask.free')) : null)),
+      answered ? createElement('div', { className: 'lks14-askdone' }, tr('ask.answered')) : null)
   }
   const cls = row.role === 'streaming' ? 'lks14-msg lks14-msg-assistant streaming' : 'lks14-msg lks14-msg-assistant'
   // D8: every markdown surface renders through a boundary — a poisoned row
@@ -2242,7 +2268,16 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         : rowsView.map((row, i) => row.role === 'artifact'
           ? inlineArtifactCard(row, rowsView.slice(i + 1).some(r => r.role === 'assistant'))
           : chatRow(row,
-            !dormant && i === lastAssistant ? { send } : undefined,
+            !dormant && (i === lastAssistant || (row.role === 'ask' && row.ask !== undefined && !row.ask.answered))
+              ? { send, answerAsk: (label: string) => {
+                  // cancel the parked ask first, then answer — see chatRow's
+                  // ask branch for why a bare queue would deadlock
+                  void (async () => {
+                    if (busy) { stop(); await new Promise(r => { setTimeout(r, 1800) }) }
+                    send(label)
+                  })()
+                } }
+              : undefined,
             row.role === 'assistant'
               ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, onPlay: playMessage, onStop: stopMessage }
               : undefined)),
