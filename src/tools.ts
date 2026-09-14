@@ -563,6 +563,11 @@ ${p.text}`))
         )
       }
       if (route.flavor === 'arxiv') {
+        // Audit D37: idempotency precedes the download — a re-import must not
+        // re-pull and re-parse a 64MB-class PDF for nothing.
+        const part = args.part ?? 1
+        const existingEarly = part <= 1 ? store.get().courses.find(c => c.source === 'url' && c.sourceRef === route.url) : undefined
+        if (existingEarly !== undefined) return { status: 'imported' as const, ...toImportValue(existingEarly) }
         const buf = await downloadToBuffer(route.pdfUrl, fetchFn, { signal: exec.signal })
         const text = parsePdfText(buf)
         if (!text || text.replace(/\s+/g, '').length < 200) {
@@ -570,9 +575,6 @@ ${p.text}`))
         }
         const docs = prepareSingleDoc(`arxiv-${route.arxivId}`, `# arXiv:${route.arxivId}\n\n${text}`)
         if (docs.length === 0) throw new Error('lookatstudy-plugin: arXiv PDF text was empty after chunking')
-        const part = args.part ?? 1
-        const existing = part <= 1 ? store.get().courses.find(c => c.source === 'url' && c.sourceRef === route.url) : undefined
-        if (existing !== undefined) return { status: 'imported' as const, ...toImportValue(existing) }
         setPendingDesign(buildPendingDesignFromUrl(route.url, `arXiv:${route.arxivId}`, docs))
         pendingPart = part
         return designRequiredValue(pendingDesign, part)

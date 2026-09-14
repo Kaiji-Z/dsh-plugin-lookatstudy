@@ -14,12 +14,18 @@ permissions:
 
 jobs:
   verify:
+    # Audit D35: the engines floor (22.19) is actually tested, beside the float.
+    strategy:
+      matrix:
+        node-version: ['22.19', 22]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Audit D33: actions pinned by commit SHA (mutable tags are a supply-chain
+      # pivot, and publish.yml runs these with id-token: write).
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
       - run: corepack enable # activates the packageManager-pinned pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run verify

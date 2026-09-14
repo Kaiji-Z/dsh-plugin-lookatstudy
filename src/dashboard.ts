@@ -1,4 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 /**
@@ -443,7 +444,15 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
       }
       const pathname = new URL(req.url ?? '/', 'http://x').pathname
       if (req.method === 'GET' && pathname === '/lookatstudy/api/state') {
-        sendJson(res, 200, { ...workbenchState(deps.store.get(), new Date()), statePath: deps.statePath, version: pluginVersion(), model: await modelInfo() })
+        // D34: ETag over the serialized feed — an unchanged 3s poll answers
+        // 304 instead of reshipping the whole state.
+        const payload = JSON.stringify({ ...workbenchState(deps.store.get(), new Date()), statePath: deps.statePath, version: pluginVersion(), model: await modelInfo() })
+        const etag = `"${createHash('sha1').update(payload).digest('hex')}"`
+        if (headerValue(req, 'if-none-match') === etag) {
+          res.writeHead(304, { etag }).end()
+          return
+        }
+        res.writeHead(200, { ...JSON_HEADERS, etag }).end(payload)
         return
       }
       if (req.method === 'GET' && pathname === '/lookatstudy/api/search') {

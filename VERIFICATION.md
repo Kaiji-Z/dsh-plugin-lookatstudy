@@ -274,3 +274,14 @@ Output that violates a red line in VERIFICATION.md §7 is void.
 ## Project overview / Build & run / Verification system status / Test infra status / Verification backlog / Project-specific conventions
 [filled by the diagnosis pipeline]
 ```
+
+## §9 审查轮风险登记（2026-09-14，audit D32 残余）
+
+- **esm.sh 动态 ESM import 无法携带 SRI**（shiki/mermaid/ELK；平台限制——动态 import 不支持
+  integrity 属性）。已做的缓解：URL 按精确版本固定（shiki@1.29.2 / mermaid@11.4.1 /
+  @mermaid-js/layout-elk@0.1.7），KaTeX 走 `<script integrity>` 已钉 SRI（D32）。残余暴露：
+  esm.sh 或上游账户被接管 → 宿主页面任意 JS。彻底消除需要 vendoring 进 bundle（违反零依赖
+  bundle 教义）或宿主提供模块完整性机制——owner 决策项，未决。
+- **tsc strict 存量 250（冻结预算棘轮）**：dsh-tools 的 schema 类型推断在纯对象字面量上塌缩
+  （render value → never），清零需要 schemastery 构造器形式重写 32 个工具的 schema——
+  owner 决策项，verify 的 typecheck 门当前以 ≤250 棘轮防继续腐坏。

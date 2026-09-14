@@ -261,3 +261,13 @@ test('audit C30: decorated GitHub URL variants resolve to the canonical course i
     setHttpsGetOverride(null)
   }
 })
+
+test('audit D37: an already-imported arXiv id returns before any PDF download', async () => {
+  const { byName, state } = setup(async () => {
+    throw new Error('the transport must not be touched when the course already exists (D37)')
+  })
+  importCourse(state, parseMarkdownToCourse('# Paper\n## S\n### a\nbody'), 'url', 'https://arxiv.org/abs/2401.12345')
+  const res = await run(byName, 'study_import_url', { url: 'https://arxiv.org/abs/2401.12345' })
+  assert.equal(res.status, 'imported')
+  assert.equal(res.title, 'Paper')
+})

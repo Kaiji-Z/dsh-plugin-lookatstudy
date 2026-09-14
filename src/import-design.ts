@@ -375,6 +375,11 @@ export function extractHeadings(content: string): HeadingLine[] {
 export function findTitleIndex(headings: readonly HeadingLine[], anchor: string): number {
   const anchorClean = anchor.replace(/^#{1,3}\s+/, '').toLowerCase().trim()
   if (anchorClean === '') return -1
+  // Audit D38: an EXACT heading match wins when unique — duplicate headings
+  // ("Summary" ×2) previously collapsed every designed lesson onto the first
+  // occurrence through the substring fallback below.
+  const exact = headings.filter(h => h.title.toLowerCase().trim() === anchorClean)
+  if (exact.length === 1) return headings.indexOf(exact[0]!)
   for (let i = 0; i < headings.length; i++) {
     const titleLower = headings[i]!.title.toLowerCase()
     if (titleLower.includes(anchorClean) || anchorClean.includes(titleLower)) return i

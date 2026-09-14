@@ -666,3 +666,16 @@ test('routes: the exam-v2 lifecycle rides the dashboard API (P12)', async () => 
   assert.equal(wb.lesson!.exam!.attemptCount, 1)
   void course
 })
+
+test('audit D34: the state feed answers 304 on an unchanged ETag', async () => {
+  const { state } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const first = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  assert.equal(first.status, 200)
+  const etag = first.headers.etag
+  assert.ok(typeof etag === 'string' && etag.startsWith('"'), 'the feed carries a strong ETag')
+  const second = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state', undefined, { 'if-none-match': etag }), new FakeResponse())
+  assert.equal(second.status, 304, 'an unchanged poll answers Not Modified')
+  assert.equal(second.body, '', 'no payload reships')
+})

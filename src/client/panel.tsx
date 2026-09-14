@@ -2625,7 +2625,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                     recordReview(lesson.lessonId, Number(q) as 1 | 4 | 5)
                       .then(() => {
                         // P13: SRS 自评高光 — 记得/很熟带自评卡锚点;忘了原地柔红闪。
-                        const rateEl = document.querySelector(`[data-lks-rate="${lesson.lessonId}"]`)
+                        const rateEl = document.querySelector(`[data-lks-rate="${CSS.escape(lesson.lessonId)}"]`)
                         const rr = Number(q) >= 4 && rateEl !== null ? rateEl.getBoundingClientRect() : null
                         celebrate(Number(q) >= 4 ? 'correct' : 'wrong', rr !== null ? { origin: { x: rr.right - 48, y: rr.top + 24 } } : undefined)
                         showStudyToast(Number(q) >= 4 ? tr('review.done.good', { days: 1 }) : tr('review.done.again'), { severity: Number(q) >= 4 ? 'success' : 'warning' })

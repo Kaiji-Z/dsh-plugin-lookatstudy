@@ -49,15 +49,25 @@ const CDN = {
   mermaidElk: 'https://esm.sh/@mermaid-js/layout-elk@0.1.7',
 }
 
-function loadScript(src: string): Promise<void> {
+function loadScript(src: string, integrity?: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const el = document.createElement('script')
     el.src = src
+    if (integrity !== undefined) {
+      // Audit D32: SRI for the one CDN load that can carry it (a <script>
+      // tag); dynamic ESM imports cannot take integrity attributes — that
+      // residual is registered in VERIFICATION.md.
+      el.integrity = integrity
+      el.crossOrigin = 'anonymous'
+    }
     el.onload = () => { resolve() }
     el.onerror = () => { reject(new Error(`script load failed: ${src}`)) }
     document.head.append(el)
   })
 }
+
+/** Audit D32: SRI pin for the KaTeX CDN script (0.16.22, sha384 over the exact bytes). */
+export const KATEX_SRI = 'sha384-cMkvdD8LoxVzGF/RPUKAcvmm49FQ0oxwDF3BGKtDXcEc+T1b2N+teh/OJfpU0jr6'
 
 let katexPromise: Promise<KatexLike> | null = null
 function defaultLoadKatex(): Promise<KatexLike> {
@@ -69,7 +79,7 @@ function defaultLoadKatex(): Promise<KatexLike> {
       link.setAttribute('data-lks-katex', '1')
       document.head.append(link)
     }
-    if ((window as { katex?: KatexLike }).katex === undefined) await loadScript(CDN.katexJs)
+    if ((window as { katex?: KatexLike }).katex === undefined) await loadScript(CDN.katexJs, KATEX_SRI)
     const katex = (window as { katex?: KatexLike }).katex
     if (katex === undefined) throw new Error('katex missing after load')
     return katex

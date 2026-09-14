@@ -59,3 +59,21 @@ test('audit C29: a stale design brief renders as stale after a newer import', as
   assert.ok(!fresh.includes('STALE'), 'the current brief renders normally')
   assert.ok(first.designSeq !== second.designSeq, 'the two briefs carry distinct sequence numbers')
 })
+
+test('audit D32: the KaTeX CDN script carries an SRI pin', async () => {
+  const { KATEX_SRI } = await import('../src/client/enhance.ts')
+  assert.match(KATEX_SRI, /^sha384-[A-Za-z0-9+/]{40,}={0,2}$/, 'the pin is a full sha384 over the exact CDN bytes (0.16.22)')
+})
+
+test('audit D38: exact-unique anchors win over duplicate substring matches', async () => {
+  const { findTitleIndex } = await import('../src/import-design.ts')
+  const headings = [
+    { level: 3, title: 'Summary', line: 0 },
+    { level: 3, title: 'Deep dive details', line: 5 },
+    { level: 3, title: 'Summary', line: 9 },
+  ]
+  // duplicate "Summary" anchors do NOT collapse onto the first occurrence
+  assert.equal(findTitleIndex(headings, 'Deep dive details'), 1, 'an exact unique title finds itself')
+  assert.equal(findTitleIndex(headings, 'Summary'), 0, 'duplicate exact matches keep the upstream first-match fallback (no unique winner)')
+  assert.equal(findTitleIndex(headings, 'nothing'), -1, 'misses stay misses')
+})

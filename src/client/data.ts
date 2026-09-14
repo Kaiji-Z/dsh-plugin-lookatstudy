@@ -146,12 +146,17 @@ const POLL_MS = 3_000
 
 type Listener = () => void
 
-async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
+/** Sentinel for 304 responses (the state poll's ETag path): keep the snapshot. */
+const NOT_MODIFIED = Symbol('not-modified')
+export type FetchJsonResult = unknown | typeof NOT_MODIFIED
+
+async function fetchJson(url: string, init?: RequestInit): Promise<FetchJsonResult> {
   // A2 gate: every plugin API call carries the marker header the dashboard's
   // auth gate requires on mutating routes (harmless on GETs).
   const headers = new Headers(init?.headers)
   headers.set('x-lks-request', '1')
   const res = await fetch(url, { ...init, headers })
+  if (res.status === 304) return NOT_MODIFIED
   const body: unknown = await res.json().catch(() => null)
   if (!res.ok) {
     const error = body !== null && typeof body === 'object' && 'error' in body && typeof body.error === 'string'
@@ -193,9 +198,12 @@ class StudyStore {
     if (this.inflight) return
     this.inflight = true
     try {
-      const next = await fetchJson('/lookatstudy/api/state') as StudyState
-      this.snapshot = next
-      this.emit()
+      const next = await fetchJson('/lookatstudy/api/state')
+      // D34: a 304 (state unchanged) keeps the last snapshot — no emit churn.
+      if (next !== NOT_MODIFIED) {
+        this.snapshot = next as StudyState
+        this.emit()
+      }
     } catch {
       // Host route absent (headless composition) or transient failure: keep
       // the last snapshot; seats render their loading/empty states.
