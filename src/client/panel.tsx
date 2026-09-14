@@ -873,6 +873,26 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
  * search-and-jump (the dashboard search API), course switch, review, start
  * studying — all funneling the panel's own actions.
  */
+/** The cmap modal's diagram host — rendered ONCE per (title, concepts) VALUE.
+ * The raw-ref-callback version re-ran renderLessonConceptMap on every parent
+ * render (each 3s state poll recreates the feed-derived concepts array, so
+ * even a memo-by-identity effect would re-fire); the dataset key compares by
+ * value — poll re-renders no-op, a real mastery change re-renders. Same #12
+ * family as the diagram modal. */
+function CmapModalDiagram({ title, concepts }: { title: string; concepts: ReadonlyArray<{ title: string; masteryPct: number }> }): ReactNode {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (el === null) return
+    const key = `${title}\u0000${concepts.map(c => `${c.title}:${String(c.masteryPct)}`).join('\u0001')}`
+    if (el.dataset.cmapKey === key) return
+    el.dataset.cmapKey = key
+    el.textContent = ''
+    void renderLessonConceptMap(el, title, concepts.map(c => ({ title: c.title, masteryPct: c.masteryPct }))).catch(() => { el.textContent = tr('bb.fallback.cmap') })
+  })
+  return createElement('div', { className: 'lks14-modal-diagram', ref })
+}
+
 function CommandPalette({ searchLessons, courses, onClose, onLesson, onCourse, onReview, onStudy }: {
   searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string; courseTitle: string }>>
   courses: ReadonlyArray<{ id: string; title: string }>
@@ -2580,7 +2600,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
 
   const body: ReactNode = lesson === null
     ? createElement('div', { className: 'lks14-empty' }, tr('bb.empty'), createElement('br'), tr('bb.empty.hint'))
-    : createElement('div', { className: 'lks14-notebody' },
+    : createElement('div', { className: `lks14-notebody${tab === 'board' ? ' lks14-notebody-fill' : ''}` },
       createElement('div', { className: 'lks14-viewtabs' },
         createElement('button', { className: `lks14-viewtab${tab === 'teach' ? ' on' : ''}`, 'aria-pressed': String(tab === 'teach'), onClick: () => { setTab('teach') } }, tr('viewtab.teach')),
         createElement('button', { className: `lks14-viewtab${tab === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(tab === 'cmap'), 'data-tooltip': tr('viewtab.cmap.title'), onClick: () => { setTab('cmap') } }, createElement(IconGlobeOutline14, { size: 13 }), tr('viewtab.cmap')),
@@ -2731,14 +2751,9 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                   createElement('div', { className: 'lks-acard-modal-title' }, tr('viewtab.cmap'),
                     createElement('button', { className: 'lks-acard-expand', onClick: () => { setCmapExpanded(false) } }, createElement(IconCloseFill16, { size: 13 }))),
                   createElement(CanvasStage, { testid: 'cmap-modal-stage' },
-                    createElement('div', {
-                      className: 'lks14-modal-diagram',
-                      ref: (el: HTMLDivElement | null): void => {
-                        if (el !== null) {
-                          el.textContent = ''
-                          void renderLessonConceptMap(el, lesson.title, lesson.concepts.map(c => ({ title: c.title, masteryPct: c.masteryPct }))).catch(() => { el.textContent = tr('bb.fallback.cmap') })
-                        }
-                      },
+                    createElement(CmapModalDiagram, {
+                      title: lesson.title,
+                      concepts: lesson.concepts.map(c => ({ title: c.title, masteryPct: c.masteryPct })),
                     }))))
               : null)
           : createElement('div', { className: 'lks14-zones' },

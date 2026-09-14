@@ -4,8 +4,11 @@
  * does everything. Gestures: single-pointer drag pan, two-pointer pinch
  * anchored at the midpoint, wheel zoom anchored at the cursor, double
  * click/tap toggles fit↔100%. ResizeObserver refits on content/stage size
- * changes (mermaid's async svg). A floating −/%/fit/+ toolbar stays mounted.
- * Shared by the notebook's board tab and the diagram modals.
+ * changes (mermaid's async svg) — through the #12 gates: value-equality on
+ * setSize, a bounds-differ short-circuit on refit, rAF coalescing, and a
+ * recurrence-tripping oscillation breaker (see makeRefitBreaker). A floating
+ * −/%/fit/+ toolbar stays mounted. Shared by the notebook's board tab and
+ * the diagram modals.
  * (lucide glyphs collapse to text/plugin icons; the client stays dependency-
  * free.)
  * @module dsh-plugin-lookatstudy/client/canvasstage
@@ -22,6 +25,68 @@ const MIN_SCALE = 0.05
 const MAX_SCALE = 4
 /** 工具条步进(手势/滚轮连续,按钮给干脆的一档)。 */
 const STEP = 1.25
+
+/** The four measurements an auto-fit decision reads (#12 hardening). */
+export interface StageBounds {
+  contentW: number
+  contentH: number
+  viewW: number
+  viewH: number
+}
+
+/** True when the two bounds readings differ in ANY field — the auto-refit
+ * short-circuit. The pre-fix refit ran fitTransform on every RO callback with
+ * zero hysteresis, so any feedback touching a size re-fired it forever. */
+export function stageBoundsDiffer(a: StageBounds | null, b: StageBounds): boolean {
+  if (a === null) return true
+  return a.contentW !== b.contentW || a.contentH !== b.contentH || a.viewW !== b.viewW || a.viewH !== b.viewH
+}
+
+/** #10-followup floor: a collapsed content reading (the board's
+ * fit-content ↔ width:100% cycle could measure tens of px) must never latch
+ * an auto-fit — fitScale never upscales, so a collapsed fit stays collapsed
+ * on screen until some later size change re-fits. */
+export const REFIT_MIN_CONTENT_W = 120
+
+/** Oscillation breaker for the auto-fit path: a bounds key that RECURS inside
+ * the window is the A→B→A signature of a feedback loop (RO ↔ refit ↔ size
+ * change); the first repeat trips it and it stays tripped until a manual
+ * gesture (zoom button, double-click, fit) resets. Monotone resizes (pane
+ * drags) never repeat a key and never trip. Pure + clock-injected for tests. */
+export interface RefitBreaker {
+  allow(key: string): boolean
+  reset(): void
+  tripped(): boolean
+}
+export function makeRefitBreaker(opts: { windowMs?: number; now?: () => number } = {}): RefitBreaker {
+  const windowMs = opts.windowMs ?? 2000
+  const now = opts.now ?? ((): number => performance.now())
+  let seen: Array<{ t: number; key: string }> = []
+  let tripped = false
+  return {
+    allow(key: string): boolean {
+      const t = now()
+      seen = seen.filter(s => t - s.t < windowMs)
+      if (tripped) return false
+      if (seen.some(s => s.key === key)) {
+        tripped = true
+        return false
+      }
+      seen.push({ t, key })
+      return true
+    },
+    reset(): void {
+      seen = []
+      tripped = false
+    },
+    tripped(): boolean {
+      return tripped
+    },
+  }
+}
+
+const boundsKey = (b: StageBounds): string =>
+  `${String(b.contentW)}x${String(b.contentH)}@${String(b.viewW)}x${String(b.viewH)}`
 
 export function CanvasStage({ children, grid = true, testid }: {
   children?: ReactNode
@@ -45,6 +110,9 @@ export function CanvasStage({ children, grid = true, testid }: {
     moved: boolean
   }>({ pointers: new Map(), pinchBase: null, lastMid: null, panning: false, moved: false })
   const lastTapRef = useRef<{ t: number; x: number; y: number } | null>(null)
+  const lastBoundsRef = useRef<StageBounds | null>(null)
+  const breakerRef = useRef<RefitBreaker | null>(null)
+  if (breakerRef.current === null) breakerRef.current = makeRefitBreaker()
 
   const bounds = useCallback(() => {
     const stage = stageRef.current
@@ -59,30 +127,69 @@ export function CanvasStage({ children, grid = true, testid }: {
     }
   }, [])
 
-  const refit = useCallback(() => {
-    const b = bounds()
-    if (b.contentW === 0 || b.viewW === 0) return
+  const currentBounds = useCallback((): StageBounds => ({
+    contentW: contentRef.current?.offsetWidth ?? 0,
+    contentH: contentRef.current?.offsetHeight ?? 0,
+    viewW: stageRef.current?.clientWidth ?? 0,
+    viewH: stageRef.current?.clientHeight ?? 0,
+  }), [])
+
+  const applyFit = useCallback((b: StageBounds): void => {
     setTf(fitTransform(b.contentW, b.contentH, b.viewW, b.viewH))
     atFitRef.current = true
-  }, [bounds])
+  }, [])
 
-  // 内容(自然尺寸)+ 舞台双 RO → 变化即适屏(mermaid 异步出 svg 后自动回正)
+  // 手动适屏(按钮/双击):绕过并清除熔断 — 用户接手即恢复自动适屏资格
+  const refit = useCallback(() => {
+    breakerRef.current?.reset()
+    const b = currentBounds()
+    if (b.contentW === 0 || b.viewW === 0) return
+    lastBoundsRef.current = b
+    applyFit(b)
+  }, [currentBounds, applyFit])
+
+  // #12 加固的测量路径: 值判等(setSize 同值不再重渲染) → bounds 闸门(未变
+  // 不适屏) → 塌缩保险(过窄不 latch) → 振荡熔断(同 key 窗口内复发即停)
+  const measureNow = useCallback(() => {
+    const content = contentRef.current
+    if (content === null) return
+    const w = content.offsetWidth
+    const h = content.offsetHeight
+    setSize(prev => (prev !== null && prev.w === w && prev.h === h) ? prev : { w, h })
+    const b = currentBounds()
+    if (!stageBoundsDiffer(lastBoundsRef.current, b)) return
+    lastBoundsRef.current = b
+    if (b.contentW === 0 || b.viewW === 0) return
+    if (b.contentW < REFIT_MIN_CONTENT_W) return
+    if ((breakerRef.current ?? makeRefitBreaker()).allow(boundsKey(b))) applyFit(b)
+  }, [currentBounds, applyFit])
+
+  // 内容(自然尺寸)+ 舞台双 RO → rAF 合帧(一帧至多一次测量;mermaid 异步
+  // 出 svg 后自动回正),所有闸门都在 measureNow 里
   useEffect(() => {
     const stage = stageRef.current
     const content = contentRef.current
     if (stage === null || content === null) return
-    const measure = (): void => {
-      setSize({ w: content.offsetWidth, h: content.offsetHeight })
-      refit()
+    measureNow()
+    let raf = 0
+    const onRo = (): void => {
+      if (raf !== 0) return
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        measureNow()
+      })
     }
-    measure()
-    const ro = new ResizeObserver(measure)
+    const ro = new ResizeObserver(onRo)
     ro.observe(content)
     ro.observe(stage)
-    return () => { ro.disconnect() }
-  }, [refit])
+    return () => {
+      ro.disconnect()
+      if (raf !== 0) cancelAnimationFrame(raf)
+    }
+  }, [measureNow])
 
   const zoomBy = useCallback((factor: number, ax?: number, ay?: number) => {
+    breakerRef.current?.reset()
     const b = bounds()
     const cx = ax ?? b.viewW / 2
     const cy = ay ?? b.viewH / 2

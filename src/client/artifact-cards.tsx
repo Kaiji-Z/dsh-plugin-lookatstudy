@@ -7,7 +7,7 @@
  * @module dsh-plugin-lookatstudy/client/artifact-cards
  */
 
-import { createElement, useEffect, useRef, useState } from 'react'
+import { createElement, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { tr } from './locale.ts'
 import { IconCloseFill16, IconMaximizeOutline16 } from './icons.tsx'
@@ -149,12 +149,28 @@ export function CodeWalkthroughCard({ artifact }: { artifact: ArtifactRow }): Re
         createElement('b', null, `${tr('artifact.lines', { from: a.lineStart, to: a.lineEnd })}`), a.note))))
 }
 
+/** The 放大查看 modal's mermaid host — rendered ONCE per mermaid source. The
+ * raw-ref-callback version re-ran renderMermaidInto on every parent render
+ * (each 3s state poll), and its el.textContent='' clear + async re-render
+ * re-mounted the svg twice per tick — the #12 flicker. A stable effect deps
+ * chain (string mermaid + useCallback'd onFail) breaks the loop at the
+ * source; the CanvasStage gates are the second line of defense. */
+function DiagramModalDiagram({ mermaid, onFail }: { mermaid: string; onFail: () => void }): ReactNode {
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (bodyRef.current === null) return
+    void renderMermaidInto(bodyRef.current, mermaid, onFail)
+  }, [mermaid, onFail])
+  return createElement('div', { className: 'lks14-modal-diagram', ref: bodyRef })
+}
+
 /** Mermaid diagram card with an expand modal (upstream DiagramViewerModal). */
 export function DiagramCard({ artifact }: { artifact: ArtifactRow }): ReactNode {
   const mermaid = typeof artifact.data.mermaid === 'string' ? artifact.data.mermaid : ''
   const bodyRef = useRef<HTMLDivElement | null>(null)
   const [failed, setFailed] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const onFail = useCallback((): void => { setFailed(true) }, [])
   // C10: Escape closes the modal (upstream DiagramViewerModal).
   useEffect(() => {
     if (!expanded) return
@@ -164,8 +180,8 @@ export function DiagramCard({ artifact }: { artifact: ArtifactRow }): ReactNode 
   }, [expanded])
   useEffect(() => {
     if (bodyRef.current === null) return
-    void renderMermaidInto(bodyRef.current, mermaid, () => { setFailed(true) })
-  }, [mermaid])
+    void renderMermaidInto(bodyRef.current, mermaid, onFail)
+  }, [mermaid, onFail])
   const body = failed
     ? createElement('pre', { className: 'lks-acard-code' }, mermaid)
     : createElement('div', { className: 'lks-acard-diagram', ref: bodyRef })
@@ -183,12 +199,8 @@ export function DiagramCard({ artifact }: { artifact: ArtifactRow }): ReactNode 
             createElement('button', { className: 'lks-acard-expand', onClick: () => { setExpanded(false) } }, createElement(IconCloseFill16, { size: 13 }))),
           failed
             ? createElement('pre', { className: 'lks-acard-code' }, mermaid)
-            : createElement(CanvasStage, { testid: 'diagram-modal-stage' }, createElement('div', {
-                className: 'lks14-modal-diagram',
-                ref: (el: HTMLDivElement | null): void => {
-                  if (el !== null) void renderMermaidInto(el, mermaid, () => { setFailed(true) })
-                },
-              }))))
+            : createElement(CanvasStage, { testid: 'diagram-modal-stage' },
+              createElement(DiagramModalDiagram, { mermaid, onFail }))))
       : null)
 }
 /** The opening guess: two big options, click = pick (sent to the tutor, who
