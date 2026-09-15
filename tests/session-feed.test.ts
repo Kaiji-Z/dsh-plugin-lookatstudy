@@ -92,8 +92,43 @@ test('feedRows tolerates undefined windows, empty entries, and non-text chunks',
   assert.deepEqual(feedRows(win([])), [])
   const rows = feedRows(win([
     transient({ type: 'assistant/live-chunk', seq: 1, data: { attemptId: 'a', chunk: { type: 'reasoning-delta', text: 'thinking' } } }),
+    transient({ type: 'assistant/live-chunk', seq: 2, data: { attemptId: 'a', chunk: { type: 'usage', tokens: 5 } } }),
   ]))
-  assert.deepEqual(rows, [], 'reasoning deltas do not surface as streaming text')
+  // 0.24.0: reasoning-delta now surfaces as the LIVE thinking row (the
+  // host-style disclosure — the learner watches the tutor think); the old
+  // contract dropped it and showed nothing until the message settled.
+  // Non-text/non-reasoning chunks (usage, block-start…) still never surface.
+  assert.deepEqual(rows.map(r => [r.role, r.text, r.running === true]), [['reasoning', 'thinking', true]])
+})
+
+test('live reasoning accumulates ahead of the streaming text row and settles clean (0.24.0)', () => {
+  const live = feedRows(win([
+    entry({ type: 'user/message', seq: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '为什么?' }] } }),
+    transient({ type: 'assistant/live-chunk', seq: 2, data: { attemptId: 'a', chunk: { type: 'reasoning-delta', text: '先想清楚' } } }),
+    transient({ type: 'assistant/live-chunk', seq: 3, data: { attemptId: 'a', chunk: { type: 'reasoning-delta', text: '梯度方向' } } }),
+    transient({ type: 'assistant/live-chunk', seq: 4, data: { attemptId: 'a', chunk: { type: 'text-delta', text: '答案是' } } }),
+    transient({ type: 'assistant/live-chunk', seq: 5, data: { attemptId: 'a', chunk: { type: 'text-delta', text: '逆梯度' } } }),
+  ]))
+  assert.deepEqual(live.map(r => [r.role, r.text, r.running === true]), [
+    ['user', '为什么?', false],
+    ['reasoning', '先想清楚梯度方向', true],
+    ['streaming', '答案是逆梯度', false],
+  ], 'the live thinking row rides ahead of the streaming answer, flagged running')
+
+  const settled = feedRows(win([
+    entry({ type: 'user/message', seq: 1, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '为什么?' }] } }),
+    transient({ type: 'assistant/live-chunk', seq: 2, data: { attemptId: 'a', chunk: { type: 'reasoning-delta', text: '先想清楚梯度方向' } } }),
+    transient({ type: 'assistant/live-chunk', seq: 3, data: { attemptId: 'a', chunk: { type: 'text-delta', text: '答案是逆梯度' } } }),
+    entry({ type: 'assistant/message', seq: 4, data: { message: { content: [
+      { kind: 'reasoning', text: '先想清楚梯度方向' },
+      { kind: 'text', text: '答案是逆梯度。' },
+    ] } } }),
+  ]))
+  assert.deepEqual(settled.map(r => [r.role, r.text, r.running === true]), [
+    ['user', '为什么?', false],
+    ['reasoning', '先想清楚梯度方向', false],
+    ['assistant', '答案是逆梯度。', false],
+  ], 'settlement collapses both live rows into the durable reasoning+answer pair')
 })
 
 test('only learner-sourced user messages render; machinery kinds never do', () => {

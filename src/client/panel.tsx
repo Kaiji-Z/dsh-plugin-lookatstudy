@@ -19,7 +19,7 @@ import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
   IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16, IconWrenchOutline16,
-  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16 } from './icons.tsx'
+  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
@@ -45,7 +45,7 @@ import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, FoldableArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, type ChatRow } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, type ChatRow } from './views.tsx'
 import { ListSectionView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
@@ -147,9 +147,23 @@ function chatRow(row: ChatRow, interactive?: { send: PanelSend, answerAsk?: (lab
     return createElement('div', { key: row.key, className: 'lks14-msg lks14-msg-user' }, row.text)
   }
   if (row.role === 'reasoning') {
-    // C14: the collapsible reasoning block (upstream ReasoningBlock).
-    return createElement('details', { key: row.key, className: 'lks14-reasoning' },
-      createElement('summary', null, tr('chat.reasoning', { n: String(row.text.length) })), row.text)
+    // 0.24.0: the host-style thinking disclosure (ReasoningRow port) — live
+    // rows stream the LATEST line follow-end with the sweep, settled rows
+    // lead with the FIRST line; expanding reveals the full text.
+    const running = row.running === true
+    return createElement('details', {
+      key: row.key,
+      className: 'lks14-reasoning',
+      'data-state': running ? 'running' : 'ok',
+      'data-testid': 'reasoning-row',
+    },
+      createElement('summary', { className: 'lks14-reasoning-row' },
+        createElement(IconThinkOutline16, { size: 14 }),
+        createElement('span', { className: 'lks14-reasoning-title' }, tr('chat.think')),
+        createElement('span', { className: 'lks14-reasoning-sep', 'aria-hidden': true }),
+        createElement('span', { className: 'lks14-reasoning-summary', 'data-follow-end': running || undefined },
+          createElement('span', { className: 'lks14-reasoning-sumtext' }, reasoningSummaryLine(row.text, running)))),
+      createElement('div', { className: 'lks14-reasoning-body' }, row.text))
   }
   if (row.role === 'tool') {
     // C14: the three-state chip (loading dots / done check / error cross).
@@ -234,7 +248,21 @@ export function studyPanelView(ctx: ClientContext): () => ReactNode {
 type StudyData = ReturnType<typeof useStudy>['data']
 
 function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
-  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, lessonThreadOp, setCourseScope, uploadAttachment } = useStudy()
+  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, lessonThreadOp, setCourseScope, uploadAttachment, setInterfaceLang } = useStudy()
+
+  // 0.24.0: push the host interface language to the plugin state (the host
+  // keeps <html lang> in sync with the active locale) — study_apply_design
+  // matches it against a repo's translation mirrors. Re-read on locale flips
+  // through the service's subscribe.
+  useEffect(() => {
+    const read = (): void => {
+      const lang = document.documentElement.lang
+      if (/^[a-z]{2,3}(-[A-Za-z0-9]+)*$/.test(lang)) void setInterfaceLang(lang).catch(() => { /* the next mount retries */ })
+    }
+    read()
+    return ctx.locale?.subscribe(read)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   // D8: the shared CodeBlock's delegated copy wire — one listener for every
   // zone the markdown pipeline feeds (chat, prose, notes).
   useEffect(() => { wireCodeBlockCopy() }, [])
@@ -2495,6 +2523,21 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
   const [read, setRead] = useState<ReadAloudStatus | null>(null)
   const readCtl = useRef<ReadAloudController | null>(null)
   const [readError, setReadError] = useState<string | null>(null)
+  // 0.24.0: the teach-tab language view (原文/对照/译文) — per-lesson
+  // localStorage, translated lessons default to 对照 (the pre-0.24 look)
+  const [langView, setLangView] = useState<'original' | 'bilingual' | 'translation'>('bilingual')
+  useEffect(() => {
+    if (lesson === null) return
+    let next: 'original' | 'bilingual' | 'translation' = 'bilingual'
+    try {
+      const stored = localStorage.getItem(`lks-langview:${lesson.lessonId}`)
+      if (stored === 'original' || stored === 'bilingual' || stored === 'translation') next = stored
+    } catch { /* privacy modes forbid storage reads */ }
+    setLangView(next)
+  }, [lesson?.lessonId]) // eslint-disable-line react-hooks/exhaustive-deps
+  const teachHtml = lesson === null ? ''
+    : langView === 'translation' && lesson.translationHtml !== undefined ? lesson.translationHtml
+      : langView === 'bilingual' && lesson.bilingualHtml !== undefined ? lesson.bilingualHtml : lesson.html
   const { tts, addUserNote, recordReview, editNote, pinNote } = useStudy()
   const proseRef = useRef<HTMLDivElement | null>(null)
   const diagRef = useRef<HTMLDivElement | null>(null)
@@ -2685,7 +2728,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
         if (proseRef.current !== null) applyHighlights(proseRef.current, recordQuotes)
         setEnhanceTick(Date.now())
       })
-  }, [tab, lesson?.html]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, teachHtml]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // C6: fire the queued locate once the teach prose is back in the tree.
   useEffect(() => {
@@ -2755,6 +2798,19 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                 }, tr(key)))) ,
           ) : null,
           createElement('div', { className: 'lks-readbar' },
+            // 0.24.0: 原文/对照/译文 — only when the lesson carries a paired translation
+            lesson.bilingualHtml !== undefined
+              ? createElement('div', { className: 'lks-langview', 'data-testid': 'langview' },
+                (['original', 'bilingual', 'translation'] as const).map(v => createElement('button', {
+                  key: v,
+                  className: langView === v ? 'on' : '',
+                  'data-testid': `langview-${v}`,
+                  onClick: () => {
+                    setLangView(v)
+                    try { localStorage.setItem(`lks-langview:${lesson.lessonId}`, v) } catch { /* privacy modes forbid writes */ }
+                  },
+                }, tr(`langview.${v}`))))
+              : null,
             createElement('button', {
               className: 'lks-btn ghost',
               style: { padding: '3px 8px', fontSize: '12.5px', flex: 'none' },
@@ -2784,7 +2840,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
             createElement(ContentBoundary, {
               content: lesson.markdown ?? '',
               boundaryKey: `prose-${lesson.lessonId}`,
-            }, createElement('div', { className: 'lks14-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: lesson.html } })),
+            }, createElement('div', { className: 'lks14-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: teachHtml } })),
             quoteBtn !== null
               ? createElement('div', {
                   className: 'lks-quote-btn',

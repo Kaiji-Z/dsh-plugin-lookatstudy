@@ -29,6 +29,10 @@ export interface ChatRow {
   readonly key: string
   readonly role: 'user' | 'assistant' | 'error' | 'streaming' | 'thinking' | 'reasoning' | 'tool' | 'artifact' | 'ask'
   readonly text: string
+  /** reasoning rows only (0.24.0): true while the reasoning is still
+   * streaming — the host-style disclosure's running variant (latest-line
+   * follow-end summary + sweep); false/absent on the settled row. */
+  readonly running?: boolean
   /** ask rows only (0.23.0): the host's pending clarifying question with its
    *  clickable options — the panel's answer UI for ask_user_question. */
   readonly ask?: { readonly callId: string, readonly questions: readonly AskQuestion[], readonly answered: boolean }
@@ -45,6 +49,19 @@ export interface ChatRow {
 export function ActionError({ error }: { error: string | null }): ReactNode {
   if (error === null) return null
   return createElement('div', { className: 'lks-propcard-err' }, error)
+}
+
+/**
+ * The thinking disclosure's collapsed one-line summary (0.24.0, the host
+ * ReasoningRow contract verbatim): while RUNNING the LAST line rides (the
+ * summary visibly follows the stream's tail), settled the FIRST line leads;
+ * double-asterisk markers are omitted either way. Pure.
+ */
+export function reasoningSummaryLine(text: string, running: boolean): string {
+  const visible = running
+    ? ((): string => { const v = text.trimEnd(); const nl = v.lastIndexOf('\n'); return nl === -1 ? v : v.slice(nl + 1) })()
+    : ((): string => { const nl = text.indexOf('\n'); return nl === -1 ? text : text.slice(0, nl) })()
+  return visible.replaceAll('**', '')
 }
 
 /**

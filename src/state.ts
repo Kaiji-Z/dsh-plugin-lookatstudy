@@ -254,6 +254,10 @@ export interface LearningState {
   /** E2: history-budget trimming directive (the tutor layer executes the trim;
    *  additive in 0.18.0 — v2 files without it load as off). */
   historyBudget?: boolean
+  /** Host interface language the client pushed (0.24.0, additive) — the
+   *  source study_apply_design matches against a repo's translation mirrors
+   *  (zh-CN pairs the zh-cn mirror). Absent = feature off, original-only. */
+  interfaceLang?: string
   /** Lesson the learner last opened (snapshot focus), or null. */
   focus: { lessonId: string } | null
   /** Cross-course style memory. */

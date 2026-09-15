@@ -47,6 +47,10 @@ export interface PendingDesign {
   partCount?: number
   /** Translations keyed by original file path (translations/{lang}/{path}). */
   translations?: ReadonlyMap<string, { lang: string; content: string }>
+  /** Translation languages the README declares (0.24.0, github imports):
+   *  the [名](translations/<code>/README.md) link set — apply-side mirror
+   *  probing pairs the learner's interface language against these. */
+  availableLangs?: ReadonlyArray<{ code: string; name: string }>
   /** Inline-able local images keyed by repository-relative path → data: URL (capped). */
   localImages?: ReadonlyMap<string, string>
 }
@@ -76,6 +80,23 @@ export interface ValidatedDesign {
 
 /** Cap that keeps one design turn's JSON within a sane output size. */
 export const COARSE_DESIGN_FILE_THRESHOLD = 80
+
+/**
+ * Match the learner's interface language against the repo's declared
+ * translation languages (0.24.0): exact code first (case-insensitive), then
+ * the base subtag family — a zh-CN host matches a zh-cn mirror, pt-PT still
+ * finds pt-br. No family match (or nothing recorded) returns null and the
+ * import stays original-language. Pure.
+ */
+export function matchTranslationLang(want: string | undefined, available: ReadonlyArray<{ code: string; name: string }>): { code: string; name: string } | null {
+  if (want === undefined || want.trim() === '' || available.length === 0) return null
+  const norm = (code: string): string => code.trim().toLowerCase()
+  const exact = available.find(a => norm(a.code) === norm(want))
+  if (exact !== undefined) return exact
+  const base = (code: string): string => norm(code).split('-')[0]!
+  const wantBase = base(want)
+  return available.find(a => base(a.code) === wantBase) ?? null
+}
 
 /**
  * 0.23.1 issue 5: the pacing gate's hard cap (the brief's 3000-8000 target's
@@ -291,6 +312,10 @@ export function renderDesignBrief(pending: PendingDesign, part = 1): string {
   }
   lines.push('')
   lines.push('### Design rules (from the LookatStudy import pipeline)')
+  if (pending.availableLangs !== undefined && pending.availableLangs.length > 0) {
+    lines.push(`Translations available in this repo: ${pending.availableLangs.map(l => `${l.name} (${l.code})`).join(', ')}.`
+      + ' study_apply_design automatically pairs the learner\'s interface-language mirror (translations/<code>/ file copies) with each lesson — no action needed from you; mention the availability to the learner.')
+  }
   lines.push('Classify every lesson as exactly one of:')
   lines.push('- **study**: explanation/theory/tutorial content — the learning-world spine, its own lesson.')
   lines.push('- **practice**: Exercise / Lab / notebook — its own lesson.')

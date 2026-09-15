@@ -182,6 +182,13 @@ test('the upstream v0.28 skin is layered over the panel foundation (P9a)', async
   assert.match(UPSTREAM_CSS, /\.lks-ui ::-webkit-scrollbar-thumb\{[^}]*background:var\(--border\)/, 'scrollbars inside the panel are dark, not host-light')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-prose a,\.lks-ui \.lks-note-text a\{[^}]*rgb\(var\(--accent-rgb\)\)/, 'prose links are accent, not UA blue')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-prose img\{[^}]*max-width:100%/, 'teach prose images clamp to the column (0.23.1 — remote markdown art overflowed the notebook)')
+  // 0.24.0: the host-style thinking disclosure (ReasoningRow port) — sweep
+  // animation while running, tertiary summary line, quiet expanded body
+  assert.match(UPSTREAM_CSS, /@keyframes lks-reasoning-sweep/, 'the running thinking row carries the host sweep animation')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-reasoning\[data-state='running'\]/, 'the thinking row states its running variant')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-reasoning\.open \.lks14-reasoning-body/, 'the expanded thinking body reads the tertiary tier')
+  // 0.24.0: the teach-tab 原文/对照/译文 segmented control
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-langview/, 'the language-view segmented control is skinned')
   assert.match(UPSTREAM_CSS, /@keyframes lks-crown-sparkle/, 'the mastered crown sparkles (upstream 1.6s)')
   assert.match(UPSTREAM_CSS, /@keyframes lks-answer-wrong/, 'wrong answers shake (upstream 320ms)')
   assert.match(UPSTREAM_CSS, /--cm-c0-fill:#1C3352/, 'the concept-map palette tokens ride the panel scope')

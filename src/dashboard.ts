@@ -159,6 +159,13 @@ export interface WorkbenchLesson {
   markdown: string
   /** Markdown stripped to speakable plain text (code removed, layout markers off) — the read-aloud feed. */
   speechText: string
+  /** 0.24.0 translation views (present only when the lesson carries a paired
+   *  translation): the ORIGINAL-only html rides `html` above; these carry the
+   *  interleaved 对照 view and the 译文-only view — the client's 原文/对照/译文
+   *  switcher picks, so one payload serves every learner. */
+  bilingualHtml?: string
+  translationHtml?: string
+  translationLang?: string
 }
 
 /** Whole workbench state for the page. */
@@ -272,11 +279,17 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
           quote: n.quote,
           pinned: n.pinned === true,
         })),
-        html: renderMarkdown(normalizeMathNotation(
-          ref.lesson.translation === undefined ? ref.lesson.body : renderBilingual(ref.lesson.body, ref.lesson.translation),
-        )),
+        html: renderMarkdown(normalizeMathNotation(ref.lesson.body)),
         markdown: ref.lesson.body,
         speechText: normalizeSpeechText(normalizeMathNotation(ref.lesson.body)),
+        // 0.24.0: translation views ship alongside the original — the teach
+        // tab's 原文/对照/译文 switcher picks client-side (read-aloud stays
+        // on the original speechText)
+        ...(ref.lesson.translation !== undefined ? {
+          bilingualHtml: renderMarkdown(normalizeMathNotation(renderBilingual(ref.lesson.body, ref.lesson.translation))),
+          translationHtml: renderMarkdown(normalizeMathNotation(ref.lesson.translation)),
+          translationLang: ref.lesson.translationLang ?? '',
+        } : {}),
       }
     } catch {
       lesson = null
@@ -898,6 +911,23 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         deps.store.get().historyBudget = body.on === true
         deps.store.save()
         sendJson(res, 200, { ok: true, on: body.on === true })
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/prefs') {
+        // 0.24.0: the client pushes the host interface language (the host
+        // keeps <html lang> in sync with the active locale) — the apply-side
+        // translation matching consumes it. Additive pref sink.
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.interfaceLang !== 'string' || body.interfaceLang === '' || body.interfaceLang.length > 35) {
+          sendJson(res, 400, { ok: false, error: 'interfaceLang (non-empty string, max 35 chars) required' })
+          return
+        }
+        if (deps.store.get().interfaceLang !== body.interfaceLang) {
+          deps.store.get().interfaceLang = body.interfaceLang
+          deps.store.save()
+        }
+        sendJson(res, 200, { ok: true, interfaceLang: body.interfaceLang })
         return
       }
       if (req.method === 'POST' && pathname === '/lookatstudy/api/attachment') {

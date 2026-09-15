@@ -415,9 +415,27 @@ export const UPSTREAM_CSS = `
 
 /* ══════════ P11b (C-track closure): chat parts, notes closure, tooltip, confirm ══════════ */
 /* C14: the collapsible reasoning block */
+/* 0.24.0: the host-style thinking disclosure (ReasoningRow port) — running
+   rows stream the latest line follow-end with the sweep, settled rows lead
+   with the first line, the expanded body reads the tertiary tier */
 .lks-ui .lks14-reasoning{border:1px solid var(--border-faint);border-radius:10px;padding:4px 10px;font-size:12px;color:var(--ink-faint)}
 .lks-ui .lks14-reasoning summary{cursor:pointer;font-weight:600;color:var(--ink-muted);user-select:none}
 .lks-ui .lks14-reasoning[open] summary{margin-bottom:4px}
+.lks-ui .lks14-reasoning-row{display:flex;align-items:center;gap:6px;min-width:0;position:relative;overflow:hidden}
+.lks-ui .lks14-reasoning-title{flex:none;font-weight:400;color:var(--ink-muted)}
+.lks-ui .lks14-reasoning-sep{flex:none;width:2px;height:2px;margin:0 4px;border-radius:1px;background:var(--ink-faint)}
+.lks-ui .lks14-reasoning-summary{min-width:0;overflow:hidden;flex:1 1 auto;color:var(--ink-faint);white-space:nowrap}
+.lks-ui .lks14-reasoning-sumtext{display:block;overflow:hidden;text-overflow:ellipsis}
+.lks-ui .lks14-reasoning-summary[data-follow-end]{display:flex;justify-content:flex-end}
+.lks-ui .lks14-reasoning-summary[data-follow-end] .lks14-reasoning-sumtext{flex:0 0 auto;width:max-content;min-width:100%;overflow:visible;text-align:start;text-overflow:clip}
+.lks-ui .lks14-reasoning[data-state='running'] .lks14-reasoning-row::after{content:'';position:absolute;inset-block:0;left:0;width:180px;background:linear-gradient(90deg,transparent 0%,rgb(var(--surface-2-rgb)/0.9) 55%,transparent 100%);animation:lks-reasoning-sweep 2.6s ease-out infinite;pointer-events:none}
+@keyframes lks-reasoning-sweep{0%{left:-180px}90%,100%{left:100%}}
+@media (prefers-reduced-motion: reduce){.lks-ui .lks14-reasoning[data-state='running'] .lks14-reasoning-row::after{animation:none}}
+.lks-ui .lks14-reasoning.open .lks14-reasoning-body,.lks-ui .lks14-reasoning[open] .lks14-reasoning-body{padding:4px 0 4px 20px;color:var(--ink-faint);white-space:pre-wrap;word-break:break-word}
+/* 0.24.0: the teach-tab 原文/对照/译文 segmented control */
+.lks-ui .lks-langview{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--border-faint);border-radius:8px;background:rgb(var(--surface-2-rgb)/0.6)}
+.lks-ui .lks-langview button{border:0;background:transparent;color:var(--ink-muted);font-size:12px;line-height:1;padding:4px 8px;border-radius:6px;cursor:pointer}
+.lks-ui .lks-langview button.on{background:rgb(var(--brand-rgb)/0.16);color:var(--brand)}
 /* C14: the tool-call chip states */
 .lks-ui .lks14-toolchip{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;font-size:12px;font-weight:600;
   padding:3px 10px;border-radius:999px;background:rgb(var(--ink-rgb)/0.05);color:var(--ink-muted)}

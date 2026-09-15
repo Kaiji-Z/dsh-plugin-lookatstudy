@@ -17,7 +17,7 @@ import type { ToolDefinition, ValueSchemaSpec, OneOfValueSchemaSpec, ObjectValue
 import { parseMarkdownToCourse } from './vendor/markdown-course.ts'
 import type { ParsedCourse } from './vendor/markdown-course.ts'
 import { scanFolder, buildLocalInventory } from './vendor/local-folder-scanner.ts'
-import { downloadToBuffer, fetchFileOutlines, fetchRepoInventory, fetchSingleFileContent } from './vendor/repo-fetcher.ts'
+import { downloadToBuffer, extractLanguagesFromReadme, fetchFileOutlines, fetchRepoInventory, fetchSingleFileContent, fetchTranslatedContent } from './vendor/repo-fetcher.ts'
 import { routeImportUrl, normalizeUrlIdentity } from './vendor/url-route.ts'
 import { guardedFetchText } from './vendor/net-guard.ts'
 import { parsePdfText } from './vendor/pdf-text.ts'
@@ -30,6 +30,7 @@ import {
   buildPendingDesignFromFolder,
   buildPendingDesignFromUrl,
   collectTranslations,
+  matchTranslationLang,
   rewriteGithubImageRefs,
   inlineLocalImages,
   planBriefParts,
@@ -370,6 +371,18 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
             fileCount: { type: 'integer', required: true },
             fullTreeCount: { type: 'integer', required: true },
             designSeq: { type: 'integer', description: 'Pending-design sequence (audit C29): renders detect stale briefs.' },
+            availableLangs: {
+              type: 'array',
+              description: 'Translation languages the repo README declares (translations/<code>/ mirrors) — apply pairs the learner\'s interface language automatically.',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  code: { type: 'string', required: true, description: 'BCP-47-ish code as it appears in the translations/ path.' },
+                  name: { type: 'string', required: true, description: 'Display name from the README link text.' },
+                },
+              },
+            },
             part: { type: 'integer', description: 'Brief part this call rendered (context-budget batching).' },
             partCount: { type: 'integer', description: 'Total brief parts; >1 means design+apply per part.' },
           },
@@ -468,6 +481,7 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
       courseTitle: partCount > 1 ? `${pd.courseTitle} (part ${part})` : pd.courseTitle,
       fileCount: planBriefParts(pd.files)[Math.min(part, partCount) - 1]!.length,
       fullTreeCount: pd.fullTreeCount,
+      ...(pd.availableLangs !== undefined && pd.availableLangs.length > 0 ? { availableLangs: pd.availableLangs.map(l => ({ code: l.code, name: l.name })) } : {}),
       ...(partCount > 1 ? { part, partCount } : {}),
     }
   }
@@ -489,6 +503,10 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
     const inventory = await fetchRepoInventory(owner, repo, resolvedBranch, fetchFn, undefined, exec.signal)
     const outlines = await fetchFileOutlines(inventory.fileList.map(f => f.path), owner, repo, inventory.branch, fetchFn, undefined, exec.signal)
     const pd = buildPendingDesign(canonicalRef, owner, repo, inventory, outlines)
+    // 0.24.0: the README's translation links ride the pending design — the
+    // brief reports them and apply probes the interface-language mirror
+    const availableLangs = extractLanguagesFromReadme(inventory.readmeMd)
+    if (availableLangs.length > 0) pd.availableLangs = availableLangs
     setPendingDesign(pd)
     if (pd.files.length === 0) {
       throw new Error('lookatstudy-plugin: course files were discovered but no outlines could be fetched (CDN unreachable?)')
@@ -630,8 +648,15 @@ ${p.text}`))
           + 'rather than being a knowledge/tech course that merely happens to be written in some language: the taught '
           + 'language as a BCP-47 tag ("en", "ja", "zh-CN", …). The writing language is NOT the taught language — a Chinese-written '
           + 'English-textbook repo has languageTarget "en". Typical tells: vocab lists, grammar points, dialogues/readings, '
-          + 'sentence-translation pairs, level markers (N5/N1, TOEFL, HSK, JLPT), pronunciation content. When unsure, omit it — '
+          + 'sentence-translation pairs, level markers (N5/N1, TOEFL/IELTS, HSK, JLPT), pronunciation content. When unsure, omit it — '
           + 'a normal course misflagged as a language course is worse than the reverse.',
+      },
+      translationLang: {
+        type: 'string',
+        description:
+          'Override the translation mirror language (0.24.0). Default: the learner\'s interface language, matched against the '
+          + 'repo\'s declared translations (zh-CN matches zh-cn, en-US falls back to en). Set this only when the LEARNER '
+          + 'explicitly asks for a different language than their interface.',
       },
       sections: {
         type: 'array',
@@ -674,6 +699,7 @@ ${p.text}`))
           firstLessonId: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true },
           firstLessonTitle: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true },
           droppedLessons: { type: 'integer', required: true },
+          translations: { type: 'integer', required: true, description: 'Lessons that landed with a paired translation (the interface-language mirror existed and its anchor matched) — their teach tab offers 原文/对照/译文.' },
           created: { type: 'boolean', required: true, description: 'False when an existing course short-circuited the import (same title) — the design did NOT land as a new course.' },
           languageTarget: { type: 'string', description: 'Present only when the course teaches a language itself (BCP-47); the tutor then keeps quiz material in the target language.' },
         },
@@ -684,6 +710,7 @@ ${p.text}`))
           ? `“${value.title}” (id ${value.courseId}) was ALREADY imported — the design did not create a new course. Continue with the existing course, or delete it first (study_delete_course) to rebuild from this design.`
           : `Imported designed course “${value.title}” (${value.sections} sections, ${value.lessons} lessons`
             + `${value.droppedLessons > 0 ? `, ${value.droppedLessons} hallucinated lesson(s) dropped` : ''})`
+            + `${typeof value.translations === 'number' && value.translations > 0 ? ` — ${value.translations} lesson(s) carry the learner's-language translation (原文/对照/译文 in the teach tab)` : ''}`
             + `${typeof value.languageTarget === 'string' ? ` — language course (${value.languageTarget}): keep reading passages, example sentences, and quiz language material in the target language` : ''}. `
             + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}). Present the course map to the learner.`,
       }],
@@ -725,11 +752,26 @@ ${p.text}`))
           throw new Error(`lookatstudy-plugin: ${failed.length} designed file(s) failed to fetch: ${failed.join(', ')} — drop or fix them and call study_apply_design again`)
         }
       }
+      // 0.24.0: GitHub imports pair the interface-language translation mirror
+      // (translations/<code>/<original path>, 404-skip per file) — folder
+      // imports already carry pd.translations from the local scan.
+      let translations = pd.translations
+      if (pd.localContents === undefined && pd.availableLangs !== undefined && pd.availableLangs.length > 0) {
+        const want = typeof args.translationLang === 'string' && args.translationLang.trim() !== '' ? args.translationLang : store.get().interfaceLang
+        const match = matchTranslationLang(want, pd.availableLangs)
+        if (match !== null && !exec.signal.aborted) {
+          const fetched = await fetchTranslatedContent(pd.owner, pd.repo, pd.branch, match.code,
+            uniqueFiles.map(f => ({ path: f, title: f, md: '' })), signalFetch(exec.signal, baseFetch))
+          if (fetched.size > 0) {
+            translations = new Map([...fetched].map(([path, v]) => [path, { lang: match.code, content: v.content }]))
+          }
+        }
+      }
       const parsed = buildCourseFromDesign(
         pd.part !== undefined && pd.partCount !== undefined && pd.partCount > 1 ? `${pd.courseTitle} (part ${pd.part})` : pd.courseTitle,
         validated,
         contents,
-        pd.translations,
+        translations,
       )
       requireParsedLessons(parsed)
       // upstream v0.33 parse discipline: only a non-empty string counts
@@ -747,7 +789,11 @@ ${p.text}`))
       })
       setPendingDesign(null)
       pendingPart = 1
-      return { ...value, droppedLessons: validated.droppedLessons, ...(languageTarget !== null ? { languageTarget } : {}) }
+      // 0.24.0: how many designed lessons actually landed with a paired
+      // translation (mirror existed + anchor matched) — the render tells the
+      // learner the teach tab now carries 原文/对照/译文
+      const translatedLessons = parsed.sections.reduce((n, s) => n + s.lessons.filter(l => l.translation !== undefined).length, 0)
+      return { ...value, droppedLessons: validated.droppedLessons, translations: translatedLessons, ...(languageTarget !== null ? { languageTarget } : {}) }
     },
     timeoutMs: 180_000,
     presentCall: () => ({ card: 'generic' as const, title: 'Apply course design', kind: 'edit' }),

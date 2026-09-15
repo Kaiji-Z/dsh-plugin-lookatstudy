@@ -66,6 +66,11 @@ export interface StudyState {
     readonly html: string
     readonly markdown: string
     readonly speechText: string
+    /** 0.24.0 translation views (present only when the lesson carries a
+     *  paired translation) — the teach tab's 原文/对照/译文 switcher. */
+    readonly bilingualHtml?: string
+    readonly translationHtml?: string
+    readonly translationLang?: string
   } | null
   readonly dueCount: number
   readonly due: ReadonlyArray<{ lessonId: string; lessonTitle: string; courseTitle: string; overdueDays: number }>
@@ -240,6 +245,17 @@ class StudyStore {
       body: JSON.stringify({ on }),
     })
     this.refresh()
+  }
+
+  /** 0.24.0: push the host interface language (the panel reads <html lang>,
+   *  which the host keeps in sync with the active locale) — the apply-side
+   *  translation matching consumes it. */
+  async setInterfaceLang(lang: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/prefs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ interfaceLang: lang }),
+    })
   }
 
   /** E3: land one attachment verbatim in the study workspace; returns the workspace-relative path. */
@@ -492,6 +508,7 @@ export function useStudy(): {
   activate: (active: boolean) => Promise<void>
   setMode: (mode: StudyState['mode']) => Promise<void>
   setHistoryBudget: (on: boolean) => Promise<void>
+  setInterfaceLang: (lang: string) => Promise<void>
   uploadAttachment: (name: string, dataBase64: string) => Promise<string>
   setFocus: (lessonId: string) => Promise<void>
   searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string; courseTitle: string }>>
@@ -518,6 +535,7 @@ export function useStudy(): {
     activate: studyStore.activate.bind(studyStore),
     setMode: studyStore.setMode.bind(studyStore),
     setHistoryBudget: studyStore.setHistoryBudget.bind(studyStore),
+    setInterfaceLang: studyStore.setInterfaceLang.bind(studyStore),
     uploadAttachment: studyStore.uploadAttachment.bind(studyStore),
     setFocus: studyStore.setFocus.bind(studyStore),
     searchLessons: studyStore.searchLessons.bind(studyStore),

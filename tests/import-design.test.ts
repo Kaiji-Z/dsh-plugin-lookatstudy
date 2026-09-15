@@ -235,3 +235,21 @@ test('pacing gate: coarse-mode briefs (>80 files) keep the over-8000 anchor-spli
   assert.notEqual(coarseLine, '', 'the coarse-mode line is present at >80 files')
   assert.ok(coarseLine.includes('8000'), 'the coarse-mode instruction still requires anchor splitting for over-8000-char files')
 })
+
+// ——— 0.24.0: interface-language → translation matching ———
+
+test('matchTranslationLang: exact first, then base-prefix (zh-CN ↔ zh-cn), never a wrong family', async () => {
+  const { matchTranslationLang } = await import('../src/import-design.ts')
+  const available = [
+    { code: 'zh-cn', name: '中文（简体）' },
+    { code: 'en', name: 'English' },
+    { code: 'pt-br', name: 'Português (Brasil)' },
+  ]
+  assert.deepEqual(matchTranslationLang('zh-CN', available), { code: 'zh-cn', name: '中文（简体）' }, 'host zh-CN matches the zh-cn mirror family')
+  assert.deepEqual(matchTranslationLang('zh', available), { code: 'zh-cn', name: '中文（简体）' }, 'bare zh matches by base too')
+  assert.deepEqual(matchTranslationLang('en-US', available), { code: 'en', name: 'English' }, 'en-US falls back to the en base')
+  assert.deepEqual(matchTranslationLang('pt-PT', available), { code: 'pt-br', name: 'Português (Brasil)' }, 'pt-PT still finds the pt family')
+  assert.equal(matchTranslationLang('ja', available), null, 'no family → no translation, original behavior')
+  assert.equal(matchTranslationLang(undefined, available), null, 'no interface lang recorded → feature off')
+  assert.equal(matchTranslationLang('zh-CN', []), null, 'no translations in the repo → off')
+})

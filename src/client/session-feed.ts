@@ -313,7 +313,7 @@ export const IMPORT_TOOLS: ReadonlySet<string> = new Set(['study_import_url', 's
 export function feedRows(window: FeedWindow | undefined): ChatRow[] {
   if (window === undefined) return []
   const rows: ChatRow[] = []
-  const streams = new Map<string, { text: string; anchor: number; settled: boolean }>()
+  const streams = new Map<string, { text: string; reasoning: string; anchor: number; settled: boolean }>()
   let latest: string | undefined
   for (const entry of window.entries) {
     const event = entry?.event
@@ -381,15 +381,21 @@ export function feedRows(window: FeedWindow | undefined): ChatRow[] {
       }
       continue
     }
-    // transient live chunk: accumulate text deltas per attempt. The streaming
-    // row anchors where the attempt's FIRST chunk appeared in the durable
-    // row order (deltas arrive between the rows that precede/follow them).
+    // transient live chunk: accumulate text AND reasoning deltas per attempt
+    // (0.24.0: reasoning-delta surfaces as the live thinking row — the host's
+    // ReasoningRow contract; until now it was dropped and the learner saw
+    // nothing until the message settled). The streaming rows anchor where the
+    // attempt's FIRST chunk appeared in the durable row order (deltas arrive
+    // between the rows that precede/follow them).
     const chunk = event.data?.chunk
-    if (chunk === undefined || chunk.type !== 'text-delta') continue
+    if (chunk === undefined || (chunk.type !== 'text-delta' && chunk.type !== 'reasoning-delta')) continue
     const attemptId = event.data?.attemptId ?? String(event.seq)
+    const delta = chunk.text ?? ''
     const stream = streams.get(attemptId)
-    if (stream === undefined) streams.set(attemptId, { text: chunk.text ?? '', anchor: rows.length, settled: false })
-    else stream.text += chunk.text ?? ''
+    if (stream === undefined) {
+      streams.set(attemptId, { text: chunk.type === 'text-delta' ? delta : '', reasoning: chunk.type === 'reasoning-delta' ? delta : '', anchor: rows.length, settled: false })
+    } else if (chunk.type === 'text-delta') stream.text += delta
+    else stream.reasoning += delta
     latest = attemptId
   }
   // 0.23.0: an ask row with a LATER learner row in the window was answered
@@ -404,8 +410,13 @@ export function feedRows(window: FeedWindow | undefined): ChatRow[] {
   }
   const stream = latest !== undefined ? streams.get(latest) : undefined
   if (stream !== undefined && !stream.settled) {
+    // 0.24.0: the live thinking row rides AHEAD of the streaming answer —
+    // same order as the settled reasoning+assistant pair (text splices first
+    // at the anchor, then reasoning splices in ahead of it)
     const text = stream.text.trim()
     if (text !== '') rows.splice(stream.anchor, 0, { key: 'streaming', role: 'streaming', text })
+    const reasoning = stream.reasoning.trim()
+    if (reasoning !== '') rows.splice(stream.anchor, 0, { key: 'streaming-reasoning', role: 'reasoning', text: reasoning, running: true })
   }
   return rows
 }

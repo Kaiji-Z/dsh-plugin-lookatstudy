@@ -711,3 +711,27 @@ test('focus route (issue 1): clicking an available lesson attempts it — in_pro
   assert.equal(examFocus.status, 200)
   assert.equal(findLesson(state, exam.id).lesson.status, 'available', 'exam nodes stay out of the study state machine')
 })
+
+// 0.24.0: translated lessons ship all three teach views (the client's
+// 原文/对照/译文 switcher) and the prefs route records the host interface
+// language the apply-side translation matching consumes.
+test('workbenchState: translated lessons carry bilingualHtml/translationHtml; prefs route records interfaceLang', async () => {
+  const { state, lessonId } = fixture()
+  const focused = findLesson(state, lessonId).lesson
+  focused.translation = '阅读 **译文**'
+  focused.translationLang = 'zh-CN'
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+
+  const pref = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/prefs', { interfaceLang: 'zh-CN' }), new FakeResponse())
+  assert.equal(pref.status, 200)
+  assert.equal(state.interfaceLang, 'zh-CN', 'the interface language persists into plugin state')
+
+  const wb = workbenchState(state, new Date('2026-08-15T10:00:00Z'))
+  assert.ok(wb.lesson !== null)
+  assert.equal(typeof wb.lesson!.bilingualHtml, 'string', 'the bilingual view ships')
+  assert.ok((wb.lesson!.bilingualHtml ?? '').includes('<blockquote'), 'the bilingual view interleaves the translation as quotes')
+  assert.equal(typeof wb.lesson!.translationHtml, 'string', 'the translation-only view ships')
+  assert.equal(wb.lesson!.translationLang, 'zh-CN')
+  assert.ok(wb.lesson!.html.includes('<strong>body</strong>'), 'html is the ORIGINAL body — the switcher, not the server, picks the view')
+})
