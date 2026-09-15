@@ -168,3 +168,70 @@ test('buildPendingDesign derives title, role hints, and README excerpt from the 
   assert.ok(brief.includes('writing language is NOT the taught language'), 'the tell-vs-carrier distinction is explicit')
   assert.ok(brief.includes('"languageTarget"'), 'the apply JSON shape names the field')
 })
+
+// ——— 0.23.1 issue 5: the pacing gate ———
+// The brief has carried the 3000-8000 pacing rules since the beginning, but
+// nothing ENFORCED them on the applied design (a flash-tier tutor 1:1
+// file→lesson shipped 45k-char lessons from generative-ai-for-beginners).
+// buildCourseFromDesign now measures every sliced body: over the cap with
+// splittable in-span headings → loud, actionable rejection the tutor can fix
+// conversationally; monoliths without sub-headings stay accepted (upstream's
+// "accept one long lesson").
+
+const pacingLong = (n: number) => Array.from({ length: n }, (_, i) => `explanatory prose line ${i} — padded so each block crosses a pacing threshold for the gate`).join('\n')
+const BIG_FILE = ['# Generated Course', '## Warmup', pacingLong(50), '## Core', pacingLong(80), '### Part One', pacingLong(80), '### Part Two', pacingLong(80)].join('\n')
+
+test('pacing gate: an over-long whole-file lesson with H2/H3 structure is rejected with split guidance', () => {
+  const validated = validateDesign({
+    sections: [{ title: 'S', lessons: [{ title: 'Big File wholesale', file: 'big.md' }] }],
+  }, new Set(['big.md']))
+  assert.throws(
+    () => buildCourseFromDesign('Big', validated, new Map([['big.md', BIG_FILE]])),
+    (err: Error) => err.message.includes('8000') && err.message.includes('anchor') && err.message.includes('big.md'),
+    'the rejection names the cap, the split remedy (anchors), and the offending file',
+  )
+})
+
+test('pacing gate: an over-long H2 lesson with H3 children is rejected (the upstream per-H3 split rule)', () => {
+  const validated = validateDesign({
+    sections: [{ title: 'S', lessons: [{ title: 'Core in one bite', file: 'big.md', anchor: '## Core' }] }],
+  }, new Set(['big.md']))
+  assert.throws(() => buildCourseFromDesign('Big', validated, new Map([['big.md', BIG_FILE]])), /8000/)
+})
+
+test('pacing gate: properly split designs and heading-less monoliths pass untouched', () => {
+  const split = validateDesign({
+    sections: [{
+      title: 'S',
+      lessons: [
+        { title: 'Warmup', file: 'big.md', anchor: '## Warmup' },
+        { title: 'Part One', file: 'big.md', anchor: '### Part One' },
+        { title: 'Part Two', file: 'big.md', anchor: '### Part Two' },
+      ],
+    }],
+  }, new Set(['big.md']))
+  const parsed = buildCourseFromDesign('Big', split, new Map([['big.md', BIG_FILE]]))
+  for (const lesson of parsed.sections[0]!.lessons) {
+    assert.ok(lesson.body.length < 8000, `the split lesson 「${lesson.title}」 lands under the cap (${lesson.body.length} chars)`)
+  }
+  const monolith = validateDesign({
+    sections: [{ title: 'S', lessons: [{ title: 'Monolith', file: 'mono.md' }] }],
+  }, new Set(['mono.md']))
+  const parsedMono = buildCourseFromDesign('Mono', monolith, new Map([['mono.md', `# Mono\n${pacingLong(160)}`]]))
+  assert.ok(parsedMono.sections[0]!.lessons[0]!.body.length > 8000, 'the heading-less monolith rode through at full length (upstream: accept one long lesson)')
+})
+
+test('pacing gate: coarse-mode briefs (>80 files) keep the over-8000 anchor-split rule alive', () => {
+  const files = Array.from({ length: 85 }, (_, i) => ({
+    path: `lessons/${i}/README.md`,
+    role: 'original' as const,
+    outline: { h1: `Lesson ${i}`, totalChars: 5000, headings: [{ level: 2, title: 'Body', chars: 4000 }] },
+  }))
+  const brief = renderDesignBrief({
+    source: 'github', url: 'https://github.com/o/r', owner: 'o', repo: 'r', branch: 'main',
+    courseTitle: 'Coarse Repo', readmeExcerpt: 'readme', fullTreeCount: 200, files,
+  })
+  const coarseLine = brief.split('\n').find(l => l.includes('This part is large')) ?? ''
+  assert.notEqual(coarseLine, '', 'the coarse-mode line is present at >80 files')
+  assert.ok(coarseLine.includes('8000'), 'the coarse-mode instruction still requires anchor splitting for over-8000-char files')
+})

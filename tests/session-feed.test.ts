@@ -263,3 +263,21 @@ test('D7: epubFolderPath folds an .epub file path to its parent folder (the scan
   assert.equal(epubFolderPath('D:/books'), 'D:/books', 'a folder path passes through')
   assert.equal(epubFolderPath('/book.epub'), '/book.epub', 'root-level file has no parent to fold to — passes through')
 })
+
+// ——— 0.23.1 issue 3: the import funnel's failure exit ———
+// The old exit armed on the turnActive PROP having rendered true once; a turn
+// that dies inside one event-window notification batch (turn/start +
+// turn/end between two reads — the keyless-provider fast fail, journal
+// verified: attempt → step/end → turn/end within seconds) never flipped the
+// prop, the arming never happened, and the funnel spun forever. The exit is
+// now a deadline on the job itself: past grace with no live turn = failed.
+
+import { importJobDead, IMPORT_FAIL_GRACE_MS } from '../src/client/session-feed.ts'
+
+test('issue 3: importJobDead — grace-elapsed dead jobs fail; live and young jobs hold', () => {
+  const job = { startedAt: 1_000_000 }
+  assert.equal(importJobDead(null, false, job.startedAt + IMPORT_FAIL_GRACE_MS + 1), false, 'no job → nothing to fail')
+  assert.equal(importJobDead(job, false, job.startedAt + IMPORT_FAIL_GRACE_MS), false, 'inside the grace window queue latency is tolerated (turn/start may not have journaled yet)')
+  assert.equal(importJobDead(job, false, job.startedAt + IMPORT_FAIL_GRACE_MS + 1), true, 'past grace with no live turn — the fast-fail shape that used to spin forever')
+  assert.equal(importJobDead(job, true, job.startedAt + 60 * IMPORT_FAIL_GRACE_MS), false, 'a live turn holds the funnel open however long the import tools run')
+})

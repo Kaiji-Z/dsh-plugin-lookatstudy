@@ -181,6 +181,7 @@ test('the upstream v0.28 skin is layered over the panel foundation (P9a)', async
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-quote-btn\{[^}]*box-shadow:0 4px 12px -2px/, 'the selection popover is a surface-0 card with shadow-pop')
   assert.match(UPSTREAM_CSS, /\.lks-ui ::-webkit-scrollbar-thumb\{[^}]*background:var\(--border\)/, 'scrollbars inside the panel are dark, not host-light')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-prose a,\.lks-ui \.lks-note-text a\{[^}]*rgb\(var\(--accent-rgb\)\)/, 'prose links are accent, not UA blue')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-prose img\{[^}]*max-width:100%/, 'teach prose images clamp to the column (0.23.1 — remote markdown art overflowed the notebook)')
   assert.match(UPSTREAM_CSS, /@keyframes lks-crown-sparkle/, 'the mastered crown sparkles (upstream 1.6s)')
   assert.match(UPSTREAM_CSS, /@keyframes lks-answer-wrong/, 'wrong answers shake (upstream 320ms)')
   assert.match(UPSTREAM_CSS, /--cm-c0-fill:#1C3352/, 'the concept-map palette tokens ride the panel scope')

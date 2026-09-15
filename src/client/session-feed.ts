@@ -102,6 +102,29 @@ export function feedTurnActive(window: FeedWindow | undefined, stoppedAt: number
 export const TURN_STALL_MS = 240_000
 
 /**
+ * 0.23.1 issue 3: how long an import funnel may sit with NO live turn before
+ * the panel reads the import as failed. The old failure exit armed on the
+ * turnActive prop having rendered true once — but a turn that dies inside one
+ * event-window notification batch (turn/start + turn/end between two reads,
+ * the keyless-provider fast fail; journal-verified: attempt → step/end →
+ * turn/end within seconds) never flips the prop, so the exit never armed and
+ * the funnel spun forever. This deadline needs no observation: past grace
+ * with the turn not active = failed. The grace only covers prompt queue
+ * latency (turn/start journals within seconds of the queue-time resolve); a
+ * live turn holds the funnel open for its whole life however long the import
+ * tools run.
+ */
+export const IMPORT_FAIL_GRACE_MS = 30_000
+
+/**
+ * The funnel's failure decision (pure — the wall clock lives at the poll call
+ * site, mirroring {@link turnStalled}).
+ */
+export function importJobDead(job: { startedAt: number } | null, turnActive: boolean, now: number, grace: number = IMPORT_FAIL_GRACE_MS): boolean {
+  return job !== null && !turnActive && now - job.startedAt > grace
+}
+
+/**
  * The stall decision (pure — the wall clock lives at the poll call site):
  * an ACTIVE fold stays active while the window's top seq keeps advancing;
  * once it has been frozen for longer than stallMs the panel treats the turn

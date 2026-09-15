@@ -35,7 +35,7 @@ import { ctxSegments, fmtTokens } from './views.tsx'
 import { renderLessonConceptMap } from './diagrams.ts'
 import { speechSentencesOf } from '../vendor/speech-text.ts'
 import { speakMathInSentence } from '../vendor/math-speech.ts'
-import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog, importProgressOf, TURN_STALL_MS, turnStalled } from './session-feed.ts'
+import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog, importProgressOf, importJobDead, TURN_STALL_MS, turnStalled } from './session-feed.ts'
 import { ErrorBoundary, ContentBoundary } from './error-boundary.tsx'
 import { wireCodeBlockCopy } from './codeblock.ts'
 import { panelTheme, subscribePanelTheme } from './theme.ts'
@@ -1199,16 +1199,14 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   paletteBus.current.courseSelect = (id: string) => { setSelectedCourse(id); setPanel('map') }
   paletteBus.current.reviewOpen = () => { setReviewOpen(true) }
   // D7: the import job watcher — success is the course-count poll (a new id
-  // appears), failure is the turn ending with nothing new; cancel stops the
-  // turn. sawTurn rides the prop transitions (queue latency means the turn
-  // starts a beat AFTER the submit).
+  // appears), failure is a deadline on the job itself (importJobDead): past
+  // IMPORT_FAIL_GRACE_MS with no live turn = failed. The old sawTurn arming
+  // rode the turnActive prop transitions and never armed for a turn that
+  // died inside one window batch (0.23.1 issue 3's eternal funnel).
   const [importJob, setImportJob] = useState<ImportJob | null>(null)
   const [importResult, setImportResult] = useState<{ ok: boolean; msg: string } | null>(null)
-  const sawTurnRef = useRef(false)
-  if (importJob !== null && turnActive) sawTurnRef.current = true
   const startImport = (label: string, prompt: string): void => {
     setImportResult(null)
-    sawTurnRef.current = false
     setImportJob({ label, startedAt: Date.now(), baselineIds: new Set((data?.courses ?? []).map(c => c.courseId)) })
     send(prompt)
   }
@@ -1222,7 +1220,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       setPanel('map')
       return
     }
-    if (sawTurnRef.current && !turnActive) {
+    if (importJobDead(importJob, turnActive, Date.now())) {
       setImportJob(null)
       setImportResult({ ok: false, msg: tr('import.error.turn') })
     }

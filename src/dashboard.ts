@@ -36,6 +36,7 @@ import {
   dueReviews,
   findCourse,
   findLesson,
+  attemptLesson,
   learnerSnapshot,
   starterPrompts,
   strategyBand,
@@ -495,6 +496,15 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         }
         try {
           const ref = findLesson(deps.store.get(), body.lessonId)
+          // 0.23.1 issue 1: upstream's proceedLessonClick marks the node
+          // attempted + selects it — the lesson click IS the focus route, so
+          // an available study lesson is attempted here (in_progress + BKT
+          // prior + dual-track unlock, zero LLM). Exam nodes never enter the
+          // study state machine and locked nodes stay focus-only; other
+          // statuses are no-ops inside attemptLesson.
+          if (ref.lesson.kind !== 'exam' && ref.lesson.status === 'available') {
+            attemptLesson(deps.store.get(), ref.lesson.id, new Date())
+          }
           deps.store.get().focus = { lessonId: ref.lesson.id }
           deps.store.save()
           sendJson(res, 200, { ok: true })

@@ -679,3 +679,35 @@ test('audit D34: the state feed answers 304 on an unchanged ETag', async () => {
   assert.equal(second.status, 304, 'an unchanged poll answers Not Modified')
   assert.equal(second.body, '', 'no payload reships')
 })
+
+// 0.23.1 issue 1: upstream's proceedLessonClick marks the node attempted and
+// selects it — the panel's lesson click is the focus route, so a focus on an
+// available study lesson now attempts it too (in_progress + BKT prior +
+// dual-track unlock, zero LLM). Exams never enter the state machine and a
+// locked node stays focus-only.
+test('focus route (issue 1): clicking an available lesson attempts it — in_progress + dual-track unlock', async () => {
+  const { state } = fixture()
+  let saved = 0
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => { saved += 1 } }, studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  const ids = (si: number, li: number): string => `${state.courses[0]!.id}:${si}:${li}`
+
+  const locked = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/focus', { lessonId: ids(0, 1) }), new FakeResponse())
+  assert.equal(locked.status, 200)
+  assert.equal(state.focus?.lessonId, ids(0, 1), 'a locked node still takes the focus')
+  assert.equal(findLesson(state, ids(0, 1)).lesson.status, 'locked', 'a locked node is never attempted')
+
+  const click = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/focus', { lessonId: ids(0, 0) }), new FakeResponse())
+  assert.equal(click.status, 200)
+  const opened = findLesson(state, ids(0, 0)).lesson
+  assert.equal(opened.status, 'in_progress', 'the clicked lesson started')
+  assert.equal(opened.mastery, 0.5, 'the first attempt seeded the BKT prior')
+  assert.equal(findLesson(state, ids(0, 1)).lesson.status, 'available', 'the in-section next lesson unlocked')
+  assert.equal(findLesson(state, ids(1, 0)).lesson.status, 'available', 'the next section first lesson unlocked')
+  assert.ok(saved >= 2, 'each focus persisted')
+
+  const exam = state.courses[0]!.sections[0]!.lessons.find(l => l.kind === 'exam')!
+  const examFocus = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/focus', { lessonId: exam.id }), new FakeResponse())
+  assert.equal(examFocus.status, 200)
+  assert.equal(findLesson(state, exam.id).lesson.status, 'available', 'exam nodes stay out of the study state machine')
+})

@@ -78,6 +78,30 @@ export interface ValidatedDesign {
 export const COARSE_DESIGN_FILE_THRESHOLD = 80
 
 /**
+ * 0.23.1 issue 5: the pacing gate's hard cap (the brief's 3000-8000 target's
+ * upper edge). A sliced lesson over this WITH splittable in-span headings is
+ * rejected — the brief has always carried the rule, but nothing enforced it,
+ * so a flash-tier tutor's 1:1 file→lesson design shipped 45k-char lessons.
+ */
+export const LESSON_MAX_CHARS = 8000
+
+/**
+ * Count the in-span headings a lesson could be split by: direct children for
+ * an anchored lesson (an H2 anchor's span ends at the next ≤-level heading,
+ * so its H3s are the split unit; an H3 anchor is the terminal unit — nothing
+ * deeper exists to split by), any H2/H3 for a whole-file lesson.
+ */
+function splittableHeadingCount(headings: readonly HeadingLine[], titleIndex: number): number {
+  if (titleIndex < 0) return headings.filter(h => h.level >= 2).length
+  const anchorLevel = headings[titleIndex]!.level
+  let count = 0
+  for (let i = titleIndex + 1; i < headings.length && headings[i]!.level > anchorLevel; i++) {
+    if (headings[i]!.level === anchorLevel + 1) count++
+  }
+  return count
+}
+
+/**
  * Build the pending design from Step 1 (inventory) + Step 3 (outlines).
  * @param url - the GitHub URL the learner asked to import.
  * @param owner - repo owner.
@@ -280,7 +304,7 @@ export function renderDesignBrief(pending: PendingDesign, part = 1): string {
   lines.push('Other rules:')
   lines.push('- role hints are references, not verdicts — README tables usually mark real roles (Lesson link = study, Notebook/Lab = practice).')
   lines.push('- if the directory layout is already clear (e.g. lessons/N-Topic/), keep its sections; do not over-reorganize.')
-  lines.push(`- anchor is the full heading text used to slice the body; omit it for whole-file lessons.${shown.length > COARSE_DESIGN_FILE_THRESHOLD ? ' This part is large: design at file granularity (omit anchors, one lesson per file) to keep the JSON manageable.' : ''}`)
+  lines.push(`- anchor is the full heading text used to slice the body; omit it for whole-file lessons.${shown.length > COARSE_DESIGN_FILE_THRESHOLD ? ' This part is large: design at file granularity (omit anchors, one lesson per file) to keep the JSON manageable — EXCEPT files over 8000 chars: those still need anchor splitting (anchor = an H2/H3 heading) into 3000-8000-char lessons; study_apply_design rejects over-long lessons whose file has splittable headings.' : ''}`)
   lines.push('')
   lines.push('### Language-course check (decide while designing)')
   lines.push('Is this course teaching a language ITSELF (vocabulary, grammar, reading/writing/listening of English/Japanese/Korean/Chinese/…),'
@@ -487,6 +511,7 @@ export function buildCourseFromDesign(courseTitle: string, validated: ValidatedD
     return cached
   }
   const firstLessonSeen = new Set<string>()
+  const pacingViolations: Array<{ title: string; file: string; chars: number; splittable: number }> = []
   const sections: ParsedSection[] = validated.sections.map(section => {
     const lessons: ParsedLesson[] = section.lessons.map(lesson => {
       const content = contents.get(lesson.file)
@@ -506,10 +531,18 @@ export function buildCourseFromDesign(courseTitle: string, validated: ValidatedD
         const tIndex = lesson.anchor === null ? -1 : findTitleIndex(tHeadings, lesson.anchor)
         translation = sliceLessonBody(pair.content, tHeadings, tIndex, isFirst)
       }
+      const body = sliceLessonBody(content, headings, titleIndex, isFirst)
+      // 0.23.1 issue 5: measure every sliced body — over the cap with
+      // splittable in-span headings is a pacing violation (the design rules
+      // the brief carries); heading-less monoliths ride through (upstream:
+      // "accept one long lesson").
+      if (body.length > LESSON_MAX_CHARS && splittableHeadingCount(headings, titleIndex) > 0) {
+        pacingViolations.push({ title: lesson.title, file: lesson.file, chars: body.length, splittable: splittableHeadingCount(headings, titleIndex) })
+      }
       return {
         title: lesson.title,
         anchor: slugAnchor(lesson.title),
-        body: sliceLessonBody(content, headings, titleIndex, isFirst),
+        body,
         sourceFilePath: lesson.file,
         world: lesson.world,
         ...(translation !== undefined ? { translation, translationLang: pair!.lang } : {}),
@@ -522,5 +555,12 @@ export function buildCourseFromDesign(courseTitle: string, validated: ValidatedD
       lessons,
     }
   })
+  if (pacingViolations.length > 0) {
+    const listed = pacingViolations.slice(0, 5)
+      .map(v => `「${v.title}」 ${v.file} (${v.chars} chars, ${v.splittable} splittable heading${v.splittable === 1 ? '' : 's'})`)
+      .join('; ')
+    const more = pacingViolations.length > 5 ? ` (+${pacingViolations.length - 5} more)` : ''
+    throw new Error(`lookatstudy-plugin: pacing gate — ${pacingViolations.length} lesson${pacingViolations.length === 1 ? '' : 's'} over ${LESSON_MAX_CHARS} chars while the file has splittable H2/H3 sections (design rule: 3000-8000 chars per lesson): ${listed}${more}. Split each into one lesson per H2/H3 (anchor = the heading's full title, merge fragments under 1000 chars), then re-submit study_apply_design`)
+  }
   return { title: courseTitle, sections }
 }

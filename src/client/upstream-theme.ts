@@ -136,6 +136,7 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-viewtab:hover{color:var(--ink)}
 .lks-ui .lks14-viewtab.on{background:rgb(var(--brand-rgb)/0.16);color:var(--brand)}
 .lks-ui .lks14-prose{color:var(--ink);font-size:.9375rem;line-height:1.65}
+.lks-ui .lks14-prose img{max-width:100%;height:auto}
 .lks-ui .lks14-prose h1,.lks-ui .lks-note-text h1{font-size:1.25rem;font-weight:800;color:var(--ink-strong)}
 .lks-ui .lks14-prose h2,.lks-ui .lks-note-text h2{font-size:1.1rem;font-weight:700;color:var(--ink-strong);border-bottom:1px solid var(--border);padding-bottom:.3em}
 .lks-ui .lks14-prose h3,.lks-ui .lks-note-text h3{font-size:1rem;font-weight:700;color:var(--ink)}

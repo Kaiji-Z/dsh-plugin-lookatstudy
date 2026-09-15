@@ -116,7 +116,10 @@ test('folder import part flow: two parts apply as two courses with distinct titl
     // apply part 1 with its first file
     const brief1 = (byName.get('study_import_folder')!.output as unknown as { render: (a: unknown, v: Record<string, unknown>) => Array<{ text: string }> }).render({}, part1)[0]!.text
     const firstFile = brief1.match(/- (\S+\.md) /)![1]!
-    const applied1 = await run('study_apply_design', { sections: [{ title: 'S1', lessons: [{ title: 'L1', file: firstFile }] }] })
+    // 0.23.1 pacing gate: these fixture files are 10k+ chars with 60 H2s — a
+    // whole-file lesson would be rejected, so anchor at the file's first section
+    const firstIdx = Number.parseInt(/file(\d+)\.md/.exec(firstFile)![1]!, 10)
+    const applied1 = await run('study_apply_design', { sections: [{ title: 'S1', lessons: [{ title: 'L1', file: firstFile, anchor: `Section ${firstIdx}-0` }] }] })
     assert.ok((applied1.title as string).includes('(part 1)'), `title carries the part suffix: ${applied1.title}`)
     // part 2 skips the existing-course shortcut and re-renders
     const part2 = await run('study_import_folder', { path: dir, part: 2 })
@@ -126,7 +129,8 @@ test('folder import part flow: two parts apply as two courses with distinct titl
     assert.ok(brief2.includes('Brief part 2 of'))
     const secondFile = brief2.match(/- (\S+\.md) /)![1]!
     assert.notEqual(secondFile, firstFile, 'part 2 brief covers different files')
-    const applied2 = await run('study_apply_design', { sections: [{ title: 'S2', lessons: [{ title: 'L2', file: secondFile }] }] })
+    const secondIdx = Number.parseInt(/file(\d+)\.md/.exec(secondFile)![1]!, 10)
+    const applied2 = await run('study_apply_design', { sections: [{ title: 'S2', lessons: [{ title: 'L2', file: secondFile, anchor: `Section ${secondIdx}-0` }] }] })
     assert.ok((applied2.title as string).includes('(part 2)'), `second part imports as its own course: ${applied2.title}`)
     assert.notEqual(applied2.courseId, applied1.courseId)
   } finally {
