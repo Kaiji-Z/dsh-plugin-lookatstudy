@@ -159,9 +159,11 @@ export interface WorkbenchLesson {
   /** Markdown stripped to speakable plain text (code removed, layout markers off) — the read-aloud feed. */
   speechText: string
   /** 0.25.0 translation view (present only when the lesson carries a paired
-   *  translation): the 译文-only html — the client's 原文/译文 switcher picks
-   *  (`html` above is always the original). */
+   *  translation): the 译文-only html + its speech text (0.25.3 — read-aloud
+   *  follows the DISPLAYED view) — the client's 原文/译文 switcher picks
+   *  (`html`/`speechText` above are always the original). */
   translationHtml?: string
+  translationSpeechText?: string
   translationLang?: string
 }
 
@@ -284,6 +286,7 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
         // on the original speechText
         ...(ref.lesson.translation !== undefined ? {
           translationHtml: renderMarkdown(normalizeMathNotation(ref.lesson.translation)),
+          translationSpeechText: normalizeSpeechText(normalizeMathNotation(ref.lesson.translation)),
           translationLang: ref.lesson.translationLang ?? '',
         } : {}),
       }

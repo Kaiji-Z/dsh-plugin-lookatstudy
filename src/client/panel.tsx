@@ -19,7 +19,7 @@ import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
   IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16, IconWrenchOutline16,
-  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16 } from './icons.tsx'
+  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16, IconBookOutline16, IconPenOutline16 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
@@ -34,6 +34,7 @@ import {
 import { ctxSegments, fmtTokens } from './views.tsx'
 import { renderLessonConceptMap } from './diagrams.ts'
 import { speechSentencesOf } from '../vendor/speech-text.ts'
+import { markReadingSentence, clearReadingMark, clearReadingHighlightRegistry, resetReadingCursor, centerReadingRangeInView } from './reading-mark.ts'
 import { speakMathInSentence } from '../vendor/math-speech.ts'
 import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog, importProgressOf, importJobDead, TURN_STALL_MS, turnStalled } from './session-feed.ts'
 import { ErrorBoundary, ContentBoundary } from './error-boundary.tsx'
@@ -2701,10 +2702,14 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
   const [enhanceTick, setEnhanceTick] = useState(0)
   const [rateBusy, setRateBusy] = useState(false)
 
+  // 0.25.3: read-aloud follows the DISPLAYED view — 译文 view reads the
+  // translation (upstream semantics: speech reads the shown content)
+  const speakText = lesson !== null && langView === 'translation' && lesson.translationSpeechText !== undefined
+    ? lesson.translationSpeechText : (lesson?.speechText ?? '')
   const startReading = (): void => {
-    if (lesson === null || lesson.speechText.trim() === '') return
+    if (lesson === null || speakText.trim() === '') return
     readCtl.current?.stop()
-    const sentences = speechSentencesOf(lesson.speechText)
+    const sentences = speechSentencesOf(speakText)
     const voice = storedTtsVoice()
     // Edge-over-dashboard engine: per-run prefetch map (prewarm fills it, speak
     // consumes it) + a currentAudio ref so pause/resume reach real playback.
@@ -2765,6 +2770,39 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
     setRead(null)
   }
 
+  // 0.25.3 karaoke (upstream v6+ port): the speaking sentence highlights in
+  // the teach prose and its line box stays centered in the note scroller.
+  // CSS Highlight API first (zero DOM mutation — the prose innerHTML is
+  // React-managed), span wrap as fallback.
+  useEffect(() => {
+    const prose = proseRef.current
+    if (prose === null) return
+    if (read === null || read.state !== 'speaking' || tab !== 'teach') {
+      clearReadingMark(prose)
+      return
+    }
+    if (read.index === 0) resetReadingCursor(prose)
+    const sentence = speechSentencesOf(speakText)[read.index]
+    if (sentence === undefined) return
+    const timer = setTimeout(() => {
+      const rg = markReadingSentence(prose, sentence)
+      if (rg !== null) centerReadingRangeInView(rg, prose.closest('.lks14-note') as HTMLElement | null)
+    }, 30)
+    return () => { clearTimeout(timer) }
+  }, [read?.index, read?.state, tab, teachHtml]) // eslint-disable-line react-hooks/exhaustive-deps
+  // leaving the lesson/unmount: drop the highlight entirely (the registry
+  // outlives the detached DOM)
+  useEffect(() => {
+    if (read === null && proseRef.current !== null) clearReadingMark(proseRef.current)
+  }, [lesson?.lessonId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { clearReadingHighlightRegistry() }, [])
+  // switching the language view mid-read switches WHAT WOULD BE READ — stop
+  // cleanly instead of playing text the learner can no longer see highlighted
+  useEffect(() => {
+    if (read !== null) stopReading()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [langView])
+
   useEffect(() => {
     if (tab !== 'cmap' || diagRef.current === null || lesson === null) return
     const el = diagRef.current
@@ -2801,7 +2839,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
     ? createElement('div', { className: 'lks14-empty' }, tr('bb.empty'), createElement('br'), tr('bb.empty.hint'))
     : createElement('div', { className: `lks14-notebody${tab === 'board' ? ' lks14-notebody-fill' : ''}` },
       createElement('div', { className: 'lks14-viewtabs' },
-        createElement('button', { className: `lks14-viewtab${tab === 'teach' ? ' on' : ''}`, 'aria-pressed': String(tab === 'teach'), onClick: () => { setTab('teach') } }, tr('viewtab.teach')),
+        createElement('button', { className: `lks14-viewtab${tab === 'teach' ? ' on' : ''}`, 'aria-pressed': String(tab === 'teach'), onClick: () => { setTab('teach') } }, createElement(IconBookOutline16, { size: 13 }), tr('viewtab.teach')),
         createElement('button', { className: `lks14-viewtab${tab === 'cmap' ? ' on' : ''}`, 'aria-pressed': String(tab === 'cmap'), 'data-tooltip': tr('viewtab.cmap.title'), onClick: () => { setTab('cmap') } }, createElement(IconGlobeOutline14, { size: 13 }), tr('viewtab.cmap')),
         createElement('button', {
           className: `lks14-viewtab${tab === 'notes' ? ' on' : ''}`,
@@ -2813,7 +2851,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
               setUnseenTick(Date.now())
             }
           },
-        }, tr('bb.notes'), unseen.length > 0 ? createElement('span', { className: 'lks-viewtab-badge' }, String(unseen.length)) : null),
+        }, createElement(IconPenOutline16, { size: 13 }), tr('bb.notes'), unseen.length > 0 ? createElement('span', { className: 'lks-viewtab-badge' }, String(unseen.length)) : null),
         createElement('button', {
           className: `lks14-viewtab${tab === 'board' ? ' on' : ''}`,
           'aria-pressed': String(tab === 'board'),
@@ -2891,7 +2929,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
               : null,
             read !== null && read.state !== 'idle' && lesson !== null
               ? createElement('span', { className: 'lks-readbar-cur' },
-                (speechSentencesOf(lesson.speechText)[read.index] ?? '').slice(0, 80))
+                (speechSentencesOf(speakText)[read.index] ?? '').slice(0, 80))
               : null,
             readError !== null ? createElement('span', { className: 'lks-readbar-notice' }, readError) : null,
             read !== null && read.degraded ? createElement('span', { className: 'lks-readbar-notice' }, tr('read.engine.system')) : null,

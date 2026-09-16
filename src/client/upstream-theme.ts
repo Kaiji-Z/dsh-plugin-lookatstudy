@@ -371,7 +371,16 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-emptycard-title{font-size:1rem;font-weight:800;color:var(--ink-strong)}
 .lks-ui .lks14-emptycard-hint{font-size:.825rem;color:var(--ink-muted);line-height:1.6}
 /* B5: notebook tab capsule + 960px reading column */
-.lks-ui .lks14-notebody{margin:0 auto;max-width:960px;width:100%;padding:12px 20px 24px;box-sizing:border-box}
+.lks-ui .lks14-notebody{margin:0;width:100%;padding:12px 20px 24px;box-sizing:border-box}
+/* 0.25.3 (owner): the view tabs pin to the note column's top — full-bleed
+   negative margins cancel the notebody padding so the bar covers the whole
+   column width while content scrolls underneath */
+.lks-ui .lks14-viewtabs{position:sticky;top:0;z-index:20;margin:0 -20px 12px;padding:8px 20px 6px;background:var(--surface-2);border-bottom:1px solid var(--border-faint)}
+.lks-ui .lks14-viewtab{display:inline-flex;align-items:center;gap:5px}
+/* 0.25.3 karaoke: the speaking sentence highlight (CSS Custom Highlight API
+   registration; the span class is the no-Highlight-API fallback) */
+::highlight(lks-reading){background:rgb(var(--brand-rgb)/0.28);color:var(--ink-strong)}
+.lks-ui .lks14-reading-mark{background:rgb(var(--brand-rgb)/0.28);color:var(--ink-strong);border-radius:3px}
 /* #10-followup: the reading column is height:auto (the note col scrolls), so
    .lks14-board's height:100% resolved against a content-sized parent and the
    stage collapsed to a ~90px sliver — the never-upscale contain fit then

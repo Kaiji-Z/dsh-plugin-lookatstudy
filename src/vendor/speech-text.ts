@@ -44,6 +44,11 @@ export function normalizeSpeechText(md: string): string {
   // 图片整体移除,链接留文字
   s = s.replace(/!\[[^\]]*\]\([^)\n]*\)/g, "");
   s = s.replace(/\[([^\]]+)\]\([^)\n]*\)/g, "$1");
+  // plugin-side patch (0.25.3): image-wrapped links [![alt](img)](url) leave
+  // an EMPTY-text link behind after the image strip and the non-empty link
+  // rule above never fires — the URL (youtu.be thumbnails, 20/107 lessons of
+  // the owner's real import) rode into speech. Empty-text links vanish.
+  s = s.replace(/\[\]\([^)\n]*\)/g, "");
   // 标题 / 列表 / 引用标记
   s = s.replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, "");
   s = s.replace(/^[ \t]*(?:[-*+]|\d+\.)[ \t]+/gm, "");

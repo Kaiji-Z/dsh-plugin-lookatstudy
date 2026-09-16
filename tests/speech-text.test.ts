@@ -73,3 +73,16 @@ test('speakMathInSentence converts $..$ segments and leaves prose untouched', ()
   assert.equal(out, '当  x 的 2 次方  满足条件时成立。', 'segment substitutions are space-wrapped (upstream behavior; TTS ignores spacing)')
   assert.equal(speakMathInSentence('普通句子没有公式。'), '普通句子没有公式。')
 })
+
+// 0.25.3 (owner round): image-in-link remnants must not be spoken —
+// generative-ai's video thumbnails are [![alt](img)](https://youtu.be/...);
+// the image strip leaves [](url) behind and the link rule (non-empty text)
+// never fires, so the youtu URL was read aloud on 20/107 real lessons.
+test('normalizeSpeechText: empty-text link remnants (image-wrapped links) are stripped', async () => {
+  const { normalizeSpeechText } = await import('../src/vendor/speech-text.ts')
+  const out = normalizeSpeechText('Watch [![video](img.png)](https://youtu.be/abc?si=x) then read on.\n\nPlain [link](https://x.com) keeps its text.')
+  assert.ok(!out.includes('youtu.be'), 'the wrapped link URL never rides into speech')
+  assert.ok(!out.includes('img.png'), 'the image ref is gone')
+  assert.ok(out.includes('Watch'), 'surrounding prose survives')
+  assert.ok(out.includes('link keeps its text'), 'normal links keep their text')
+})

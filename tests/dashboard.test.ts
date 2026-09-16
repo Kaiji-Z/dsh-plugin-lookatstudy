@@ -733,6 +733,8 @@ test('workbenchState: translated lessons carry bilingualHtml/translationHtml; pr
   assert.equal('bilingualHtml' in wb.lesson!, false, 'the bilingual interleave is gone (原文/译文 only)')
   assert.equal(typeof wb.lesson!.translationHtml, 'string', 'the translation view ships')
   assert.ok(wb.lesson!.translationHtml!.includes('译文'))
+  assert.equal(typeof wb.lesson!.translationSpeechText, 'string', '0.25.3: the translation speech text ships (read-aloud follows the displayed view)')
+  assert.ok((wb.lesson!.translationSpeechText ?? '').includes('译文'), 'speech text is normalized (no markdown markers)')
   assert.equal(wb.lesson!.translationLang, 'zh-CN')
   assert.ok(wb.lesson!.html.includes('<strong>body</strong>'), 'html is the ORIGINAL body — the switcher, not the server, picks the view')
 })

@@ -234,8 +234,9 @@ test('the B-track skeleton: floating rail chrome, swapped widths, de-carded assi
   // B6: assistant prose is cardless
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-msg-assistant\{background:none/, 'assistant text is full-width prose, not a bubble card')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-msg-user\{align-self:flex-end;max-width:85%\}/, 'user bubbles right-align at 85%')
-  // B5: the 960px reading column
-  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-notebody\{margin:0 auto;max-width:960px/, 'notebook content centers at 960px')
+  // B5: the reading column — 0.25.3 owner directive retired the centered
+  // 960px cap; the notebook fills the whole right column
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-notebody\{margin:0;width:100%/, 'notebook content fills the column width (owner 0.25.3)')
 })
 
 test('friendlyError maps raw host errors to locale lines; the raw text stays console-only (0.19)', async () => {
@@ -606,4 +607,16 @@ test('rail scroll containers are border-box (the unreachable rail-bottom fix)', 
   const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railscroll\{[^}]*box-sizing:border-box/, 'the map-pane scroller counts its 112px chrome padding inside height:100%')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railpane-import\{[^}]*box-sizing:border-box/, 'the import-pane scroller likewise (64px chrome padding)')
+})
+
+// 0.25.3 (owner round): the view tabs pin to the note column's top, the
+// notebook fills the column width, and the karaoke highlight carries both
+// the Highlight-API pseudo and the fallback span styling.
+test('notebook: sticky viewtabs, full column width, karaoke highlight styles', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-viewtabs\{[^}]*position:sticky[^}]*top:0/, 'the tab bar pins flush at the scroller top')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-notebody\{[^}]*width:100%/, 'the notebook fills the column width (max-width cap retired)')
+  assert.doesNotMatch(UPSTREAM_CSS, /lks14-notebody\{margin:0 auto;max-width:960px/, 'the centered 960px cap is gone')
+  assert.match(UPSTREAM_CSS, /::highlight\(lks-reading\)/, 'the CSS Custom Highlight API pseudo styles the speaking sentence')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-reading-mark\{/, 'the no-Highlight-API fallback span carries the same skin')
 })
