@@ -597,3 +597,13 @@ test('importSessionTitle: flat label + date, fallback to the locale prefix, capp
   assert.equal(importSessionTitle('multi\nline\nlabel', now), 'multi line label · 26.09.16', 'control characters flatten to one line')
   assert.ok(importSessionTitle('x'.repeat(100), now).startsWith(`${'x'.repeat(24)} · `), 'the label caps at 24 chars')
 })
+
+// 0.24.1 (owner round 3): the rail scroll containers computed content-box —
+// height:100% + 112/16 padding made the box 128px taller than the rail, the
+// overflow:hidden clip ate the tail at ANY window height (the unreachable
+// rail bottom). The fix rides the house per-element border-box convention.
+test('rail scroll containers are border-box (the unreachable rail-bottom fix)', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railscroll\{[^}]*box-sizing:border-box/, 'the map-pane scroller counts its 112px chrome padding inside height:100%')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railpane-import\{[^}]*box-sizing:border-box/, 'the import-pane scroller likewise (64px chrome padding)')
+})

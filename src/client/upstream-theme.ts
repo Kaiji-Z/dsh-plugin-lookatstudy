@@ -342,8 +342,8 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-railbody{position:absolute;inset:0;overflow:hidden;z-index:10}
 .lks-ui .lks14-railtrack{display:flex;height:100%;width:200%;transition:transform .3s var(--ease-out-expo)}
 .lks-ui .lks14-railpane{width:50%;height:100%;position:relative}
-.lks-ui .lks14-railscroll{height:100%;overflow-y:auto;overflow-x:hidden;padding:112px 8px 16px}
-.lks-ui .lks14-railpane-import{height:100%;overflow-y:auto;padding:64px 12px 12px}
+.lks-ui .lks14-railscroll{height:100%;overflow-y:auto;overflow-x:hidden;padding:112px 8px 16px;box-sizing:border-box}
+.lks-ui .lks14-railpane-import{height:100%;overflow-y:auto;padding:64px 12px 12px;box-sizing:border-box}
 .lks-ui .lks14-raillist{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
 .lks-ui .lks14-railcourse{text-align:left;padding:10px 12px;border-radius:12px;background:rgb(255 255 255/0.05);display:flex;flex-direction:column;gap:2px}
 .lks-ui .lks14-railcourse:hover{background:rgb(255 255 255/0.1)}
