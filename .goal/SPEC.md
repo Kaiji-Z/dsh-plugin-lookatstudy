@@ -1,3 +1,25 @@
+# SPEC · 0.25.1 — the upstream translation method (owner directive)
+
+Status: COMPLETE 2026-09-16 (23f6e87, verify PASS 425/425, live probe 7/7; NOT released — awaiting owner).
+
+## Owner directive (real-usage round)
+
+译文不显示图片；对照错位（原文按锚点切成多课、译文按整文件）；砍掉对照只留原文/译文。→ 上游方法全移植（upstream import-pipeline.ts）：
+
+1. **序数对齐切片**（their core fix, line ~380: 翻译用相同序号 + isFirstOfFile 对齐）: the translation slices at the SAME heading ordinal as the original — cross-language anchor text-matching NEVER worked (English anchor vs 准备) and degraded to the whole translated file per lesson.
+2. **F16 错位守卫** (their audit F16): word-overlap(≥0.3) the designed title (learner language) against the translated heading (same language); drift → SKIP the segment (宁缺毋错). Design titles must be real titles, not slugs — the guard compares them.
+3. **图片位置映射** replaceImagesByPosition: translated figure i ← original figure i (the original's refs are already absolute CDN/data URLs); extras drop; HTML→markdown in one unified regex pass. translated_images refs never survive.
+4. **UI 二态**: 原文/译文 only (renderBilingual deleted; bilingualHtml gone from payload/type/locale), default 原文 (upstream: locale null = original), per-lesson localStorage keeps working ('bilingual' stored values fall to default).
+
+## Verification
+
+Red-first: folder-import ordinal test (exclusivity: the NEXT H2's translation stays out — the H3 child legitimately rides its H2 parent, first-lesson absorbs header), image position-mapping (data-URL swap, relative refs gone, extras dropped), dashboard two-view payload. 425/425 + verify PASS. Live probe 7/7 (two-state control, default 原文, 译文 image renders, zero-change control, persistence, thinking rows re-verified). Probe poll-wait widened to 6500ms (4000 was borderline again).
+
+## Notes
+
+- The seeded-probe translation reflects the POST-pipeline shape (position-mapped, sliced) — the pipeline transform itself is unit-covered end-to-end (folder import through study_apply_design).
+- genitive edge: guard trips on slug-titled designs → no translation for that lesson (upstream's own 宁缺毋错 tradeoff).
+
 # SPEC · 0.24.1 — dedicated import sessions (owner decision)
 
 Status: COMPLETE 2026-09-16 (f87c081 + e8272d4 + 6df3574, verify PASS 425/425; NOT released — awaiting owner).
