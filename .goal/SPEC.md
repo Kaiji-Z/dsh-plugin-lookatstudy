@@ -1,6 +1,10 @@
 # SPEC · 0.24.1 — dedicated import sessions (owner decision)
 
-Status: COMPLETE 2026-09-16 (f87c081 + this round, verify PASS 424/424; NOT released — awaiting owner).
+Status: COMPLETE 2026-09-16 (f87c081 + e8272d4 + 6df3574, verify PASS 425/425; NOT released — awaiting owner).
+
+## Round 3 addition (owner real-usage feedback): the unreachable rail bottom
+
+`.lks14-railscroll`/`.lks14-railpane-import` computed content-box (the host's border-box reset never reaches the panel; the repo convention is per-element box-sizing) — height:100% + the 112/16 (map) / 64/12 (import) chrome paddings made the scroller boxes 128px/76px taller than the rail, and overflow:hidden clipped that constant tail at ANY window height. Fix: per-element box-sizing:border-box on both (freeze-asserted). Measured against the owner's real 60-row course: last row 955-984 (under the 940 clip) before → 827-856 after; the read-only probe (probe-railscroll.mjs) rides the real state without seeding.
 
 ## Round 2 additions (owner real-usage feedback)
 
