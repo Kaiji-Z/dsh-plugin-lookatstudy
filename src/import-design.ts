@@ -508,6 +508,59 @@ export function validateDesign(design: { sections: DesignSectionJson[] }, validF
   return { sections, droppedLessons }
 }
 
+/**
+ * Heading similarity (word-level overlap) — the translation misalignment
+ * guard. Ported verbatim from upstream import-pipeline.ts (their audit F16,
+ * 2026-09-13): ordinal alignment assumes both heading lists share structure;
+ * a machine-translated file with a dropped header shifts every ordinal, and
+ * A's translation would silently land on B's node — overlap too low skips the
+ * segment (宁缺毋错). Empty titles cannot be checked and pass conservatively.
+ */
+export function headingsSimilar(a: string, b: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean)
+  const A = norm(a)
+  const B = norm(b)
+  if (A.length === 0 || B.length === 0) return true
+  if (A.join(' ') === B.join(' ')) return true
+  const setB = new Set(B)
+  const overlap = A.filter(w => setB.has(w)).length / A.length
+  return overlap >= 0.3
+}
+
+/**
+ * Replace a translation body's image references BY POSITION with the
+ * original lesson's images (upstream method, import-pipeline.ts): translated
+ * figure i ← original figure i (the original's refs are already absolute
+ * CDN URLs or inlined data URLs); extras beyond the original count drop
+ * (machine translation adding figures is rare — dropping is cleanest);
+ * HTML imgs convert to markdown. One unified regex pass so HTML→markdown
+ * conversion is never re-scanned with a shared index.
+ */
+export function replaceImagesByPosition(content: string, originalImgs: readonly string[]): string {
+  let imgIdx = 0
+  const pattern = /!\[([^\]]*)\]\(([^)]+)\)|<img[^>]+src=["']([^"']+)["'][^>]*>/gi
+  return content.replace(pattern, (match, mdAlt: string, _mdSrc: string, htmlSrc?: string) => {
+    if (imgIdx >= originalImgs.length) return ''
+    const replacement = originalImgs[imgIdx++]!
+    if (htmlSrc !== undefined) {
+      const altMatch = /alt=["']([^"']*)["']/i.exec(match)
+      return `![${altMatch?.[1] ?? ''}](${replacement})`
+    }
+    return `![${mdAlt}](${replacement})`
+  })
+}
+
+/** The original lesson body's image refs in order (the position-mapping source). */
+function originalImagesOf(body: string): string[] {
+  const out: string[] = []
+  const pattern = /!\[([^\]]*)\]\(([^)]+)\)|<img[^>]+src=["']([^"']+)["'][^>]*>/gi
+  for (const m of body.matchAll(pattern)) {
+    const src = m[2] ?? m[3] ?? ''
+    if (src !== '') out.push(src)
+  }
+  return out
+}
+
 /** GitHub-style anchor slug for ParsedLesson/ParsedSection anchors. */
 function slugAnchor(title: string): string {
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
@@ -547,15 +600,6 @@ export function buildCourseFromDesign(courseTitle: string, validated: ValidatedD
       const titleIndex = lesson.anchor === null ? -1 : findTitleIndex(headings, lesson.anchor)
       const isFirst = !firstLessonSeen.has(lesson.file)
       firstLessonSeen.add(lesson.file)
-      const pair = translations?.get(lesson.file)
-      let translation: string | undefined
-      if (pair !== undefined) {
-        // Slice the translation by the SAME anchor (upstream translation pairing:
-        // headings are translated too, so the anchor match is bidirectional-substring).
-        const tHeadings = extractHeadings(pair.content)
-        const tIndex = lesson.anchor === null ? -1 : findTitleIndex(tHeadings, lesson.anchor)
-        translation = sliceLessonBody(pair.content, tHeadings, tIndex, isFirst)
-      }
       const body = sliceLessonBody(content, headings, titleIndex, isFirst)
       // 0.23.1 issue 5: measure every sliced body — over the cap with
       // splittable in-span headings is a pacing violation (the design rules
@@ -563,6 +607,30 @@ export function buildCourseFromDesign(courseTitle: string, validated: ValidatedD
       // "accept one long lesson").
       if (body.length > LESSON_MAX_CHARS && splittableHeadingCount(headings, titleIndex) > 0) {
         pacingViolations.push({ title: lesson.title, file: lesson.file, chars: body.length, splittable: splittableHeadingCount(headings, titleIndex) })
+      }
+      const pair = translations?.get(lesson.file)
+      let translation: string | undefined
+      if (pair !== undefined) {
+        // 0.25.0 (owner directive — upstream method): slice the translation
+        // by the SAME heading ORDINAL as the original (translated headings
+        // cannot text-match the anchor across languages — the old
+        // bidirectional-substring match degraded to the whole translated
+        // file on every anchored lesson). The F16-style guard word-overlaps
+        // the designed title (learner language) against the translated
+        // heading (same language) and skips the segment on mismatch —
+        // 宁缺毋错. Images then map BY POSITION onto the original's
+        // (already-rewritten) figures; translation-file refs never survive.
+        const tHeadings = extractHeadings(pair.content)
+        let tIndex = titleIndex
+        let keep = true
+        if (lesson.anchor === null || titleIndex === -1) {
+          tIndex = -1 // whole-file design, or the original anchor itself missed → whole translation (upstream fallback)
+        } else if (titleIndex >= tHeadings.length || !headingsSimilar(lesson.title, tHeadings[titleIndex]!.title)) {
+          keep = false // the mirror is missing this segment or the ordinals drifted
+        }
+        if (keep) {
+          translation = replaceImagesByPosition(sliceLessonBody(pair.content, tHeadings, tIndex, isFirst), originalImagesOf(body))
+        }
       }
       return {
         title: lesson.title,

@@ -75,18 +75,19 @@ test('github import: README translation links surface in the brief; apply pulls 
 
     const applied = await run(byName, 'study_apply_design', { sections: [
       { title: 'S', lessons: [
-        { title: 'Setup', file: 'lessons/a.md', anchor: '## Setup' },
-        { title: 'B lab', file: 'lessons/b.md', world: 'practice' },
+        { title: '准备', file: 'lessons/a.md', anchor: '## Setup' },
+        { title: '实验', file: 'lessons/b.md', world: 'practice' },
       ] },
     ] })
     assert.equal(applied.translations, 1, 'exactly one lesson found its mirror (a.md translated, b.md mirror 404s)')
 
     const lessons = state.courses[0]!.sections[0]!.lessons
-    const setup = lessons.find(l => l.title === 'Setup')!
-    assert.ok(setup.translation !== undefined && setup.translation.includes('准备正文'), 'the zh mirror was sliced by the SAME anchor (translated Setup heading range)')
+    const setup = lessons.find(l => l.title === '准备')!
+    assert.ok(setup.translation !== undefined && setup.translation.includes('准备正文'), 'the zh mirror was sliced by the SAME ordinal (translated Setup heading range)')
+    assert.ok(!setup.translation!.includes('深入正文'), 'the NEXT H2 section of the mirror stays out (the H3 child legitimately rides its H2 parent)')
     assert.equal(setup.translationLang, 'zh-cn')
     assert.ok(setup.body.includes('setup body'), 'the original body stays intact')
-    const lab = lessons.find(l => l.title === 'B lab')!
+    const lab = lessons.find(l => l.title === '实验')!
     assert.equal(lab.translation, undefined, 'no mirror → original-only, no error')
   } finally {
     setHttpsGetOverride(null)
@@ -105,7 +106,7 @@ test('github import: no matching translation family fetches nothing and stays or
     const { byName, state } = makeTools(fetchImpl)
     state.interfaceLang = 'ja' // the repo has zh-cn only — no family match
     await run(byName, 'study_import_github', { url: 'https://github.com/o/r' })
-    const applied = await run(byName, 'study_apply_design', { sections: [{ title: 'S', lessons: [{ title: 'Setup', file: 'lessons/a.md', anchor: '## Setup' }] }] })
+    const applied = await run(byName, 'study_apply_design', { sections: [{ title: 'S', lessons: [{ title: '准备', file: 'lessons/a.md', anchor: '## Setup' }] }] })
     assert.equal(applied.translations, 0)
     assert.equal(mirrorHits, 0, 'a non-matching family never probes the translations/ path at all')
     assert.equal(state.courses[0]!.sections[0]!.lessons[0]!.translation, undefined)

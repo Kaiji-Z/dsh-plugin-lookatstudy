@@ -14,7 +14,6 @@ import { fileURLToPath } from 'node:url'
 import { renderMarkdown } from './markdown.ts'
 import { coursePackOf, coursePackMarkdown, findCourseForPack, packFileName } from './export-pack.ts'
 import { normalizeMathNotation } from './vendor/math-normalize.ts'
-import { renderBilingual } from './markdown.ts'
 import { DEFAULT_DAILY_GOAL, levelFromTotalXp } from './vendor/xp.ts'
 import { normalizeSpeechText } from './vendor/speech-text.ts'
 import { cachedTtsMp3, normalizeVoice } from './tts.ts'
@@ -159,11 +158,9 @@ export interface WorkbenchLesson {
   markdown: string
   /** Markdown stripped to speakable plain text (code removed, layout markers off) — the read-aloud feed. */
   speechText: string
-  /** 0.24.0 translation views (present only when the lesson carries a paired
-   *  translation): the ORIGINAL-only html rides `html` above; these carry the
-   *  interleaved 对照 view and the 译文-only view — the client's 原文/对照/译文
-   *  switcher picks, so one payload serves every learner. */
-  bilingualHtml?: string
+  /** 0.25.0 translation view (present only when the lesson carries a paired
+   *  translation): the 译文-only html — the client's 原文/译文 switcher picks
+   *  (`html` above is always the original). */
   translationHtml?: string
   translationLang?: string
 }
@@ -282,11 +279,10 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
         html: renderMarkdown(normalizeMathNotation(ref.lesson.body)),
         markdown: ref.lesson.body,
         speechText: normalizeSpeechText(normalizeMathNotation(ref.lesson.body)),
-        // 0.24.0: translation views ship alongside the original — the teach
-        // tab's 原文/对照/译文 switcher picks client-side (read-aloud stays
-        // on the original speechText)
+        // 0.25.0 owner decision: 原文/译文 only (the bilingual interleave is
+        // gone); the teach-tab switcher picks client-side, read-aloud stays
+        // on the original speechText
         ...(ref.lesson.translation !== undefined ? {
-          bilingualHtml: renderMarkdown(normalizeMathNotation(renderBilingual(ref.lesson.body, ref.lesson.translation))),
           translationHtml: renderMarkdown(normalizeMathNotation(ref.lesson.translation)),
           translationLang: ref.lesson.translationLang ?? '',
         } : {}),

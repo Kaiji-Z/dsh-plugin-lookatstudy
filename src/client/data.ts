@@ -66,9 +66,8 @@ export interface StudyState {
     readonly html: string
     readonly markdown: string
     readonly speechText: string
-    /** 0.24.0 translation views (present only when the lesson carries a
-     *  paired translation) — the teach tab's 原文/对照/译文 switcher. */
-    readonly bilingualHtml?: string
+    /** 0.25.0 translation view (present only when the lesson carries a paired
+     *  translation) — the teach tab's 原文/译文 switcher. */
     readonly translationHtml?: string
     readonly translationLang?: string
   } | null

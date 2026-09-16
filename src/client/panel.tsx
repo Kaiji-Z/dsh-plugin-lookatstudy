@@ -2584,21 +2584,20 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
   const [read, setRead] = useState<ReadAloudStatus | null>(null)
   const readCtl = useRef<ReadAloudController | null>(null)
   const [readError, setReadError] = useState<string | null>(null)
-  // 0.24.0: the teach-tab language view (原文/对照/译文) — per-lesson
-  // localStorage, translated lessons default to 对照 (the pre-0.24 look)
-  const [langView, setLangView] = useState<'original' | 'bilingual' | 'translation'>('bilingual')
+  // 0.25.0 owner decision: 原文/译文 only (the bilingual interleave is gone);
+  // per-lesson localStorage, default ORIGINAL (upstream: locale null = original)
+  const [langView, setLangView] = useState<'original' | 'translation'>('original')
   useEffect(() => {
     if (lesson === null) return
-    let next: 'original' | 'bilingual' | 'translation' = 'bilingual'
+    let next: 'original' | 'translation' = 'original'
     try {
       const stored = localStorage.getItem(`lks-langview:${lesson.lessonId}`)
-      if (stored === 'original' || stored === 'bilingual' || stored === 'translation') next = stored
+      if (stored === 'original' || stored === 'translation') next = stored
     } catch { /* privacy modes forbid storage reads */ }
     setLangView(next)
   }, [lesson?.lessonId]) // eslint-disable-line react-hooks/exhaustive-deps
   const teachHtml = lesson === null ? ''
-    : langView === 'translation' && lesson.translationHtml !== undefined ? lesson.translationHtml
-      : langView === 'bilingual' && lesson.bilingualHtml !== undefined ? lesson.bilingualHtml : lesson.html
+    : langView === 'translation' && lesson.translationHtml !== undefined ? lesson.translationHtml : lesson.html
   const { tts, addUserNote, recordReview, editNote, pinNote } = useStudy()
   const proseRef = useRef<HTMLDivElement | null>(null)
   const diagRef = useRef<HTMLDivElement | null>(null)
@@ -2859,10 +2858,10 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                 }, tr(key)))) ,
           ) : null,
           createElement('div', { className: 'lks-readbar' },
-            // 0.24.0: 原文/对照/译文 — only when the lesson carries a paired translation
-            lesson.bilingualHtml !== undefined
+            // 0.25.0: 原文/译文 — only when the lesson carries a paired translation
+            lesson.translationHtml !== undefined
               ? createElement('div', { className: 'lks-langview', 'data-testid': 'langview' },
-                (['original', 'bilingual', 'translation'] as const).map(v => createElement('button', {
+                (['original', 'translation'] as const).map(v => createElement('button', {
                   key: v,
                   className: langView === v ? 'on' : '',
                   'data-testid': `langview-${v}`,

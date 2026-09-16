@@ -34,10 +34,10 @@ const parsed = {
       {
         title: '带译文的一课',
         anchor: 'dai-yi-wen',
-        body: '# Original\n\n## Core idea\n\nThe original prose paragraph explains the core idea in English, dense enough to render as real teach content.\n',
+        body: '# Original\n\n## Core idea\n\nThe original prose paragraph explains the core idea in English.\n\n![figure one](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MDAiIGhlaWdodD0iMjAwIj48cmVjdCB3aWR0aD0iNjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzU4Q0MwMSIvPjwvc3ZnPg==)\n\n## Next idea\n\nSecond original section, kept out of the first lesson slice.\n',
         sourceFilePath: 'lesson.md',
         world: 'study',
-        translation: '# 译文版\n\n## 核心观点\n\n译文段落把核心观点用中文完整讲一遍，作为对照排版的素材。\n',
+        translation: '# 译文版\n\n## 核心观点\n\n译文段落把核心观点用中文完整讲一遍。\n\n![译文图一](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MDAiIGhlaWdodD0iMjAwIj48cmVjdCB3aWR0aD0iNjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzU4Q0MwMSIvPjwvc3ZnPg==)\n',
         translationLang: 'zh-cn',
       },
       {

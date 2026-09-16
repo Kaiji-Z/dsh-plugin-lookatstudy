@@ -729,9 +729,10 @@ test('workbenchState: translated lessons carry bilingualHtml/translationHtml; pr
 
   const wb = workbenchState(state, new Date('2026-08-15T10:00:00Z'))
   assert.ok(wb.lesson !== null)
-  assert.equal(typeof wb.lesson!.bilingualHtml, 'string', 'the bilingual view ships')
-  assert.ok((wb.lesson!.bilingualHtml ?? '').includes('<blockquote'), 'the bilingual view interleaves the translation as quotes')
-  assert.equal(typeof wb.lesson!.translationHtml, 'string', 'the translation-only view ships')
+  // 0.25.0 owner decision: no bilingual view — 原文/译文 only (the field itself is gone)
+  assert.equal('bilingualHtml' in wb.lesson!, false, 'the bilingual interleave is gone (原文/译文 only)')
+  assert.equal(typeof wb.lesson!.translationHtml, 'string', 'the translation view ships')
+  assert.ok(wb.lesson!.translationHtml!.includes('译文'))
   assert.equal(wb.lesson!.translationLang, 'zh-CN')
   assert.ok(wb.lesson!.html.includes('<strong>body</strong>'), 'html is the ORIGINAL body — the switcher, not the server, picks the view')
 })

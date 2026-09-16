@@ -18,7 +18,7 @@ import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { studyTools } from '../src/tools.ts'
 import { emptyState, type LearningState } from '../src/state.ts'
 import { collectTranslations, inlineLocalImages, rewriteGithubImageRefs } from '../src/import-design.ts'
-import { renderBilingual, renderMarkdown } from '../src/markdown.ts'
+import { renderMarkdown } from '../src/markdown.ts'
 
 const exec = { signal: new AbortController().signal } as unknown as ToolRunContext
 
@@ -45,21 +45,6 @@ test('collectTranslations pairs translations/{lang}/{originalPath}', () => {
   assert.ok(!map.has('stray.md'), 'files outside a lang dir are not translations')
 })
 
-test('renderBilingual interleaves original paragraphs with quoted translations', () => {
-  const body = 'Para one.\n\nPara two.'
-  const trans = '第一段。\n\n第二段。'
-  const md = renderBilingual(body, trans)
-  const html = renderMarkdown(md)
-  assert.ok(html.includes('Para one.'))
-  assert.ok(html.includes('<blockquote>'), 'translation rides a quote block')
-  assert.ok(html.indexOf('Para one.') < html.indexOf('第一段。'), 'original before its translation')
-  assert.ok(html.indexOf('第二段。') > html.indexOf('Para two.'), 'pairing keeps order')
-  // length mismatch: remainders append in order
-  const ragged = renderBilingual('A\n\nB\n\nC', '甲')
-  assert.ok(ragged.includes('C'))
-  assert.ok(ragged.includes('甲'))
-})
-
 test('study_translate_lesson stores the translation; empty markdown refused', async () => {
   const { byName, state } = setup()
   const imported = await run(byName, 'study_import_markdown', { markdown: '# T\n\n## S\n\n### L1\n\nbody' })
@@ -71,7 +56,7 @@ test('study_translate_lesson stores the translation; empty markdown refused', as
   assert.equal(state.courses[0]!.sections[0]!.lessons[0]!.translation, '第一段正文。')
 })
 
-test('folder import pairs translations and apply slices them by the same anchor', async () => {
+test('folder import pairs translations and apply slices them by the SAME ORDINAL (upstream method)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'lks-trans-'))
   const { byName, state } = (() => {
     const st = emptyState()
@@ -79,24 +64,35 @@ test('folder import pairs translations and apply slices them by the same anchor'
   })()
   try {
     mkdirSync(join(dir, 'translations', 'zh-CN'), { recursive: true })
-    writeFileSync(join(dir, 'lesson.md'), '# Course\n\n## Alpha\n\nOriginal alpha body.\n\n## Beta\n\nOriginal beta body.\n')
-    writeFileSync(join(dir, 'translations', 'zh-CN', 'lesson.md'), '# 课程\n\n## 阿尔法\n\n阿尔法正文。\n\n## 贝塔\n\n贝塔正文。\n')
+    writeFileSync(join(dir, 'lesson.md'), '# Course\n\n## Alpha\n\nOriginal alpha body with ![fig](alpha.png).\n\n## Beta\n\nOriginal beta body.\n')
+    writeFileSync(join(dir, 'alpha.png'), Buffer.from('tiny-alpha'))
+    writeFileSync(join(dir, 'translations', 'zh-CN', 'lesson.md'),
+      '# 课程\n\n## 阿尔法\n\n阿尔法正文，配图 ![译文图](../translated_images/whatever.png) 和多余图 ![多](extra.png)。\n\n## 贝塔\n\n贝塔正文。\n')
     const started = await run(byName, 'study_import_folder', { path: dir })
     assert.equal(started.status, 'design_required')
-    // design references the translated headings — the anchor match must work on BOTH bodies
+    // design titles come in the LEARNER's language (zh here) so the F16
+    // misalignment guard can compare them against the translated headings
     const applied = await run(byName, 'study_apply_design', {
       sections: [{ title: 'S1', lessons: [
-        { title: 'L1', file: 'lesson.md', anchor: 'Alpha' },
-        { title: 'L2', file: 'lesson.md', anchor: 'Beta' },
+        { title: '阿尔法', file: 'lesson.md', anchor: 'Alpha' },
+        { title: '贝塔', file: 'lesson.md', anchor: 'Beta' },
       ] }],
     })
     assert.equal(applied.lessons, 3, 'two designed lessons + the section exam node')
     const lessons = state.courses[0]!.sections[0]!.lessons.filter(l => l.kind !== 'exam')
-    // anchor 'Alpha' did not match the translated heading 阿尔法 → whole-file fallback for the translation slice
-    assert.ok(lessons[0]!.body.includes('Original alpha body.'))
+    assert.ok(lessons[0]!.body.includes('Original alpha body'))
+    // 0.25.0: the translation slices by the SAME heading ordinal — the other
+    // section's text must NOT ride along (the old whole-file fallback did)
     assert.ok(lessons[0]!.translation !== undefined)
-    assert.ok(lessons[0]!.translation!.includes('阿尔法正文。'))
+    assert.ok(lessons[0]!.translation!.includes('阿尔法正文'))
+    assert.ok(!lessons[0]!.translation!.includes('贝塔正文'), 'ordinal alignment keeps the other section out')
+    // images map BY POSITION onto the original's (inlined data URL here);
+    // translation-file refs never survive, extras drop
+    assert.ok(lessons[0]!.translation!.includes('data:image/png;base64,'), 'the translated figure uses the original image')
+    assert.ok(!lessons[0]!.translation!.includes('translated_images'), 'relative translation-file refs are gone')
+    assert.ok(!lessons[0]!.translation!.includes('![多]'), 'extra translated figures beyond the original count drop')
     assert.equal(lessons[0]!.translationLang, 'zh-CN')
+    assert.ok(lessons[1]!.translation !== undefined && lessons[1]!.translation!.includes('贝塔正文'), 'the second lesson pairs its own section')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
