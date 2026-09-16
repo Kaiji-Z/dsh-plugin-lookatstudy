@@ -49,6 +49,26 @@ export function normalizeSpeechText(md: string): string {
   // rule above never fires — the URL (youtu.be thumbnails, 20/107 lessons of
   // the owner's real import) rode into speech. Empty-text links vanish.
   s = s.replace(/\[\]\([^)\n]*\)/g, "");
+  // plugin-side patch (0.25.4): the full normalization sweep — every leak
+  // category measured on the owner's real import (6 forms) now drops.
+  // Line-break tags become a space (a visual break reads as a pause).
+  s = s.replace(/<br\s*\/?>/gi, "\n");
+  // Angle autolinks <https://..> and any remaining bare URLs: unreadable —
+  // drop whole (trailing punctuation belongs to the sentence, keep it).
+  s = s.replace(/<https?:\/\/[^>\s]+>/g, "");
+  s = s.replace(/https?:\/\/[^\s)\]]+/g, "");
+  // Raw HTML: tags vanish, tag-internal text survives (a <div style=..>wrapper
+  // still carries readable words); script/style blocks drop whole.
+  s = s.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "\n");
+  s = s.replace(/<[^>\n]+>/g, "");
+  // HTML entities decode to readable text.
+  s = s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&nbsp;/g, " ")
+    .replace(/&#(\d+);/g, (_m, d: string) => { try { return String.fromCodePoint(Number(d)) } catch { return "" } })
+    .replace(/&[a-z]+;/gi, "");
+  // Reference-style link machinery [label][ref] → label; footnotes [^1] drop.
+  s = s.replace(/\[([^\]]+)\]\[[^\]]*\]/g, "$1");
+  s = s.replace(/\[\^[^\]]*\]/g, "");
   // 标题 / 列表 / 引用标记
   s = s.replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, "");
   s = s.replace(/^[ \t]*(?:[-*+]|\d+\.)[ \t]+/gm, "");

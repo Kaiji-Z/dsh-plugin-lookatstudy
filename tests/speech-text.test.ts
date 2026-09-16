@@ -86,3 +86,31 @@ test('normalizeSpeechText: empty-text link remnants (image-wrapped links) are st
   assert.ok(out.includes('Watch'), 'surrounding prose survives')
   assert.ok(out.includes('link keeps its text'), 'normal links keep their text')
 })
+
+// 0.25.4 (owner round): a full sweep of normalization rules against the real
+// course's remaining leak categories — measured on generative-ai (6 forms:
+// <br>/<br/>, autolinks <https://..>, raw HTML blocks like <div style=..>,
+// bare URLs, HTML entities, reference-style links/footnotes).
+test('normalizeSpeechText: HTML residue, autolinks, bare URLs, entities, ref-links all gone', async () => {
+  const { normalizeSpeechText } = await import('../src/vendor/speech-text.ts')
+  // line-break tags become a space (a sentence boundary, not a word-joiner)
+  const br = normalizeSpeechText('Sunny day. <br> Next line.')
+  assert.ok(!br.includes('<br'), 'br tags vanish')
+  assert.ok(br.includes('day.'), 'prose before the tag survives')
+  // autolinks <https://..> vanish entirely; the reader never spells a URL
+  assert.ok(!normalizeSpeechText('Install Python <https://www.python.org/> now.').includes('python.org'), 'angle autolinks drop')
+  // raw HTML blocks drop with their attributes but keep surrounding text
+  const div = normalizeSpeechText('Before. <div style="display: flex;">Inner words stay.</div> After.')
+  assert.ok(!div.includes('<div'), 'the tag is gone')
+  assert.ok(div.includes('Before.'), 'leading prose survives')
+  // bare URLs drop (nothing readable in them), trailing punctuation survives
+  const bare = normalizeSpeechText('Sign up at https://portal.azure.com/ and start.')
+  assert.ok(!bare.includes('portal.azure'), 'bare URLs drop')
+  assert.ok(bare.includes('Sign up at'), 'the sentence keeps its words')
+  // entities decode to readable text
+  assert.ok(normalizeSpeechText('A &amp; B &lt;tag&gt; &#39;quoted&#39;').includes("A & B <tag> 'quoted'"), 'entities decode')
+  // reference-style links/footnotes: keep the label, drop the machinery
+  const ref = normalizeSpeechText('See [the docs][docs-ref] and a footnote[^1].')
+  assert.ok(ref.includes('the docs'), 'ref link label survives')
+  assert.ok(!ref.includes('docs-ref]') && !ref.includes('[^1]'), 'ref machinery drops')
+})

@@ -1,3 +1,22 @@
+# SPEC · 0.25.3 — read-aloud karaoke + notebook chrome (owner round)
+
+Status: COMPLETE 2026-09-16 (verify PASS 433/433, live probe 7/7; NOT released — awaiting owner).
+
+## Owner directive
+
+朗读无卡拉OK高亮；译文页仍读原文；贴图网址被读出；参照上游全面优化。+ viewtabs 粘顶不随滚动、四键图标、布局占满右栏宽。
+
+## What landed
+
+1. **Karaoke** (upstream highlightText.ts v9 subset → src/client/reading-mark.ts): canonical alignment (full-width/punctuation collapse; edge extension covers the visible sentence; 2-char head/tail anchors bridge unspoken display runs — code spans — as gaps; monotonic cursor + self-heal), CSS Custom Highlight API `::highlight(lks-reading)` (span fallback), line-box centering follow (upstream v0.18.1 — element-box centering pins on 3000px paragraphs).
+2. **Read the displayed view**: feed ships translationSpeechText; readbar + startReading read speakText (view-aware); view switch mid-read stops cleanly (semantics: 朗读跟随显示内容).
+3. **Speech normalization patch** (documented plugin-side patch in vendored speech-text.ts): image-wrapped links [![alt](img)](url) left [](url) remnants → youtu.be URLs spoken on 20/107 real lessons; empty-text links now vanish.
+4. **Notebook chrome**: viewtabs sticky top:0 full-bleed (negative horizontal margins; top:-12 was tried and clipped by the scrollport — 0 pins flush), icons on all four tabs (new IconBookOutline16/IconPenOutline16 originals), notebody width:100% (the 960px centered cap retired; P10b freeze contract updated).
+
+## Verification
+
+433/433 + verify PASS. Live probe 7/7: sticky engaged under real scroll (short fixture = no scroll — the first-round FAIL taught the fixture lesson), 4/4 icons, body=note width, CSS.highlights registry live during read, zh text read in 译文 view, clean stop on view switch.
+
 # SPEC · 0.25.1 — the upstream translation method (owner directive)
 
 Status: COMPLETE 2026-09-16 (23f6e87, verify PASS 425/425, live probe 7/7; NOT released — awaiting owner).
