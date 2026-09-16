@@ -45,7 +45,7 @@ import { QuizCard, type QuizData } from './quizcard.tsx'
 import { ArtifactCard, FoldableArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, type ChatRow } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, type ChatRow } from './views.tsx'
 import { ListSectionView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
@@ -497,7 +497,44 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     prevCelebrationRef.current = snapshot
   }, [data])
 
-  const boundId = boundSessionOf(lesson !== null ? lesson.lessonId : null) ?? (threadGroupOf(lesson !== null ? lesson.lessonId : null)?.active ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null))
+  // 0.24.1 (owner decision): imports mint a DEDICATED course-less session —
+  // never a ride on any lesson thread. The chat column pins to it for the
+  // import's life (the event window only opens for the staged session, so
+  // pinning IS the observation channel for the funnel + progress chips), and
+  // completion/failure/cancel forgets it: no lessonThreads entry, no
+  // lessonSessions mirror, nothing. The dsh session itself stays in the host
+  // list (no delete primitive on the session face) under a uniform title.
+  const [importSessionId, setImportSessionId] = useState<string | null>(null)
+  const sendImport = async (prompt: string, label: string): Promise<void> => {
+    if (data?.active !== true) await activate(true)
+    let sessionId = importSessionId
+    if (sessionId === null || !sessionKnown(ctx, sessionId)) {
+      const area = await fetch('/lookatstudy/api/study-workspace')
+      if (!area.ok) throw new Error(`study area unavailable (HTTP ${String(area.status)})`)
+      const { path } = await area.json() as { path: string }
+      const workspace = await ctx.workspaces.create({ path })
+      sessionId = await ctx.sessions.create({ workspaceId: workspace.workspaceId })
+      setImportSessionId(sessionId)
+    }
+    // stage under suppression — an internal open must never hand the column back
+    const shell = PANEL_SHELL.current
+    if (shell !== null) shell.suppressHandBack(() => { ctx.sessions.open(sessionId!) })
+    else ctx.sessions.open(sessionId)
+    const actx = ctx.sessions.scope(sessionId)
+    const face: SessionPromptFace | undefined = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
+    if (face === undefined) throw new Error('import session is not addressable yet')
+    activeFace.current = face
+    try { await face.rename?.(importSessionTitle(label, new Date())) } catch { /* best-effort title */ }
+    const result = await face.prompt([{ type: 'text', text: prompt }], 'queue')
+    if (!result.ok) throw new Error(`prompt rejected: ${result.error.code}: ${result.error.message}`)
+  }
+  /** Forget the import session — called from every funnel exit. Unpinning
+   * re-runs the binding effect, which restages the focused lesson's thread. */
+  const endImportSession = useCallback((): void => {
+    setImportSessionId(null)
+    activeFace.current = null
+  }, [])
+  const boundId = importSessionId ?? (boundSessionOf(lesson !== null ? lesson.lessonId : null) ?? (threadGroupOf(lesson !== null ? lesson.lessonId : null)?.active ?? (lesson !== null ? data?.lessonSessions[lesson.lessonId] ?? null : null)))
 
   // The review nudge (upstream review.nudge): due reviews pull the learner
   // back — one toast per panel open, never repeated while it stays open.
@@ -765,6 +802,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   // and the staged session window changes (the feed rebinds via boundId).
   const switchLessonThread = (sessionId: string): void => {
     if (lesson === null) return
+    if (importSessionId !== null) return // staging another session would close the import window
     if (localBound.current?.lessonId === lesson.lessonId && localBound.current.sessionId === sessionId) return
     localBound.current = { lessonId: lesson.lessonId, sessionId }
     void bindLessonSession(lesson.lessonId, sessionId)
@@ -779,6 +817,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   // (sedimentation intact) and the next send mints a fresh thread.
   const startNewThread = (): void => {
     if (lesson === null) return
+    if (importSessionId !== null) return // staging another session would close the import window
     localBound.current = null
     void bindLessonSession(lesson.lessonId, null)
     setRows([])
@@ -842,6 +881,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       turnActive: feedGen,
       importProgress,
       stop,
+      // 0.24.1: the dedicated course-less import session's lifecycle.
+      sendImport,
+      endImportSession,
       // E4: the command palette's rail-side actions register here.
       paletteBus }),
     // v0.29 pane-resize: the rail|right-half boundary handle (its drag target
@@ -1172,7 +1214,7 @@ export function setPanelShell(shell: { suppressHandBack(fn: () => void): void } 
 }
 
 /** 左栏:course picker, tree, review box, import. */
-function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, streamingLessonId, turnActive, importProgress, stop, paletteBus }: {
+function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, streamingLessonId, turnActive, importProgress, stop, paletteBus, sendImport, endImportSession }: {
   data: StudyData
   activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
@@ -1191,6 +1233,10 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   stop: () => void
   /** E4: the command palette registers its rail-side actions here. */
   paletteBus: { current: { courseSelect?: (id: string) => void; reviewOpen?: () => void } }
+  /** 0.24.1: mint/stage/prompt the DEDICATED import session (course-less). */
+  sendImport: (prompt: string, label: string) => Promise<void>
+  /** Forget the import session — every funnel exit calls this. */
+  endImportSession: () => void
 }): ReactNode {
   const [selectedCourse, setSelectedCourse] = useState('')
   const [query, setQuery] = useState('')
@@ -1236,13 +1282,20 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   const startImport = (label: string, prompt: string): void => {
     setImportResult(null)
     setImportJob({ label, startedAt: Date.now(), baselineIds: new Set((data?.courses ?? []).map(c => c.courseId)) })
-    send(prompt)
+    // 0.24.1: the import rides its OWN course-less session — no lesson thread
+    // is touched, so this works even with zero courses (the fresh-install gap)
+    void sendImport(prompt, label).catch((err: unknown) => {
+      setImportJob(null)
+      endImportSession()
+      setImportResult({ ok: false, msg: err instanceof Error ? err.message : String(err) })
+    })
   }
   useEffect(() => {
     if (importJob === null || data === null) return
     const fresh = data.courses.find(c => !importJob.baselineIds.has(c.courseId))
     if (fresh !== undefined) {
       setImportJob(null)
+      endImportSession()
       setImportResult({ ok: true, msg: tr('import.success') })
       setSelectedCourse(fresh.courseId)
       setPanel('map')
@@ -1250,6 +1303,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
     }
     if (importJobDead(importJob, turnActive, Date.now())) {
       setImportJob(null)
+      endImportSession()
       setImportResult({ ok: false, msg: tr('import.error.turn') })
     }
   }, [data?.courses, importJob, turnActive])
@@ -1452,7 +1506,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       : null,
     createElement('button', {
       className: 'lks-btn ghost lks14-raildemo',
-      onClick: () => { send(tr('prompt.import', { url: 'https://github.com/microsoft/AI-For-Beginners' })) },
+      onClick: () => { startImport(tr('import.tab.url'), tr('prompt.import', { url: 'https://github.com/microsoft/AI-For-Beginners' })) },
     }, createElement(IconDownloadOutline16, null), tr('rail.empty.demo')),
     createElement(ImportPanel, {
       job: importJob,
@@ -1463,6 +1517,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       onCancel: () => {
         stop()
         setImportJob(null)
+        endImportSession()
         setImportResult({ ok: false, msg: tr('import.cancelled') })
       },
     }),

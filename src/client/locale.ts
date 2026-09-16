@@ -135,6 +135,7 @@ export const ZH: StudyDict = {
   'composer.busy': '导师正在回复…',
   'rail.empty.demo': '导入示例课程',
   // D7: the import pane's tab set + forms + installer progress screen
+  'import.session.title': '课程导入',
   'import.cta': '导入新课程',
   'import.tab.url': 'URL',
   'import.tab.md': 'MD',
@@ -514,6 +515,7 @@ export const EN: StudyDict = {
   'composer.busy': 'The tutor is replying…',
   'rail.empty.demo': 'Import the demo course',
   // D7: the import pane's tab set + forms + installer progress screen
+  'import.session.title': 'Course import',
   'import.cta': 'Import a new course',
   'import.tab.url': 'URL',
   'import.tab.md': 'MD',

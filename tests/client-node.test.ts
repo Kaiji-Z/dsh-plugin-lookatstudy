@@ -585,3 +585,15 @@ test('the context ring helpers: fmtTokens compacts, ctxSegments proportions the 
   // zero-width parts drop instead of rendering a hairline over empty context
   assert.deepEqual(ctxSegments(50, { systemTokens: 500, toolsTokens: 0, messageTokens: 0 }), [{ key: 'sys', cls: 'sys', width: 50 }])
 })
+
+// ——— 0.24.1: the dedicated import session's host-list title ———
+
+test('importSessionTitle: flat label + date, fallback to the locale prefix, capped', async () => {
+  const { importSessionTitle } = await import('../src/client/views.tsx')
+  const now = new Date(2026, 8, 16)
+  assert.equal(importSessionTitle('URL', now), 'URL · 26.09.16')
+  assert.equal(importSessionTitle('Markdown 文稿', now), 'Markdown 文稿 · 26.09.16')
+  assert.equal(importSessionTitle('', now), '课程导入 · 26.09.16', 'an empty label falls back to the locale prefix')
+  assert.equal(importSessionTitle('multi\nline\nlabel', now), 'multi line label · 26.09.16', 'control characters flatten to one line')
+  assert.ok(importSessionTitle('x'.repeat(100), now).startsWith(`${'x'.repeat(24)} · `), 'the label caps at 24 chars')
+})

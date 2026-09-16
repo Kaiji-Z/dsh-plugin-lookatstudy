@@ -65,6 +65,18 @@ export function reasoningSummaryLine(text: string, running: boolean): string {
 }
 
 /**
+ * The dedicated import session's host-list title (0.24.1): imports mint a
+ * course-less one-shot session that never rides a lesson thread — a uniform
+ * label keeps the host session list legible instead of auto-title noise.
+ * Label slugified to one line, whole title capped. Pure.
+ */
+export function importSessionTitle(label: string, now: Date, t: StudyT = tr): string {
+  const flat = label.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 24)
+  const date = `${String(now.getFullYear()).slice(2)}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`
+  return `${flat === '' ? t('import.session.title') : flat} · ${date}`
+}
+
+/**
  * Tooltip text for one course-tree status glyph. Pure (the translator is an
  * optional parameter defaulting to the active one, evaluated per call).
  */
