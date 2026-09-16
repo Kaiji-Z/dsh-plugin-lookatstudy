@@ -145,3 +145,29 @@ test('markdown image rendering allowlists https and data:image only', () => {
   assert.ok(!html.includes('<img src="javascript:'), 'javascript: never becomes an img src')
   assert.ok(!html.includes('<img src="./x.png"'), 'relative refs stay literal (folder inlining rewrites them before this)')
 })
+
+// ——— 0.25.2: structural drift protection (owner real-import catch) ———
+// 35/35 mirror files of the owner's import preserved the heading skeleton
+// 1:1, yet the wording guard skipped 49/69 anchored segments (zh titles are
+// one whitespace token; translated headings are generic). A mirrored
+// skeleton now trusts the ordinal outright; only a mismatched skeleton falls
+// back to the wording guard.
+test('translation pairing: a mirrored heading skeleton trusts the ordinal (paraphrased titles pair); a drifted skeleton still needs wording', async () => {
+  const { buildCourseFromDesign, validateDesign } = await import('../src/import-design.ts')
+  const orig = '# File\n\n## Alpha\n\nAlpha body with ![a](https://cdn/x.png).\n\n## Beta\n\nBeta body.\n'
+  const zhMirrored = '# 文件\n\n## 阿尔法\n\n阿尔法正文。\n\n## 贝塔\n\n贝塔正文。\n'
+  const validated = validateDesign({ sections: [{ title: 'S', lessons: [
+    { title: '环境搭建全流程指南', file: 'f.md', anchor: '## Alpha' }, // paraphrase — nothing like 阿尔法
+    { title: '贝塔', file: 'f.md', anchor: '## Beta' },
+  ] }] }, new Set(['f.md']))
+  const parsed = buildCourseFromDesign('T', validated, new Map([['f.md', orig]]), new Map([['f.md', { lang: 'zh-CN', content: zhMirrored }]]))
+  const [a, b] = parsed.sections[0]!.lessons
+  assert.ok(a.translation !== undefined && a.translation.includes('阿尔法正文'), 'the mirrored skeleton trusts the ordinal — the paraphrased title still pairs')
+  assert.ok(!a.translation.includes('贝塔正文'))
+  assert.ok(b.translation !== undefined && b.translation.includes('贝塔正文'))
+
+  // drifted skeleton (one heading dropped in translation) + unlike wording → skip (宁缺毋错)
+  const zhDrifted = '# 文件\n\n## 贝塔\n\n贝塔正文。\n'
+  const parsed2 = buildCourseFromDesign('T', validated, new Map([['f.md', orig]]), new Map([['f.md', { lang: 'zh-CN', content: zhDrifted }]]))
+  assert.equal(parsed2.sections[0]!.lessons[0]!.translation, undefined, 'a drifted skeleton with unlike wording skips the segment')
+})

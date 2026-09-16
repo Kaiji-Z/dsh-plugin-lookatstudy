@@ -253,3 +253,19 @@ test('matchTranslationLang: exact first, then base-prefix (zh-CN ↔ zh-cn), nev
   assert.equal(matchTranslationLang(undefined, available), null, 'no interface lang recorded → feature off')
   assert.equal(matchTranslationLang('zh-CN', []), null, 'no translations in the repo → off')
 })
+
+// ——— 0.25.2: the misalignment guard must be CJK-aware ———
+// The owner's real import paired only 38/110 lessons: the word-overlap guard
+// normalizes on whitespace, and a Chinese title is ONE token — paraphrased
+// zh titles (课程总览与环境搭建指南 vs 课程总览) could never overlap ≥0.3,
+// so the guard skipped every non-verbatim segment.
+
+test('headingsSimilar: CJK paraphrases pass, unrelated CJK still blocks, spaced languages unchanged', async () => {
+  const { headingsSimilar } = await import('../src/import-design.ts')
+  assert.equal(headingsSimilar('课程总览与环境搭建指南', '课程总览'), true, 'a zh paraphrase containing the heading passes (containment)')
+  assert.equal(headingsSimilar('提示工程基础', '提示工程基础知识'), true, 'zh containment in the other direction passes')
+  assert.equal(headingsSimilar('云端环境搭建', '提示工程基础'), false, 'unrelated zh headings still block (bigram overlap below threshold)')
+  assert.equal(headingsSimilar('云端环境：GitHub Codespaces', 'GitHub Codespaces 云端环境'), true, 'mixed zh/en paraphrase passes on bigram overlap')
+  assert.equal(headingsSimilar('Introduction to Generative AI', 'Generative AI introduction and basics'), true, 'spaced-language word overlap keeps working (shared words ≥ 0.3)')
+  assert.equal(headingsSimilar('Setup', 'Deployment'), false, 'unrelated spaced headings still block')
+})

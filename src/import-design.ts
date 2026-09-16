@@ -509,12 +509,19 @@ export function validateDesign(design: { sections: DesignSectionJson[] }, validF
 }
 
 /**
- * Heading similarity (word-level overlap) — the translation misalignment
- * guard. Ported verbatim from upstream import-pipeline.ts (their audit F16,
- * 2026-09-13): ordinal alignment assumes both heading lists share structure;
- * a machine-translated file with a dropped header shifts every ordinal, and
- * A's translation would silently land on B's node — overlap too low skips the
- * segment (宁缺毋错). Empty titles cannot be checked and pass conservatively.
+ * Heading similarity — the translation misalignment guard. Ported from
+ * upstream import-pipeline.ts (their audit F16, 2026-09-13): ordinal
+ * alignment assumes both heading lists share structure; a machine-translated
+ * file with a dropped header shifts every ordinal, and A's translation would
+ * silently land on B's node — overlap too low skips the segment (宁缺毋错).
+ * Empty titles cannot be checked and pass conservatively.
+ *
+ * 0.25.2 (owner real-import catch): upstream's word overlap normalizes on
+ * whitespace, and a CJK title is ONE token — paraphrased Chinese headings
+ * (课程总览与环境搭建指南 vs 课程总览) could never overlap and the guard
+ * skipped every non-verbatim segment (38/110 paired on the owner's import;
+ * the 38 were exact matches). CJK strings now compare by character
+ * containment first, then character-bigram overlap ≥ 0.3.
  */
 export function headingsSimilar(a: string, b: string): boolean {
   const norm = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean)
@@ -522,6 +529,24 @@ export function headingsSimilar(a: string, b: string): boolean {
   const B = norm(b)
   if (A.length === 0 || B.length === 0) return true
   if (A.join(' ') === B.join(' ')) return true
+  const han = (s: string) => s.toLowerCase().replace(/[^\p{Script=Han}\p{N}]/gu, '')
+  const ca = han(a)
+  const cb = han(b)
+  if (ca.length >= 2 || cb.length >= 2) {
+    if (ca === '' || cb === '') return true
+    if (ca.includes(cb) || cb.includes(ca)) return true
+    const bigramsOf = (s: string): Set<string> => {
+      const out = new Set<string>()
+      const chars = Array.from(s)
+      for (let i = 0; i + 1 < chars.length; i++) out.add(chars[i]! + chars[i + 1]!)
+      return out
+    }
+    const ba = bigramsOf(ca)
+    const bb = bigramsOf(cb)
+    let hit = 0
+    for (const g of ba) if (bb.has(g)) hit++
+    return hit / Math.max(1, ba.size) >= 0.3
+  }
   const setB = new Set(B)
   const overlap = A.filter(w => setB.has(w)).length / A.length
   return overlap >= 0.3
@@ -611,22 +636,28 @@ export function buildCourseFromDesign(courseTitle: string, validated: ValidatedD
       const pair = translations?.get(lesson.file)
       let translation: string | undefined
       if (pair !== undefined) {
-        // 0.25.0 (owner directive — upstream method): slice the translation
-        // by the SAME heading ORDINAL as the original (translated headings
-        // cannot text-match the anchor across languages — the old
-        // bidirectional-substring match degraded to the whole translated
-        // file on every anchored lesson). The F16-style guard word-overlaps
-        // the designed title (learner language) against the translated
-        // heading (same language) and skips the segment on mismatch —
-        // 宁缺毋错. Images then map BY POSITION onto the original's
-        // (already-rewritten) figures; translation-file refs never survive.
+        // 0.25.0/0.25.2 (owner directive — upstream method, hardened): slice
+        // the translation by the SAME heading ORDINAL as the original
+        // (translated headings cannot text-match the anchor across
+        // languages). Drift protection is STRUCTURAL first: when the mirror's
+        // heading skeleton (count + levels) equals the original's, machine
+        // translation preserved the structure and the ordinal is trusted
+        // outright — wording-based comparison conflated paraphrase with drift
+        // and skipped 49/69 segments on the owner's real import (zh titles
+        // are one whitespace token, and translated headings like 介绍 are
+        // generic). Only a MISMATCHED skeleton falls back to the CJK-aware
+        // word/bigram similarity guard (宁缺毋错). Images map BY POSITION onto
+        // the original's already-rewritten figures.
         const tHeadings = extractHeadings(pair.content)
         let tIndex = titleIndex
         let keep = true
         if (lesson.anchor === null || titleIndex === -1) {
           tIndex = -1 // whole-file design, or the original anchor itself missed → whole translation (upstream fallback)
-        } else if (titleIndex >= tHeadings.length || !headingsSimilar(lesson.title, tHeadings[titleIndex]!.title)) {
-          keep = false // the mirror is missing this segment or the ordinals drifted
+        } else if (titleIndex >= tHeadings.length) {
+          keep = false
+        } else {
+          const skeletonMirrored = tHeadings.length === headings.length && tHeadings.every((h, i) => h.level === headings[i]!.level)
+          if (!skeletonMirrored && !headingsSimilar(lesson.title, tHeadings[titleIndex]!.title)) keep = false
         }
         if (keep) {
           translation = replaceImagesByPosition(sliceLessonBody(pair.content, tHeadings, tIndex, isFirst), originalImagesOf(body))

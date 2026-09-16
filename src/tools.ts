@@ -705,7 +705,7 @@ ${p.text}`))
           firstLessonId: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true },
           firstLessonTitle: { oneOf: [{ type: 'string' }, { type: 'null' }], required: true },
           droppedLessons: { type: 'integer', required: true },
-          translations: { type: 'integer', required: true, description: 'Lessons that landed with a paired translation (the interface-language mirror existed and its anchor matched) — their teach tab offers 原文/对照/译文.' },
+          translations: { type: 'integer', required: true, description: 'Lessons that landed with a paired translation (the interface-language mirror existed and its anchor matched) — their teach tab offers 原文/译文.' },
           created: { type: 'boolean', required: true, description: 'False when an existing course short-circuited the import (same title) — the design did NOT land as a new course.' },
           languageTarget: { type: 'string', description: 'Present only when the course teaches a language itself (BCP-47); the tutor then keeps quiz material in the target language.' },
         },
@@ -716,7 +716,7 @@ ${p.text}`))
           ? `“${value.title}” (id ${value.courseId}) was ALREADY imported — the design did not create a new course. Continue with the existing course, or delete it first (study_delete_course) to rebuild from this design.`
           : `Imported designed course “${value.title}” (${value.sections} sections, ${value.lessons} lessons`
             + `${value.droppedLessons > 0 ? `, ${value.droppedLessons} hallucinated lesson(s) dropped` : ''})`
-            + `${typeof value.translations === 'number' && value.translations > 0 ? ` — ${value.translations} lesson(s) carry the learner's-language translation (原文/对照/译文 in the teach tab)` : ''}`
+            + `${typeof value.translations === 'number' && value.translations > 0 ? ` — ${value.translations} lesson(s) carry the learner's-language translation (原文/译文 in the teach tab)` : ''}`
             + `${typeof value.languageTarget === 'string' ? ` — language course (${value.languageTarget}): keep reading passages, example sentences, and quiz language material in the target language` : ''}. `
             + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}). Present the course map to the learner.`,
       }],
@@ -797,7 +797,7 @@ ${p.text}`))
       pendingPart = 1
       // 0.24.0: how many designed lessons actually landed with a paired
       // translation (mirror existed + anchor matched) — the render tells the
-      // learner the teach tab now carries 原文/对照/译文
+      // learner the teach tab now carries 原文/译文
       const translatedLessons = parsed.sections.reduce((n, s) => n + s.lessons.filter(l => l.translation !== undefined).length, 0)
       return { ...value, droppedLessons: validated.droppedLessons, translations: translatedLessons, ...(languageTarget !== null ? { languageTarget } : {}) }
     },
