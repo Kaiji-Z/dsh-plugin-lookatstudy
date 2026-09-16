@@ -376,7 +376,7 @@ export const UPSTREAM_CSS = `
    negative margins cancel the notebody padding so the bar covers the whole
    column width while content scrolls underneath */
 .lks-ui .lks14-viewtabs{position:sticky;top:0;z-index:20;margin:0 -20px 12px;padding:8px 20px 6px;background:var(--surface-2);border-bottom:1px solid var(--border-faint)}
-.lks-ui .lks14-viewtab{display:inline-flex;align-items:center;gap:5px}
+.lks-ui .lks14-viewtab{display:inline-flex;align-items:center;justify-content:center;gap:5px;flex:1 1 0}
 /* 0.25.3 karaoke: the speaking sentence highlight (CSS Custom Highlight API
    registration; the span class is the no-Highlight-API fallback) */
 ::highlight(lks-reading){background:rgb(var(--brand-rgb)/0.28);color:var(--ink-strong)}

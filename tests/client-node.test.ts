@@ -615,6 +615,7 @@ test('rail scroll containers are border-box (the unreachable rail-bottom fix)', 
 test('notebook: sticky viewtabs, full column width, karaoke highlight styles', async () => {
   const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-viewtabs\{[^}]*position:sticky[^}]*top:0/, 'the tab bar pins flush at the scroller top')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-viewtab\{[^}]*flex:1 1 0/, '0.25.4: the four tabs divide the full column width evenly (owner)')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-notebody\{[^}]*width:100%/, 'the notebook fills the column width (max-width cap retired)')
   assert.doesNotMatch(UPSTREAM_CSS, /lks14-notebody\{margin:0 auto;max-width:960px/, 'the centered 960px cap is gone')
   assert.match(UPSTREAM_CSS, /::highlight\(lks-reading\)/, 'the CSS Custom Highlight API pseudo styles the speaking sentence')
