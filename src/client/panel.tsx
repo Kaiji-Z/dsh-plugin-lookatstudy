@@ -250,17 +250,23 @@ type StudyData = ReturnType<typeof useStudy>['data']
 function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, lessonThreadOp, setCourseScope, uploadAttachment, setInterfaceLang } = useStudy()
 
-  // 0.24.0: push the host interface language to the plugin state (the host
-  // keeps <html lang> in sync with the active locale) — study_apply_design
-  // matches it against a repo's translation mirrors. Re-read on locale flips
-  // through the service's subscribe.
+  // 0.24.0/0.24.1: push the host interface language to the plugin state (the
+  // host keeps <html lang> in sync with the active locale) — study_apply_design
+  // matches it against a repo's translation mirrors. Desktop hosts may set
+  // html lang LATER than the plugin mounts (or never), so: re-read on locale
+  // flips, settle re-reads (the theme.ts P16 precedent), and the navigator
+  // language as the last resort.
   useEffect(() => {
     const read = (): void => {
-      const lang = document.documentElement.lang
-      if (/^[a-z]{2,3}(-[A-Za-z0-9]+)*$/.test(lang)) void setInterfaceLang(lang).catch(() => { /* the next mount retries */ })
+      let lang = document.documentElement.lang
+      if (!/^[a-z]{2,3}(-[A-Za-z0-9]+)*$/.test(lang)) lang = navigator.language
+      if (/^[a-z]{2,3}(-[A-Za-z0-9]+)*$/.test(lang)) void setInterfaceLang(lang).catch(() => { /* the next read retries */ })
     }
     read()
-    return ctx.locale?.subscribe(read)
+    const t1 = setTimeout(read, 600)
+    const t2 = setTimeout(read, 2400)
+    const off = ctx.locale?.subscribe(read)
+    return () => { clearTimeout(t1); clearTimeout(t2); off?.() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // D8: the shared CodeBlock's delegated copy wire — one listener for every

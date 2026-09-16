@@ -113,3 +113,21 @@ test('github import: no matching translation family fetches nothing and stays or
     setHttpsGetOverride(null)
   }
 })
+
+test('brief nudge: with NO recorded interface language the tutor is told to pass translationLang explicitly', async () => {
+  setHttpsGetOverride(async () => ({ ok: false, error: 'offline test' }))
+  try {
+    const { byName } = makeTools(githubFetch({
+      'README.md': README,
+      'lessons/a.md': FILE_A,
+      'lessons/b.md': FILE_B,
+      'translations/zh-cn/README.md': '# 翻译版课程\n',
+    }))
+    // interfaceLang deliberately UNSET (the desktop html-lang gap)
+    const brief = await run(byName, 'study_import_github', { url: 'https://github.com/o/r' })
+    const rendered = (byName.get('study_import_github')!.output as unknown as { render: (a: unknown, v: Record<string, unknown>) => Array<{ text: string }> }).render({}, brief)[0]!.text
+    assert.ok(rendered.includes('translationLang'), 'the nudge tells the tutor to pass the language explicitly')
+  } finally {
+    setHttpsGetOverride(null)
+  }
+})

@@ -155,3 +155,49 @@ test('course scope snapshot: the live digest, coverage line, and combined-proble
   assert.ok(!text.includes('正文一'), 'no lesson body is preloaded into the prompt')
   assert.ok(!text.includes('正文二'), 'no lesson body is preloaded into the prompt (course-wide)')
 })
+
+// ——— 0.24.1: scope flips ADOPT the live conversation (owner round feedback:
+// enabling course scope at lesson 1 left the course group empty — the flag
+// alone only affected FUTURE mints, so lesson 2 minted yet another session) ———
+
+test('adoption: enabling course scope with the focused lesson\'s thread makes it the course thread immediately', () => {
+  const { state, course, a, b } = seed()
+  state.focus = { lessonId: a }
+  bindLessonThread(state, a, 's1', '首条对话')
+  setCourseThreadScope(state, course.id, 'course')
+  assert.deepEqual(state.lessonThreads[`course:${course.id}`]?.threads.map(t => t.id), ['s1'], 'the lesson thread became the course thread wholesale')
+  assert.equal(state.lessonThreads[`course:${course.id}`]?.active, 's1')
+  assert.equal(state.lessonThreads[a], undefined, 'the lesson group entry is gone')
+  assert.equal(state.lessonSessions[a], 's1', 'the legacy mirror still resolves the same session')
+  // the very next lesson rides it — no fresh mint, no 开始学习
+  bindLessonThread(state, b, 's1')
+  assert.deepEqual(state.lessonThreads[`course:${course.id}`]?.threads.map(t => t.id), ['s1'], 'the cross-lesson reuse stays in the course group')
+})
+
+test('adoption is symmetric: course→lesson returns the conversation to the focused lesson', () => {
+  const { state, course, a } = seed()
+  state.focus = { lessonId: a }
+  setCourseThreadScope(state, course.id, 'course')
+  bindLessonThread(state, a, 's1', '跨课对话')
+  setCourseThreadScope(state, course.id, 'lesson')
+  assert.deepEqual(state.lessonThreads[a]?.threads.map(t => t.id), ['s1'], 'the course thread became the focused lesson\'s')
+  assert.equal(state.lessonThreads[`course:${course.id}`], undefined, 'the course key is gone')
+  assert.equal(state.lessonSessions[a], 's1')
+})
+
+test('adoption never overwrites: an occupied target or an empty source skips it', () => {
+  const { state, course, a } = seed()
+  // nothing to adopt — flip with zero threads mints no ghost group
+  setCourseThreadScope(state, course.id, 'course')
+  assert.equal(state.lessonThreads[`course:${course.id}`], undefined)
+  // occupied target: a course group with sediment survives a lesson→course flip
+  setCourseThreadScope(state, course.id, 'lesson')
+  bindLessonThread(state, a, 'legacy', '旧课沉积')
+  setCourseThreadScope(state, course.id, 'course')
+  setCourseThreadScope(state, course.id, 'lesson')
+  bindLessonThread(state, a, 'newer', '课时新线程')
+  state.lessonThreads[`course:${course.id}`] = { active: null, threads: [{ id: 'cs', title: '课程组沉积', createdAt: '2026-09-16T00:00:00Z', lastAt: '2026-09-16T00:00:00Z', status: 'archived' }] }
+  setCourseThreadScope(state, course.id, 'course')
+  assert.deepEqual(state.lessonThreads[`course:${course.id}`]?.threads.map(t => t.id), ['cs'], 'the course group\'s own sediment wins — the lesson group stays put')
+  assert.deepEqual(state.lessonThreads[a]?.threads.map(t => t.id), ['legacy', 'newer'])
+})

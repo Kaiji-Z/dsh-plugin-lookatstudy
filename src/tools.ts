@@ -406,7 +406,13 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
           ? 'Course design required — the brief is no longer pending; call the import tool again to re-fetch it.'
           : (typeof value.designSeq === 'number' && value.designSeq !== designSeq
               ? 'This design brief is STALE — a newer import replaced the pending design. Call the import tool again for the fresh brief; do not design against this one.'
-              : renderDesignBrief(pendingDesign, pendingPart)))
+              : renderDesignBrief(pendingDesign, pendingPart)
+                // 0.24.1: hosts that never set the interface language (desktop
+                // html-lang gap) leave the automatic pairing dark — tell the
+                // tutor to pass the language explicitly instead
+                + (store.get().interfaceLang === undefined && (pendingDesign.availableLangs?.length ?? 0) > 0
+                  ? '\nNote: the learner\'s interface language is not recorded — when applying, pass translationLang explicitly as the language the learner writes to you in (e.g. "zh-CN" for Chinese), so the translation mirrors pair.'
+                  : '')))
       : `Imported course “${value.title}” (${value.sections} sections, ${value.lessons} lessons). `
         + `First lesson: “${value.firstLessonTitle}” (id ${value.firstLessonId}).`,
   }]

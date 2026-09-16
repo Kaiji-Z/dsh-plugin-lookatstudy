@@ -1216,7 +1216,25 @@ export function recordAnswer(
 export function setCourseThreadScope(state: LearningState, courseId: string, scope: ThreadScope): void {
   const course = state.courses.find(c => c.id === courseId)
   if (course === undefined) throw new Error(`lookatstudy-plugin: unknown course id ${JSON.stringify(courseId)}`)
+  const prev: ThreadScope = course.threadScope === 'course' ? 'course' : 'lesson'
+  if (prev === scope) return
   course.threadScope = scope
+  // 0.24.1: ADOPT the live conversation across the flip (owner round — the
+  // flag alone only affected FUTURE mints, so enabling course scope at the
+  // first lesson left the course group empty and the second lesson minted
+  // yet another session). The focused lesson's group moves wholesale into
+  // the course key (and symmetrically back), carrying titles, sediment, and
+  // touchedLessons; an occupied target or an empty source skips the move.
+  const courseKey = `course:${courseId}`
+  const focusLessonId = state.focus?.lessonId ?? null
+  if (focusLessonId === null || !course.sections.some(s => s.lessons.some(l => l.id === focusLessonId))) return
+  const lessonKey = focusLessonId
+  const src = scope === 'course' ? state.lessonThreads[lessonKey] : state.lessonThreads[courseKey]
+  const dst = scope === 'course' ? state.lessonThreads[courseKey] : state.lessonThreads[lessonKey]
+  if (src === undefined || src.threads.length === 0) return
+  if (dst !== undefined && (dst.active !== null || dst.threads.length > 0)) return
+  state.lessonThreads[scope === 'course' ? courseKey : lessonKey] = src
+  delete state.lessonThreads[scope === 'course' ? lessonKey : courseKey]
 }
 
 /**
