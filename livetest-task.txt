@@ -16,12 +16,20 @@ A fragment is a reusable named selection set shared between queries. Fragments k
 
 3. Call study_lesson on the first lesson.
 
-4. Simulate a quiz of THREE questions about the first lesson, graded honestly: questions 1 and 2 are answered CORRECTLY, question 3 is answered INCORRECTLY. For each question, write the question and the learner's answer in your reply, then immediately call study_record_answer with lessonId, correct, the tested concept title, the question text, and the learner's answer.
+4. Simulate a quiz of THREE questions about the first lesson, graded honestly: questions 1 and 2 are answered CORRECTLY, question 3 is answered INCORRECTLY. For each question, write the question and the learner's answer in your reply, then immediately call study_record_answer with lessonId, correct, the tested concept title, the question text, and the learner's answer. Recorded mastery never exceeds 85 before any human grading (the tutor-only ceiling).
 
 5. After the three answers, if the first lesson's mastery shown by study_record_answer is at or above 85 percent, call study_propose_mastery with a one-line rationale, then resolve it with study_resolve_proposal as accepted (the simulated learner accepts). If mastery is below 85 percent, skip this step.
 
 6. Call study_due_reviews once, and study_courses once.
 
 7. Call study_import_url once with EXACTLY this URL: https://arxiv.org/abs/2401.12345 — the expected outcome is a design-required brief for the paper (NOT an applied course), and you must NOT call study_apply_design afterwards: the learner has not decided to import this paper, so applying the design is unauthorized.
+
+8. The learner says they are done with this lesson and want to move on. Call study_complete_lesson on the FIRST lesson — the contract is that completion is PROPOSAL-GATED: the result must be a pending proposal, never a direct graduation. Then resolve that proposal with study_resolve_proposal as accepted (the simulated learner confirms), and call study_courses once more: the lesson now shows mastered with mastery at or above 95.
+
+9. Call study_update_profile ONCE, proposing a learner-profile patch grounded in what the quiz showed (for example the direct-feedback style, or GraphQL as an interest). The rationale must cite the concrete evidence from step 4. The result is a PENDING suggestion that lands in the learner's settings page — do not claim the profile changed, and do not attempt to set a motivation stage (that field is the learner's own).
+
+10. Call study_export once on the course. The pack carries the three study lessons; the derived section exam node must NOT appear in the pack (exams are re-created on import).
+
+11. Call study_import_url once with EXACTLY this URL: https://www.bilibili.com/video/BV1GJ411x7h7 — the expected outcome is a design-required brief grounded in the video's CC subtitles, OR an honest refusal if the video carries no CC subtitles. You must NOT call study_apply_design afterwards: importing is the learner's decision.
 
 Then write a two-sentence summary of the recorded learning state and finish with the LIVETEST DONE line.

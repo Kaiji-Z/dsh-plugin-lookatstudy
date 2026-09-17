@@ -15,15 +15,23 @@ rmSync(statePath, { force: true })
 const state = emptyState()
 state.mode = 'guide'
 const store = { get: () => state, save: () => saveState(statePath, state) }
-const agentRef = { current: undefined }
-const tools = new Map(studyTools(store, agentRef).map(t => [t.name, t]))
+const tools = new Map(studyTools(store).map(t => [t.name, t]))
 
 const transcript = ['# LookatStudy livetest transcript', '']
 
 async function call(name, args) {
   const tool = tools.get(name)
   if (tool === undefined) throw new Error(`tool not registered: ${name}`)
-  const result = await tool.execute(args, { signal: new AbortController().signal })
+  let result
+  try {
+    result = await tool.execute(args, { signal: new AbortController().signal })
+  } catch (error) {
+    // An honest refusal IS a call -- the transcript must carry the call section
+    // with the error result, or the fold reads as prose narrating a ghost tool.
+    const errText = 'tool error: ' + (error instanceof Error ? error.message : String(error))
+    transcript.push('## ' + name, '', '```json', JSON.stringify(args, null, 2), '```', '', 'result:', '', '```', errText, '```', '', '---', '')
+    throw error
+  }
   let rendered = ''
   try {
     rendered = tool.output?.render?.(args, result)?.map(b => b.text).join('\n') ?? ''
@@ -108,6 +116,45 @@ await call('study_courses', {})
 // --- Step 7: URL import routing (arXiv paper -> design brief, no apply) ---------
 const urlImport = await call('study_import_url', { url: 'https://arxiv.org/abs/2401.12345' })
 transcript.push('## Step 7 gate', '', `url import status: **${String(urlImport.status)}**, courseTitle: **${String(urlImport.courseTitle)}** (apply_design withheld — the task does not authorize importing the paper)`, '', '---', '')
+
+// --- Step 8: completion is proposal-gated (v0.26 contract) -----------------------
+const completion = await call('study_complete_lesson', {
+  lessonId,
+  rationale: 'The learner says this lesson is wrapped up and wants to move on.',
+})
+transcript.push('## Step 8 gate', '',
+  `completion status: **${String(completion.status)}**, proposalId: **${String(completion.proposalId)}** (proposal-gated -- never a direct graduation)`,
+  '', '---', '')
+await call('study_resolve_proposal', { proposalId: completion.proposalId, accept: true })
+await call('study_courses', {})
+
+// --- Step 9: learner-profile suggestion (v0.36; lands in the settings page) ------
+const suggestion = await call('study_update_profile', {
+  rationale: 'The step-4 quiz caught the learner reversing the direction of over-fetching (evidence 1), and the learner asked for blunt corrections (evidence 2) -- suggesting the direct-feedback style, plus GraphQL as an observed interest.',
+  patch: { style: { feedback: 'direct' }, interests: ['GraphQL'] },
+})
+transcript.push('## Step 9 gate', '',
+  `profile suggestion status: **${String(suggestion.status)}** (lands in the learner's settings page -- never applied in-chat)`,
+  '', '---', '')
+
+// --- Step 10: pack export (derived exam nodes stay out of packs) ------------------
+const pack = await call('study_export', { courseId: imported.courseId })
+transcript.push('## Step 10 gate', '',
+  `pack lessonCount: **${String(pack.lessonCount)}**, chars: **${String(pack.chars)}** (three study lessons; the exam node re-creates on import)`,
+  '', '---', '')
+
+// --- Step 11: Bilibili CC routing discipline (honest no-CC refusal is fine) ------
+const BILI_URL = 'https://www.bilibili.com/video/BV1GJ411x7h7'
+let biliLine
+try {
+  const bili = await call('study_import_url', { url: BILI_URL })
+  biliLine = 'status **' + String(bili.status) + '**, courseTitle **' + String(bili.courseTitle) + '**'
+} catch (error) {
+  biliLine = 'honest refusal: **' + String(error instanceof Error ? error.message : error) + '**'
+}
+transcript.push('## Step 11 gate', '',
+  'bilibili import -- ' + biliLine + ' (design_required brief grounded in CC subtitles, or an honest no-CC refusal; apply_design withheld)',
+  '', '---', '')
 
 writeFileSync(fileURLToPath(new URL('./livetest-output.md', import.meta.url)), transcript.join('\n') + '\n')
 console.log(`livetest complete; final lesson mastery: ${mastery}%`)

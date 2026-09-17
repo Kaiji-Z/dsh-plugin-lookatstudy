@@ -122,13 +122,21 @@ async function callModel(prompt, { model, baseUrl }) {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0, max_tokens: 4096 }),
+    // glm-5.2 thinks: a tight max_tokens starves content before it starts (the
+    // 2026-09-18 empty-content run) — give the budget room and fall back to the
+    // reasoning channel, where parseJudgement can still find the fenced JSON.
+    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0, max_tokens: 16384 }),
     signal: AbortSignal.timeout(180_000),
   }).catch(e => { throw new Error(`judge model request failed: ${e.message}`) })
   if (!res.ok) throw new Error(`judge model HTTP ${res.status}`)
   const data = await res.json().catch(() => { throw new Error('judge model returned non-JSON body') })
-  const content = data?.choices?.[0]?.message?.content
-  if (typeof content !== 'string' || content === '') throw new Error('judge model returned no content')
+  const message = data?.choices?.[0]?.message
+  const content = typeof message?.content === 'string' && message.content !== ''
+    ? message.content
+    : (typeof message?.reasoning_content === 'string' && message.reasoning_content.trim() !== '' ? message.reasoning_content : '')
+  if (content === '') {
+    throw new Error(`judge model returned no content (finish_reason ${String(data?.choices?.[0]?.finish_reason ?? '?')})`)
+  }
   return content
 }
 
