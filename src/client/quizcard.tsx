@@ -13,6 +13,7 @@ import type { ReactNode } from 'react'
 import { IconBoltFill16, IconBookFill16, IconCrownFill16, IconRefreshOutline16, IconStarFill16 } from './icons.tsx'
 import { tr } from './locale.ts'
 import { celebrate } from './celebration.ts'
+import { studyStore } from './data.ts'
 
 /** Mirror of state.ts MASTERED_THRESHOLD (graduation). */
 export const MASTERED = 0.9
@@ -164,6 +165,10 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
     if (!showScore || !allAnswered || hookSent) return
     setHookSent(true)
     onFinished?.(score.correct === score.total)
+    // Upstream v0.35 anti-farming: the learner answered on a locally-judged
+    // card — that is human grading; report it so the tutor-only mastery cap
+    // lifts on this lesson. Fire-and-forget; failure changes nothing here.
+    void studyStore.reportPracticeGraded(lessonId)
     const next = { answers: [...progress.answers], done: true }
     setProgress(next)
     saveQuizProgress(lessonId, artifactId, next)

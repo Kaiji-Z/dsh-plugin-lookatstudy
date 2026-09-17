@@ -47,8 +47,12 @@ import {
   archiveLessonThread,
   deleteLessonThread,
   setCourseThreadScope,
+  markHumanGraded,
+  resolveProfileProposal,
+  saveProfileEdit,
   type LessonThreadGroup,
 } from './state.ts'
+import { hasProfileContent, parseInterestsInput, isValidMbti, MOTIVE_STAGES, type LearnerProfilePatch, type MotiveStage } from './learner-profile.ts'
 
 /** State access shared with the tools (same live object). */
 export interface DashboardStore {
@@ -199,6 +203,10 @@ export interface WorkbenchState {
     longestStreak: number
     freezeCount: number
   }
+  /** Upstream v0.36: the declared learner profile (null = empty/absent). */
+  profile: unknown
+  /** Pending AI profile suggestions the settings page consumes. */
+  pendingProfileProposals: Array<{ id: string; rationale: string; createdAt: string }>
 }
 
 /**
@@ -332,6 +340,12 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
         freezeCount: state.streak.freezeCount,
       }
     })(),
+    // Upstream v0.36: the declared learner profile + its pending AI
+    // suggestions (consumed in the settings page, never the chat stream).
+    profile: state.profile !== undefined && hasProfileContent(state.profile) ? state.profile : null,
+    pendingProfileProposals: (state.profileProposals ?? [])
+      .filter(p => p.status === 'pending')
+      .map(p => ({ id: p.id, rationale: p.rationale, createdAt: p.createdAt })),
   }
 }
 
@@ -643,6 +657,81 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         }
         try {
           recordReview(deps.store.get(), body.lessonId, quality as 1 | 4 | 5, new Date())
+          deps.store.save()
+          sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      // ── Upstream v0.36 learner profile: the settings-page write, the AI
+      // suggestion resolve, and the human-grading mark (anti-farming cap lift). ──
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/profile') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        const patch: LearnerProfilePatch & { motiveStage?: MotiveStage | null } = {}
+        if (body.name !== undefined) patch.name = typeof body.name === 'string' ? body.name : null
+        if (body.freeNote !== undefined) patch.freeNote = typeof body.freeNote === 'string' ? body.freeNote : null
+        if (body.mbti !== undefined) {
+          if (body.mbti !== null && !isValidMbti(body.mbti)) {
+            sendJson(res, 400, { ok: false, error: 'mbti must be one of the 16 types or null' })
+            return
+          }
+          patch.mbti = (body.mbti ?? null) as LearnerProfilePatch['mbti']
+        }
+        if (body.interests !== undefined) {
+          // The form sends one raw input line (中英标点/顿号/分号分隔); a raw
+          // array is accepted as-is (sanitized state-side).
+          patch.interests = typeof body.interests === 'string' ? parseInterestsInput(body.interests) : Array.isArray(body.interests) ? body.interests.filter(s => typeof s === 'string') : null
+        }
+        if (body.style !== undefined && body.style !== null && typeof body.style === 'object' && !Array.isArray(body.style)) {
+          const s = body.style as Record<string, unknown>
+          patch.style = {}
+          for (const dim of ['start', 'interaction', 'feedback', 'pacing'] as const) {
+            if (s[dim] !== undefined) (patch.style as Record<string, unknown>)[dim] = s[dim] ?? null
+          }
+        }
+        if (body.motiveStage !== undefined) {
+          if (body.motiveStage !== null && !(MOTIVE_STAGES as readonly string[]).includes(body.motiveStage as string)) {
+            sendJson(res, 400, { ok: false, error: 'motiveStage must be one of ' + MOTIVE_STAGES.join('|') })
+            return
+          }
+          patch.motiveStage = (body.motiveStage ?? null) as MotiveStage | null
+        }
+        try {
+          const profile = saveProfileEdit(deps.store.get(), patch, new Date())
+          deps.store.save()
+          sendJson(res, 200, { ok: true, profile })
+        } catch (error) {
+          sendJson(res, 400, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/profile/resolve') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.id !== 'string' || typeof body.accept !== 'boolean') {
+          sendJson(res, 400, { ok: false, error: 'id and accept required' })
+          return
+        }
+        try {
+          const proposal = resolveProfileProposal(deps.store.get(), body.id, body.accept, new Date())
+          deps.store.save()
+          sendJson(res, 200, { ok: true, status: proposal.status })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/practice-graded') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string') {
+          sendJson(res, 400, { ok: false, error: 'lessonId required' })
+          return
+        }
+        try {
+          markHumanGraded(deps.store.get(), body.lessonId)
           deps.store.save()
           sendJson(res, 200, { ok: true })
         } catch (error) {

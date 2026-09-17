@@ -381,6 +381,19 @@ export const UPSTREAM_CSS = `
    registration; the span class is the no-Highlight-API fallback) */
 ::highlight(lks-reading){background:rgb(var(--brand-rgb)/0.28);color:var(--ink-strong)}
 .lks-ui .lks14-reading-mark{background:rgb(var(--brand-rgb)/0.28);color:var(--ink-strong);border-radius:3px}
+/* v0.35.1-alignment: persistent note highlights ride the same registration
+   route (zero DOM mutation) — same skin as the mark.lks-hl fallback */
+.lks-ui ::highlight(lks-note-hl){background:rgb(var(--gold-rgb)/0.25);border-bottom:2px solid var(--gold)}
+/* v0.37-alignment: the progression-boundary card + the rail pulse ring the
+   「指出下一课」 action arms (bot points, user drives — nothing auto-switches) */
+.lks-ui .lks14-boundary{display:flex;align-items:center;gap:10px;margin:10px 20px 4px;padding:10px 12px;border:1px solid rgb(var(--gold-rgb)/0.5);background:rgb(var(--gold-rgb)/0.08);border-radius:10px;flex:none;color:var(--gold-dark)}
+.lks-ui .lks14-boundary-text{flex:1;min-width:0}
+.lks-ui .lks14-boundary-title{font-weight:700;font-size:13.5px;color:var(--ink-strong)}
+.lks-ui .lks14-boundary-sub{font-size:12px;color:var(--ink-muted);margin-top:2px}
+.lks-ui .lks14-boundary-x{flex:none;background:none;border:none;color:var(--ink-muted);cursor:pointer;font-size:13px;padding:4px 6px}
+.lks-ui .lks14-boundary-x:hover{color:var(--ink-strong)}
+.lks-ui .lks-lessorow.next-hint{outline:2px dashed var(--gold);outline-offset:1px;animation:lks-hint-pulse 1.6s ease-in-out infinite}
+@keyframes lks-hint-pulse{0%,100%{outline-color:rgb(var(--gold-rgb)/0.95)}50%{outline-color:rgb(var(--gold-rgb)/0.25)}}
 /* #10-followup: the reading column is height:auto (the note col scrolls), so
    .lks14-board's height:100% resolved against a content-sized parent and the
    stage collapsed to a ~90px sliver — the never-upscale contain fit then

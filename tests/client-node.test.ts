@@ -94,6 +94,8 @@ function statePayload(mode: StudyState['mode']): StudyState {
     statePath: 'C:/state.json',
     version: 'test',
     model: null,
+    profile: null,
+    pendingProfileProposals: [],
   }
 }
 

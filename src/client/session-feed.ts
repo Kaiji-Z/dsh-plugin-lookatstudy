@@ -305,6 +305,36 @@ export function importProgressOf(rows: readonly ChatRow[]): { fetch: ImportToolS
 export const IMPORT_TOOLS: ReadonlySet<string> = new Set(['study_import_url', 'study_import_github', 'study_import_folder', 'study_import_markdown'])
 
 /**
+ * Tool-error visibility (upstream v0.37.1 toolErrorVisibility, part-accumulator):
+ * an error tool row that is SUPERSEDED by a later same-tool call within the
+ * same turn (no learner message in between) is dropped — weak models fail a
+ * zod-validated input on the first try and succeed on the retry (observed
+ * live: the quiz error block flashed, then the quiz card landed), and the
+ * stale transient failure is pure noise. A real failure — no successor —
+ * stays visible; nothing is silently swallowed. Pure.
+ */
+export function hideSupersededToolErrors(rows: readonly ChatRow[]): ChatRow[] {
+  const out: ChatRow[] = []
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!
+    if (row.role === 'tool' && row.toolState === 'error') {
+      let superseded = false
+      for (let j = i + 1; j < rows.length; j++) {
+        const later = rows[j]!
+        if (later.role === 'user') break // a new turn began — the error stands alone
+        if (later.role === 'tool' && later.text === row.text && (later.toolState === 'loading' || later.toolState === 'done')) {
+          superseded = true
+          break
+        }
+      }
+      if (superseded) continue
+    }
+    out.push(row)
+  }
+  return out
+}
+
+/**
  * Fold one event-window snapshot into ordered chat rows. The transient
  * `text-delta` chunks of the most recent attempt accumulate into a single
  * streaming row (the durable `assistant/message` replaces it on settlement).
@@ -418,7 +448,7 @@ export function feedRows(window: FeedWindow | undefined): ChatRow[] {
     const reasoning = stream.reasoning.trim()
     if (reasoning !== '') rows.splice(stream.anchor, 0, { key: 'streaming-reasoning', role: 'reasoning', text: reasoning, running: true })
   }
-  return rows
+  return hideSupersededToolErrors(rows)
 }
 
 

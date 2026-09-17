@@ -16,6 +16,7 @@ import { masteryToCrown, updateMastery } from './vendor/bkt.ts'
 import { accuracyToStars, EXAM_MAX_QUESTIONS, EXAM_MIN_QUESTIONS } from './vendor/exam-logic.ts'
 import { computeStreakTransition } from './vendor/streak-transition.ts'
 import { XP_CORRECT, XP_WRONG, XP_MASTERED } from './vendor/xp.ts'
+import { emptyProfile, applyProfilePatch, parseProfile, type LearnerProfile, type LearnerProfilePatch, type MotiveStage } from './learner-profile.ts'
 import type { StudyArtifact } from './artifacts.ts'
 import type { ParsedCourse } from './vendor/markdown-course.ts'
 import { isCourseOwnerKey, threadOwnerKey, type ThreadScope } from './thread-key.ts'
@@ -77,6 +78,21 @@ export interface MasteryProposal {
   createdAt: string
 }
 
+/**
+ * A tutor-proposed learner-profile patch awaiting the learner's decision in
+ * the settings page (upstream v0.36: profile proposals live OUTSIDE the chat
+ * stream — the learning flow is never interrupted). `stale` = the learner
+ * hand-edited the profile after this proposal was raised; applying it would
+ * overwrite the newer human input, so it is dropped untouched.
+ */
+export interface ProfileProposal {
+  id: string
+  rationale: string
+  patch: LearnerProfilePatch
+  status: 'pending' | 'applied' | 'rejected' | 'stale'
+  createdAt: string
+}
+
 /** One lesson: content plus the learner's tracked state. */
 export interface LessonState {
   /** Stable id of the form `${courseId}:${sectionIndex}:${lessonIndex}`. */
@@ -122,6 +138,11 @@ export interface LessonState {
   translation?: string
   /** Translation language code when translation is present. */
   translationLang?: string
+  /** Human-graded evidence flag (upstream v0.35 anti-farming): set when the
+   *  LEARNER (not the tutor) graded work here — a completed practice card or
+   *  an accepted mastery proposal. Until then `recordAnswer` writes cap at
+   *  {@link AI_MASTERY_CAP} and can never auto-graduate the lesson. Additive. */
+  humanGraded?: boolean
 }
 
 /** One bank question (tutor-authored, applied through study_exam_bank_apply). */
@@ -293,6 +314,10 @@ export interface LearningState {
   xp: { total: number; todayKey: string; todayXp: number }
   /** Streak state (upstream streak-transition: freeze semantics included). */
   streak: { currentStreak: number; longestStreak: number; lastActiveDate: string | null; freezeCount: number }
+  /** Learner-declared profile (upstream v0.36; additive — absent loads as empty). */
+  profile?: LearnerProfile
+  /** Tutor-proposed profile patches awaiting the learner in settings (additive). */
+  profileProposals?: ProfileProposal[]
 }
 
 /** A lesson located inside its course, for mutation results. */
@@ -313,6 +338,16 @@ export const NEAR_MASTERED_THRESHOLD = 0.85
 export const WEAK_CONCEPT_THRESHOLD = 0.7
 const FRICTION_CAP = 10
 
+/**
+ * Tutor-only mastery ceiling (upstream v0.35 "AI 观测掌握度封顶"): until the
+ * lesson carries human-grading evidence (a completed practice card or an
+ * accepted mastery proposal), `recordAnswer` writes cap here and can never
+ * reach the 0.9 graduation line — injected course content cannot farm
+ * mastery into auto-graduation. Historical high values never regress: the
+ * clamp only limits gains. Human grading lifts the flag and the cap.
+ */
+export const AI_MASTERY_CAP = 0.85
+
 /** Fresh empty state for a first run: dormant until the learner clicks 开始学习. */
 export function emptyState(): LearningState {
   return {
@@ -320,6 +355,8 @@ export function emptyState(): LearningState {
     proposals: [], lessonSessions: {}, lessonThreads: {}, trash: [], lastConsolidatedAt: null,
     xp: { total: 0, todayKey: '', todayXp: 0 },
     streak: { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
+    profile: emptyProfile(),
+    profileProposals: [],
   }
 }
 
@@ -467,6 +504,8 @@ function parseStateFile(path: string): LearningState {
     lastConsolidatedAt: raw.lastConsolidatedAt ?? null,
     xp: raw.xp ?? { total: 0, todayKey: '', todayXp: 0 },
     streak: raw.streak ?? { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
+    profile: parseProfile(raw.profile),
+    profileProposals: Array.isArray(raw.profileProposals) ? raw.profileProposals : [],
   }
 }
 
@@ -755,6 +794,33 @@ export function nextLesson(course: CourseState, lessonId: string): LessonState |
   const i = flat.findIndex(l => l.id === lessonId)
   for (let j = i + 1; j < flat.length; j++) {
     if (flat[j]!.kind === 'study') return flat[j]!
+  }
+  return null
+}
+
+/**
+ * The next STUDY lesson after a graduation (upstream v0.37 shared/next-lesson.ts,
+ * the progression-boundary card's ordering truth — the system owns the order,
+ * the agent never participates): same-section successor, else the next
+ * section's FIRST study lesson (empty sections skipped), else null (the
+ * endpoint card). An unknown completedId (course switch race, cross-course
+ * event) returns null — no card. Unlike {@link nextLesson} this never wraps
+ * to the course's first lesson.
+ * @param course - course to walk.
+ * @param lessonId - the lesson that just graduated.
+ * @returns the next study lesson, or null.
+ */
+export function nextLessonAfter(course: CourseState, lessonId: string): LessonState | null {
+  const si = course.sections.findIndex(s => s.lessons.some(l => l.id === lessonId))
+  if (si < 0) return null
+  const section = course.sections[si]!
+  const li = section.lessons.findIndex(l => l.id === lessonId)
+  for (let j = li + 1; j < section.lessons.length; j++) {
+    if (section.lessons[j]!.kind === 'study') return section.lessons[j]!
+  }
+  for (let s = si + 1; s < course.sections.length; s++) {
+    const first = course.sections[s]!.lessons.find(l => l.kind === 'study')
+    if (first !== undefined) return first
   }
   return null
 }
@@ -1159,21 +1225,29 @@ export function recordAnswer(
     )
   }
   const prev = ref.lesson.mastery
+  // Anti-farming cap (upstream v0.35): without human-grading evidence the
+  // tutor's writes ceiling at AI_MASTERY_CAP — short of the 0.9 graduation
+  // line. BKT still evolves BOTH ways under the ceiling (a wrong answer
+  // lowers); a historical value already above the cap raises the ceiling
+  // instead of being clipped (the cap limits gains, never lowers anything).
+  const capped = ref.lesson.humanGraded !== true
+  const lift = (prevV: number | null | undefined, updated: number): number =>
+    capped ? Math.min(updated, Math.max(prevV ?? 0, AI_MASTERY_CAP)) : updated
   if (ref.lesson.concepts !== null && kcIndex !== undefined) {
     const masteries = ref.lesson.conceptMastery ?? {}
-    masteries[kcIndex] = updateMastery(masteries[kcIndex], correct)
+    masteries[kcIndex] = lift(masteries[kcIndex], updateMastery(masteries[kcIndex], correct))
     ref.lesson.conceptMastery = masteries
     aggregateMastery(ref.lesson)
   } else if (ref.lesson.concepts !== null) {
     // No attribution: conservatively update every concept (LookatStudy semantics).
     const masteries = ref.lesson.conceptMastery ?? {}
     ref.lesson.concepts.forEach((_, i) => {
-      masteries[i] = updateMastery(masteries[i], correct)
+      masteries[i] = lift(masteries[i], updateMastery(masteries[i], correct))
     })
     ref.lesson.conceptMastery = masteries
     aggregateMastery(ref.lesson)
   } else {
-    ref.lesson.mastery = updateMastery(prev, correct)
+    ref.lesson.mastery = lift(prev, updateMastery(prev, correct))
   }
   ref.lesson.attempts += 1
   if (correct) ref.lesson.correctCount += 1
@@ -1630,6 +1704,9 @@ export function resolveProposal(state: LearningState, proposalId: string, accept
   }
   if (accept) {
     const ref = findLesson(state, proposal.lessonId)
+    // The learner's explicit acceptance IS human grading — it lifts the
+    // tutor-only mastery cap on this lesson (upstream v0.35 anti-farming).
+    ref.lesson.humanGraded = true
     if (ref.lesson.concepts !== null && ref.lesson.conceptMastery !== null) {
       for (let i = 0; i < ref.lesson.concepts.length; i++) {
         ref.lesson.conceptMastery[i] = Math.max(ref.lesson.conceptMastery[i] ?? 0, 0.95)
@@ -1656,6 +1733,109 @@ export function resolveProposal(state: LearningState, proposalId: string, accept
     state.proposals = state.proposals.filter(p => p.status === 'pending' || keep.has(p.id))
   }
   return proposal
+}
+
+/**
+ * Record human-grading evidence on a lesson (upstream v0.35 "人工判分发生，
+ * 封顶解除"): a completed practice card (the panel's locally-judged quiz) or
+ * any other learner-graded surface. Idempotent. Unknown or exam ids fail
+ * loud — exam nodes live outside the mastery machine.
+ * @param state - state to mutate.
+ * @param lessonId - lesson the learner graded work on.
+ */
+export function markHumanGraded(state: LearningState, lessonId: string): void {
+  const ref = findLesson(state, lessonId)
+  if (ref.lesson.kind === 'exam') {
+    throw new Error(`lookatstudy-plugin: exam node ${JSON.stringify(lessonId)} takes exam attempts, not human-grading marks`)
+  }
+  ref.lesson.humanGraded = true
+}
+
+/**
+ * Raise a profile patch proposal for the learner to accept or ignore in the
+ * settings page (upstream update_learner_profile's apply side). One pending
+ * proposal at a time: a second proposal while one is pending replaces its
+ * patch and rationale (the tutor revised its suggestion before the learner
+ * looked). The learner's own edits are the stale-arbitration baseline —
+ * see {@link resolveProfileProposal}.
+ * @param state - state to mutate.
+ * @param rationale - why the tutor believes the patch fits (evidence-cited).
+ * @param patch - the fields to change (motiveStage structurally absent).
+ * @param now - current time.
+ * @returns the pending proposal.
+ */
+export function proposeProfilePatch(state: LearningState, rationale: string, patch: LearnerProfilePatch, now: Date): ProfileProposal {
+  state.profile ??= emptyProfile()
+  const pending = (state.profileProposals ?? []).find(p => p.status === 'pending')
+  state.profileProposals ??= []
+  if (pending !== undefined) {
+    pending.rationale = rationale
+    pending.patch = patch
+    pending.createdAt = now.toISOString()
+    return pending
+  }
+  const proposal: ProfileProposal = {
+    id: `pprop-${randomBytes(3).toString('hex')}`,
+    rationale,
+    patch,
+    status: 'pending',
+    createdAt: now.toISOString(),
+  }
+  state.profileProposals.push(proposal)
+  return proposal
+}
+
+/**
+ * Resolve a pending profile proposal. Acceptance runs the stale arbitration
+ * first (upstream v0.36 SPEC §4): a learner hand-edit after the proposal was
+ * raised bumps `profile.updatedAt` past `createdAt` — the proposal goes
+ * `stale` and applies NOTHING (never overwrite newer human input). Otherwise
+ * the patch merges field-wise. Rejection changes nothing.
+ * @param state - state to mutate.
+ * @param proposalId - proposal to resolve.
+ * @param accept - learner's decision.
+ * @param now - current time.
+ * @returns the resolved proposal (status applied/rejected/stale).
+ */
+export function resolveProfileProposal(state: LearningState, proposalId: string, accept: boolean, now: Date): ProfileProposal {
+  const proposal = (state.profileProposals ?? []).find(p => p.id === proposalId)
+  if (proposal === undefined) throw new Error(`lookatstudy-plugin: unknown profile proposal id ${JSON.stringify(proposalId)}`)
+  if (proposal.status !== 'pending') {
+    throw new Error(`lookatstudy-plugin: profile proposal ${JSON.stringify(proposalId)} is already ${proposal.status}`)
+  }
+  if (accept) {
+    if ((state.profile ?? emptyProfile()).updatedAt > proposal.createdAt) {
+      proposal.status = 'stale'
+      return proposal
+    }
+    state.profile = applyProfilePatch(state.profile ?? emptyProfile(), proposal.patch)
+  }
+  proposal.status = accept ? 'applied' : 'rejected'
+  // Sediment discipline (mirrors resolveProposal): resolved entries keep the
+  // newest 20 so the array does not grow with the campaign.
+  state.profileProposals ??= []
+  const resolved = state.profileProposals.filter(p => p.status !== 'pending')
+  if (resolved.length > 20) {
+    const keep = new Set(resolved.slice(resolved.length - 20).map(p => p.id))
+    state.profileProposals = state.profileProposals.filter(p => p.status === 'pending' || keep.has(p.id))
+  }
+  return proposal
+}
+
+/**
+ * Merge a learner's OWN profile edit (the settings page write). This is the
+ * human path: unlike the tool-proposal channel it MAY set the motivation
+ * stage (only the learner can), and it bumps `updatedAt` — which is what
+ * makes any older pending proposal resolve stale.
+ * @param state - state to mutate.
+ * @param patch - the fields the learner changed.
+ * @param now - current time.
+ * @returns the updated profile.
+ */
+export function saveProfileEdit(state: LearningState, patch: LearnerProfilePatch & { motiveStage?: MotiveStage | null }, now: Date): LearnerProfile {
+  const merged = applyProfilePatch(state.profile ?? emptyProfile(), patch)
+  state.profile = patch.motiveStage !== undefined ? { ...merged, motiveStage: patch.motiveStage } : merged
+  return state.profile
 }
 
 /**

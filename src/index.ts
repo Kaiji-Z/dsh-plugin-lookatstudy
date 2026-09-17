@@ -15,7 +15,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { Config } from './config.ts'
 import { registerDashboard } from './dashboard.ts'
 import { registerStudyCommand, type CommandsServiceFace } from './commands.ts'
-import { createStudySurface, snapshotSectionText, soulText, tutorCoreText } from './surface.ts'
+import { createStudySurface, profileSectionText, snapshotSectionText, soulText, tutorCoreText } from './surface.ts'
 import { loadState, resolveStatePath, saveState } from './state.ts'
 
 export const name = 'lookatstudy-plugin'
@@ -61,6 +61,13 @@ export function apply(ctx: Context, config: Config): void {
     name: 'lookatstudy:learner-snapshot',
     order: 50,
     text: () => snapshotSectionText(store.get()),
+  })
+  // Upstream v0.36 injection layer ④: the declared learner profile —
+  // independent of the node-bound snapshot, empty profile renders ''.
+  ctx.systemPrompt.context({
+    name: 'lookatstudy:learner-profile',
+    order: 51,
+    text: () => profileSectionText(store.get()),
   })
   // `/study` — the keyboard/headless discovery path. Compositions without a
   // command adapter (none today) simply skip it.

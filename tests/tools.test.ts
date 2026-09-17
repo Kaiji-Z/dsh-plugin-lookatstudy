@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { ToolDefinition, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import { markHumanGraded } from '../src/state.ts'
 import { studyTools } from '../src/tools.ts'
 import { emptyState, type LearningState } from '../src/state.ts'
 import { setHttpsGetOverride } from '../src/vendor/repo-fetcher.ts'
@@ -26,7 +27,10 @@ const COURSE_MD = [
 function setup(fetchImpl?: typeof globalThis.fetch): { byName: Map<string, ToolDefinition>; state: LearningState; saves: () => number } {
   const state = emptyState()
   let saves = 0
-  const tools = studyTools({ get: () => state, save: () => { saves += 1 } }, fetchImpl ? { fetch: fetchImpl } : {})
+  // The suite represents MANY tutor turns in one process — widen the sliding
+  // window; the production default (8 / 120s) has its own test below.
+  const tools = studyTools({ get: () => state, save: () => { saves += 1 } },
+    { answerRate: { limit: 1000, windowMs: 60_000 }, ...(fetchImpl !== undefined ? { fetch: fetchImpl } : {}) })
   const byName = new Map(tools.map(t => [t.name, t]))
   return { byName, state, saves: () => saves }
 }
@@ -67,10 +71,15 @@ test('the full study loop works through the tools', async () => {
   assert.equal(answer.attempts, 1)
   assert.ok(answer.newMasteryPct > 0)
 
-  const completed = await run(byName, 'study_complete_lesson', { lessonId: imported.firstLessonId })
-  assert.deepEqual(completed.unlockedLessonIds, [],
-    'already unlocked by the study_lesson attempt — completion adds nothing new')
-  assert.equal(completed.courseComplete, false)
+  // v0.35/v0.37 alignment: completion is NEVER direct — study_complete_lesson
+  // raises a proposal the learner confirms; acceptance graduates + seeds SM-2.
+  const completed = await run(byName, 'study_complete_lesson', { lessonId: imported.firstLessonId, rationale: 'worked through' })
+  assert.equal(completed.status, 'pending')
+  assert.ok(completed.proposalId.startsWith('prop-'))
+  const resolved = await run(byName, 'study_resolve_proposal', { proposalId: completed.proposalId, accept: true })
+  assert.equal(resolved.status, 'applied')
+  assert.equal(state.courses[0]!.sections[0]!.lessons[0]!.status, 'mastered')
+  assert.ok(state.courses[0]!.sections[0]!.lessons[0]!.dueAt !== null, 'acceptance seeds the first review')
 
   const due = await run(byName, 'study_due_reviews') as { total: number }
   assert.equal(due.total, 0)
@@ -81,7 +90,9 @@ test('the full study loop works through the tools', async () => {
   const dueAgain = await run(byName, 'study_due_reviews') as { total: number; due: Array<{ lessonId: string }> }
   assert.equal(dueAgain.total, 1)
   const review = await run(byName, 'study_record_review', { lessonId: dueAgain.due[0]!.lessonId, quality: 4 })
-  assert.equal(review.intervalDays, 1)
+  // proposal acceptance already counted as a correct SM-2 review (the
+  // manual-apply side effect), so this is the SECOND review → the 6-day step
+  assert.equal(review.intervalDays, 6)
 
   const queued = await run(byName, 'study_delete_course', { courseId: imported.courseId })
   assert.equal(queued.status, 'confirm_required', 'audit B7: a tokenless delete only queues')
@@ -89,7 +100,7 @@ test('the full study loop works through the tools', async () => {
   assert.equal(wrongToken.status, 'confirm_required', 'a forged token never deletes (it invalidates the pending one)')
   const remaining = await run(byName, 'study_delete_course', { courseId: imported.courseId, confirmToken: wrongToken.confirmToken })
   assert.equal(remaining.remaining, 0)
-  assert.equal(saves(), 8, 'every mutating call persisted (import, focus, answer, complete, review, delete-queue, forged-requeue, delete)')
+  assert.equal(saves(), 9, 'every mutating call persisted (import, focus, answer, complete-proposal, resolve, review, delete-queue, forged-requeue, delete)')
 })
 
 test('imports with no lessons fail loud and leave state untouched', async () => {
@@ -201,7 +212,7 @@ function conforms(value: unknown, schema: Schema, path: string): string | null {
 }
 
 test('every tool output conforms to its declared output schema (the real tool-call path validates; direct execute calls do not)', async () => {
-  const { byName } = setup()
+  const { byName, state } = setup()
   const imported = await run(byName, 'study_import_markdown', { markdown: COURSE_MD }) as { courseId: string; firstLessonId: string }
   const lessonId = imported.firstLessonId as string
 
@@ -215,6 +226,9 @@ test('every tool output conforms to its declared output schema (the real tool-ca
     ],
   })
 
+  // record_review needs a schedule; the acceptance path that seeds one now
+  // runs after the loop (static scenario args cannot reference loop-time ids).
+  state.courses[0]!.sections[0]!.lessons[0]!.sm2 = { easeFactor: 2.5, intervalDays: 1, repetitions: 1 }
   const scenarios: Array<[string, Record<string, unknown>]> = [
     ['study_courses', {}],
     ['study_map', { courseId: imported.courseId }],
@@ -266,6 +280,14 @@ test('every tool output conforms to its declared output schema (the real tool-ca
     const output = await run(byName, name, args)
     const err = conforms(output, tool.output.schema as Schema, name)
     assert.equal(err, null, `${name} output must satisfy its schema`)
+  }
+  // v0.37: completion is proposal-gated — the accept path conforms too.
+  {
+    const completion = await run(byName, 'study_complete_lesson', { lessonId, rationale: 'conformance' })
+    assert.equal(conforms(completion, byName.get('study_complete_lesson')!.output.schema as Schema, 'study_complete_lesson'), null)
+    const accepted = await run(byName, 'study_resolve_proposal', { proposalId: completion.proposalId, accept: true })
+    assert.equal(conforms(accepted, byName.get('study_resolve_proposal')!.output.schema as Schema, 'study_resolve_proposal#accepted'), null)
+    assert.equal(state.courses[0]!.sections[0]!.lessons[0]!.status, 'mastered', 'acceptance graduates')
   }
   // Audit B7: the export cap, the delete two-step, and restore carry their own shapes.
   {
@@ -335,8 +357,9 @@ test('renders expose course/lesson ids so the tutor never has to guess them', as
   assert.ok(mapText.includes(`[courseId ${imported.courseId}]`), 'map header names the courseId')
   assert.ok(mapText.includes('[lessonId '), 'map lines name lesson ids')
 
-  await run(byName, 'study_complete_lesson', { lessonId: imported.firstLessonId })
-  // Force the first SM-2 review overdue (complete schedules it a day out).
+  const completion = await run(byName, 'study_complete_lesson', { lessonId: imported.firstLessonId, rationale: 'done' })
+  await run(byName, 'study_resolve_proposal', { proposalId: (completion as { proposalId: string }).proposalId, accept: true })
+  // Force the first SM-2 review overdue (acceptance schedules it a day out).
   state.courses[0]!.sections[0]!.lessons[0]!.dueAt = '2000-01-01T00:00:00.000Z'
   const dueText = renderText('study_due_reviews', {}, await run(byName, 'study_due_reviews'))
   assert.ok(dueText.includes('[lessonId '), 'due list names the lessonId (needed by study_record_review)')
@@ -421,7 +444,7 @@ test('friction, memory, notes, and mode switching round out the agent contract',
   assert.equal(state.mode, 'practice')
 })
 
-test('answers auto-graduate at 90% and early-unlock at 50%', async () => {
+test('answers early-unlock at 50%; tutor-only grading caps at 85% until human grading lands', async () => {
   const { byName, state } = setup()
   const imported = await run(byName, 'study_import_markdown', { markdown: COURSE_MD })
   const l1 = imported.firstLessonId as string
@@ -435,13 +458,24 @@ test('answers auto-graduate at 90% and early-unlock at 50%', async () => {
   assert.ok(last.newMasteryPct > 50, `mastery climbs (got ${last.newMasteryPct}%)`)
   assert.equal(state.courses[0]!.sections[0]!.lessons[1]!.status, 'available', 'early unlock at ≥50%')
 
-  // Keep answering until graduation (>=90%).
-  for (let i = 0; i < 30 && state.courses[0]!.sections[0]!.lessons[0]!.status !== 'mastered'; i++) {
-    await run(byName, 'study_record_answer', { lessonId: l1, correct: true })
+  // Upstream v0.35 anti-farming: without human-grading evidence, repeated
+  // correct answers NEVER cross the 0.9 graduation line — they cap at 85%.
+  for (let i = 0; i < 20; i++) {
+    last = await run(byName, 'study_record_answer', { lessonId: l1, correct: true })
   }
-  const graduated = state.courses[0]!.sections[0]!.lessons[0]!
-  assert.equal(graduated.status, 'mastered')
-  assert.ok(graduated.dueAt !== null, 'graduation seeds the first review')
+  const capped = state.courses[0]!.sections[0]!.lessons[0]!
+  assert.equal(capped.status, 'in_progress', 'no auto-graduation from tutor-only grading')
+  assert.ok((capped.mastery ?? 0) <= 0.85 + 1e-9, `capped at the AI ceiling (got ${String(capped.mastery)})`)
+  assert.ok(last.newMasteryPct === 85, `the ceiling reads as 85% (got ${last.newMasteryPct}%)`)
+
+  // A locally-judged practice card (the dashboard's practice-graded mark) IS
+  // human grading: the flag lifts the cap and graduation becomes reachable.
+  markHumanGraded(state, l1)
+  for (let i = 0; i < 3; i++) {
+    last = await run(byName, 'study_record_answer', { lessonId: l1, correct: true })
+  }
+  assert.equal(capped.status, 'mastered', 'human-graded lessons graduate on mastery ≥90% again')
+  assert.ok(capped.dueAt !== null, 'graduation seeds the first review')
   assert.notEqual(l2, undefined)
 })
 

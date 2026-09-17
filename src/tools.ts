@@ -33,6 +33,7 @@ import {
   matchTranslationLang,
   rewriteGithubImageRefs,
   inlineLocalImages,
+  isolateCourseText,
   planBriefParts,
   renderDesignBrief,
   validateDesign,
@@ -46,10 +47,10 @@ import * as cards from './cards.ts'
 import {
   courseToPackMarkdown,
   NEAR_MASTERED_THRESHOLD,
+  AI_MASTERY_CAP,
   addFriction,
   addNote,
   attemptLesson,
-  completeLesson,
   conceptViews,
   courseSummaries,
   deleteCourse,
@@ -60,6 +61,7 @@ import {
   importCourse,
   nextLesson,
   proposeMastery,
+  proposeProfilePatch,
   recordAnswer,
   recordExamResult,
   applyExamBank,
@@ -76,6 +78,7 @@ import {
   type LearningState,
   type LessonRef,
 } from './state.ts'
+import { MBTI_TYPES, isValidMbti, type LearnerProfilePatch } from './learner-profile.ts'
 import {
   artifactId, sanitizeCodeWalkthrough, sanitizeCompareTable, sanitizeDiagram, sanitizeGuess, sanitizeQuiz,
   type SanitizeResult, type StudyArtifact,
@@ -263,6 +266,12 @@ const textBlocks = (lines: readonly string[] | undefined | null): Array<{ type: 
 export interface StudyToolsDeps {
   /** Fetch transport for repo fetches; defaults to the global fetch. */
   fetch?: typeof fetch
+  /** study_record_answer's sliding-window rate limiter (default 8 / 120 s).
+   *  Test seam: suite-level loops represent many tutor turns, so they widen
+   *  it; the default is production. */
+  answerRate?: { limit: number; windowMs: number }
+  /** Clock for the rate limiter; defaults to Date.now (test seam). */
+  now?: () => number
 }
 
 /**
@@ -284,6 +293,16 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
   let pendingPart = 1
   /** Audit B7: outstanding delete confirmations (courseId → token + expiry). */
   const pendingDeletes = new Map<string, { token: string; expires: number }>()
+  /**
+   * study_record_answer's per-window rate limiter (upstream v0.35 WP6: the
+   * engine's only auto-persisted mastery write is rate-limited so injected
+   * course content cannot batch-farm mastery/graduation in one turn). A
+   * sliding window, closure-scoped — one limiter per tool registration.
+   */
+  const ANSWER_RATE_LIMIT = deps.answerRate?.limit ?? 8
+  const ANSWER_RATE_WINDOW_MS = deps.answerRate?.windowMs ?? 120_000
+  const rateNow = deps.now ?? Date.now
+  const answerStamps: number[] = []
   /** Run a mutating state operation and persist. */
   const mutate = <T>(fn: (state: LearningState) => T): T => {
     const result = fn(store.get())
@@ -1087,7 +1106,7 @@ ${p.text}`))
           + (value.concepts === null ? '' : `concepts: ${value.concepts.map(c => `${c.title} ${c.masteryPct}%${c.weak ? ' ⚡weak' : ''}`).join(' · ')}\n`)
           + (value.examGuide === undefined ? '' : `exam: ${value.examGuide.questionCount} questions (${value.examGuide.kcCount} KCs); per-question time ${value.examGuide.timeLimitRule}; stars ${value.examGuide.starsRule}\n`)
           + `starters: ${value.starters.map(s => s.label).join(' / ')}\n\n`
-          + (value.body.length > LESSON_BODY_PROMPT_CAP
+          + isolateCourseText(value.body.length > LESSON_BODY_PROMPT_CAP
             ? `${value.body.slice(0, LESSON_BODY_PROMPT_CAP)}\n…(lesson body truncated at ${LESSON_BODY_PROMPT_CAP} chars — the full body renders in the study panel)`
             : value.body)
           + `${value.nextLessonId === null ? '\n\n(this is the last lesson)' : `\n\n(next lesson: ${value.nextLessonId})`}`,
@@ -1113,8 +1132,10 @@ ${p.text}`))
       'Record one graded answer and update mastery — call after EVERY learner answer to a scored question. '
       + 'Name the `concept` the question tested (from study_lesson / study_define_concepts) so per-concept '
       + 'mastery stays accurate; lesson mastery is the WEAKEST concept. Mastery ≥50% unlocks the next lesson '
-      + 'early; ≥90% graduates automatically and schedules the first review. Also pass the question text and '
-      + 'the learner\'s answer to keep a practice log.',
+      + 'early; ≥90% graduates automatically and schedules the first review. Rate limit: at most 8 calls per '
+      + '2 minutes — a long quiz continues next reply. Until the learner grades work themselves (a completed '
+      + `practice card or an accepted mastery proposal), recorded mastery caps at ${Math.round(AI_MASTERY_CAP * 100)}% `
+      + 'and cannot graduate the lesson. Also pass the question text and the learner\'s answer to keep a practice log.',
     parameters: {
       lessonId: { type: 'string', required: true, description: 'Lesson the question tested.' },
       correct: { type: 'boolean', required: true, description: 'Whether the learner answered correctly.' },
@@ -1157,6 +1178,12 @@ ${p.text}`))
       }],
     },
     async execute(args) {
+      const nowMs = rateNow()
+      while (answerStamps.length > 0 && nowMs - answerStamps[0]! > ANSWER_RATE_WINDOW_MS) answerStamps.shift()
+      if (answerStamps.length >= ANSWER_RATE_LIMIT) {
+        throw new Error(`study_record_answer rate limited: at most ${ANSWER_RATE_LIMIT} calls per ${ANSWER_RATE_WINDOW_MS / 1000}s — continue grading in your next reply`)
+      }
+      answerStamps.push(nowMs)
       return mutate((state) => {
         const r = recordAnswer(state, args.lessonId, args.correct, args.concept, new Date())
         if (args.question !== undefined) {
@@ -1336,46 +1363,54 @@ ${p.text}`))
   const completeLessonTool = defineTool({
     name: 'study_complete_lesson',
     description:
-      'Mark a lesson mastered manually (graduation at 90% mastery is the automatic path — this is the '
-      + 'override). Unlocks the next lesson and schedules the first spaced review for tomorrow. Call only '
-      + 'when the learner has genuinely worked through the lesson.',
+      'Propose completing a lesson as mastered (the manual override — graduation at 90% mastery is the '
+      + 'automatic path). Upstream alignment: completion is NEVER direct — this creates a PENDING proposal '
+      + 'the learner confirms in the proposal banner; their acceptance floors mastery to 95%, graduates the '
+      + 'lesson, unlocks the next one, and schedules the first spaced review. Call only when the learner '
+      + 'has genuinely worked through the lesson, present your rationale, and resolve with '
+      + 'study_resolve_proposal once they decide.',
     parameters: {
       lessonId: { type: 'string', required: true, description: 'Lesson to complete.' },
+      rationale: { type: 'string', description: 'Why you believe it is done — the learner reads this.' },
     },
     output: {
-  presentationMeta: (_args, value) => cards.completeLines(value),
+  presentationMeta: (_args, value) => ({
+    kind: 'study-proposal-created',
+    proposalId: value.proposalId,
+    lessonTitle: value.lessonTitle,
+    rationale: value.rationale,
+  }),
       schema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          lessonId: { type: 'string', required: true },
+          proposalId: { type: 'string', required: true },
           lessonTitle: { type: 'string', required: true },
-          unlockedLessonIds: { type: 'array', required: true, items: { type: 'string' } },
-          unlockedLessonTitles: { type: 'array', required: true, items: { type: 'string' } },
-          reviewDueAt: { type: 'string', required: true },
-          courseComplete: { type: 'boolean', required: true },
+          status: { type: 'string', required: true, enum: ['pending', 'applied', 'rejected'] },
+          rationale: { type: 'string', required: true },
         },
       },
       render: (_args, value) => [{
         type: 'text',
-        text: cards.completeLines(value).join('\n'),
+        text: `Completion proposal ${value.proposalId} (${value.status}): “${value.lessonTitle}” — ${value.rationale}\n`
+          + 'The learner confirms in the proposal banner; resolve via study_resolve_proposal once they decide.',
       }],
     },
     async execute(args) {
       return mutate((state) => {
-        const r = completeLesson(state, args.lessonId, new Date())
-        return {
-          lessonId: r.ref.lesson.id,
-          lessonTitle: r.ref.lesson.title,
-          unlockedLessonIds: r.unlocked.map(u => u.id),
-          unlockedLessonTitles: r.unlocked.map(u => u.title),
-          reviewDueAt: r.dueAt,
-          courseComplete: r.courseComplete,
-        }
+        const ref = findLesson(state, args.lessonId)
+        const rationale = args.rationale !== undefined && args.rationale.trim() !== ''
+          ? args.rationale.trim()
+          : `Learner has worked through “${ref.lesson.title}” — proposing completion.`
+        const proposal = proposeMastery(state, args.lessonId, rationale, new Date())
+        return { proposalId: proposal.id, lessonTitle: ref.lesson.title, status: proposal.status, rationale: proposal.rationale }
       })
     },
-    presentCall: args => ({ card: 'generic' as const, title: `Complete lesson: ${args.lessonId}` }),
-    presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
+    presentCall: args => ({ card: 'generic' as const, title: `Propose completion: ${args.lessonId}` }),
+    presentResult: (_args, result) => ({
+      card: 'generic' as const,
+      content: textBlocks([`🎓 Completion proposed for “${(result.meta as { lessonTitle?: string } | undefined)?.lessonTitle ?? 'lesson'}” — awaiting the learner's confirmation.`]),
+    }),
   })
 
   const dueReviewsTool = defineTool({
@@ -1761,6 +1796,98 @@ ${p.text}`))
       }))
     },
     presentCall: () => ({ card: 'generic' as const, title: 'Update learner memory' }),
+  })
+
+  const updateProfileTool = defineTool({
+    name: 'study_update_profile',
+    description:
+      'Propose updating the LEARNER PROFILE (name/MBTI/style preferences/interests/free note). Upstream '
+      + 'v0.36 alignment: the suggestion lands in the study tab\'s settings page — the learner accepts or '
+      + 'ignores it THERE; it never interrupts the chat. Call only when you have observed a learning '
+      + 'pattern that contradicts the current profile at least TWICE, and raise it at a natural pause '
+      + '(after a quiz, at lesson close) — never mid-explanation. After a suggestion was ignored, do not '
+      + 'raise the same one again. The motivation stage is the learner\'s own to set — it is structurally '
+      + 'impossible to propose. Only pass the fields you are changing.',
+    parameters: {
+      rationale: { type: 'string', required: true, description: 'Observation basis (cite the at-least-two concrete episodes).' },
+      patch: {
+        type: 'object',
+        required: true,
+        additionalProperties: false,
+        description: 'The fields to change; everything omitted stays as-is.',
+        properties: {
+          name: { ...nullableString, description: 'What to call the learner.' },
+          mbti: { oneOf: [{ type: 'string', enum: [...MBTI_TYPES] }, { type: 'null' }], description: 'MBTI four-letter type (expands into the style dims).' } as ParameterPropertySpec,
+          interests: { oneOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }], description: 'Interest list (WHOLE-GROUP replace; propose additions when stable interests surface; null clears).' } as ParameterPropertySpec,
+          freeNote: { ...nullableString, description: 'The learner\'s self-description note.' },
+          style: {
+            type: 'object',
+            additionalProperties: false,
+            description: 'The four teaching-style dims (only pass the ones changing).',
+            properties: {
+              start: { oneOf: [{ type: 'string', enum: ['analogy', 'framework'] }, { type: 'null' }] } as ParameterPropertySpec,
+              interaction: { oneOf: [{ type: 'string', enum: ['dialogue', 'lecture'] }, { type: 'null' }] } as ParameterPropertySpec,
+              feedback: { oneOf: [{ type: 'string', enum: ['direct', 'encouraging'] }, { type: 'null' }] } as ParameterPropertySpec,
+              pacing: { oneOf: [{ type: 'string', enum: ['sequential', 'exploratory'] }, { type: 'null' }] } as ParameterPropertySpec,
+            },
+          },
+        },
+      },
+    },
+    output: {
+      presentationMeta: (_args, value) => ({
+        kind: 'study-profile-proposal',
+        proposalId: value.proposalId,
+        status: value.status,
+      }),
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          proposalId: { type: 'string', required: true },
+          status: { type: 'string', required: true, enum: ['pending'] },
+          rationale: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `Profile suggestion ${value.proposalId} filed (${value.status}): ${value.rationale}\n`
+          + 'It lands in the settings page for the learner to accept or ignore — do NOT ask about it in chat; move on.',
+      }],
+    },
+    async execute(args) {
+      // Anti-hallucination at the proposal boundary: an invalid mbti/dim is a
+      // tool error, not a silently-nulled field (the apply side is tolerant
+      // only for legacy data, not for fresh tutor input).
+      const patch = args.patch as LearnerProfilePatch
+      if (patch.mbti !== undefined && patch.mbti !== null && !isValidMbti(patch.mbti)) {
+        throw new Error(`study_update_profile: mbti ${JSON.stringify(patch.mbti)} is not one of the 16 types`)
+      }
+      const style = patch.style
+      if (style !== undefined) {
+        const dims: Array<[string, readonly string[]]> = [
+          ['start', ['analogy', 'framework']],
+          ['interaction', ['dialogue', 'lecture']],
+          ['feedback', ['direct', 'encouraging']],
+          ['pacing', ['sequential', 'exploratory']],
+        ]
+        for (const [name, allowed] of dims) {
+          const v = (style as Record<string, unknown>)[name]
+          if (v !== undefined && v !== null && !(allowed as readonly string[]).includes(v as string)) {
+            throw new Error(`study_update_profile: style.${name} ${JSON.stringify(v)} is not one of ${allowed.join('|')}`)
+          }
+        }
+      }
+      return mutate((state) => {
+        const proposal = proposeProfilePatch(state, args.rationale, patch, new Date())
+        return { proposalId: proposal.id, status: 'pending' as const, rationale: proposal.rationale }
+      })
+    },
+    presentCall: () => ({ card: 'generic' as const, title: 'Suggest profile update' }),
+    presentResult: (_args, result) => ({
+      card: 'generic' as const,
+      content: textBlocks([`Profile suggestion filed — the learner decides in the settings page.`]),
+    }),
   })
 
   const translateLessonTool = defineTool({
@@ -2312,6 +2439,7 @@ ${p.text}`))
     resolveProposalTool,
     reportFrictionTool,
     rememberTool,
+    updateProfileTool,
     consolidateTool,
     translateLessonTool,
     exportTool,

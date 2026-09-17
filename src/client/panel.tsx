@@ -47,7 +47,7 @@ import { ArtifactCard, FoldableArtifactCard, markArtifactsSeen, unseenArtifacts,
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, type ChatRow } from './views.tsx'
-import { ListSectionView, sectionWorldOf } from './maprail.tsx'
+import { ListSectionView, nextStudyAfterView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
 import { ExamView, type ExamSession } from './examview.tsx'
@@ -99,6 +99,16 @@ function locateNoteQuote(quote: string, prose: HTMLElement | null): void {
 }
 
 /** C8: the most recent decided proposal's badge payload (render order preserved). */
+/** Upstream v0.37 boundary card: lessons whose card the learner dismissed
+ *  (persisted so a remount does not re-nag about an already-mastered lesson). */
+const BOUNDARY_DISMISS_KEY = 'lks-boundary-dismissed'
+function boundaryDismissedLessons(): Set<string> {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(BOUNDARY_DISMISS_KEY) ?? '[]')
+    return new Set(Array.isArray(raw) ? raw.filter(s => typeof s === 'string') : [])
+  } catch { return new Set() }
+}
+
 function decidedBadgeOf(decided: Record<string, { kind: 'accepted' | 'declined'; title: string }>): { kind: 'accepted' | 'declined'; title: string } | null {
   const entries = Object.values(decided)
   return entries.length > 0 ? entries[entries.length - 1]! : null
@@ -425,6 +435,37 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   // P12 upstream arrangement (0.19 owner note): the exam runs in the CENTER
   // column, not the notebook — an exam-focused lesson swaps the whole chat
   // surface for the ExamView (the leave guard still routes every focus jump).
+  // Upstream v0.37 progression-boundary card: when the FOCUSED study lesson
+  // transitions to mastered, the chat column shows the completion card. The
+  // 「指出下一课」 action only POINTS at the next row in the rail (pulse ring
+  // until clicked) — bot points, user drives; nothing auto-switches.
+  const [boundary, setBoundary] = useState<{ lessonId: string; nextId: string | null; nextTitle: string | null; last: boolean } | null>(null)
+  const [nextHint, setNextHint] = useState<string | null>(null)
+  const prevStatusRef = useRef<string | null>(null)
+  useEffect(() => {
+    const status = lesson?.status ?? null
+    const prev = prevStatusRef.current
+    prevStatusRef.current = status
+    if (lesson === null || lesson.kind !== 'study' || status !== 'mastered') { setBoundary(null); return }
+    if (prev === 'mastered') return
+    if (boundaryDismissedLessons().has(lesson.lessonId)) return
+    const next = data !== null ? nextStudyAfterView(data.courses, lesson.lessonId) : null
+    setBoundary({ lessonId: lesson.lessonId, nextId: next?.id ?? null, nextTitle: next?.title ?? null, last: next === null })
+  }, [lesson, data])
+  const dismissBoundary = useCallback(() => {
+    if (boundary !== null) {
+      try {
+        const set = boundaryDismissedLessons()
+        set.add(boundary.lessonId)
+        localStorage.setItem(BOUNDARY_DISMISS_KEY, JSON.stringify([...set]))
+      } catch { /* private mode — dismissal is session-only */ }
+    }
+    setBoundary(null)
+  }, [boundary])
+  const pointAtNext = useCallback((nextId: string) => {
+    setNextHint(nextId)
+    setNarrowPane('rail')
+  }, [])
   const examLessonActive = lesson !== null && lesson.kind === 'exam'
     && examOpen((data?.courses.flatMap(c => c.sections).find(s => s.lessons.some(l => l.id === lesson.lessonId))?.lessons ?? []))
   // issue #11: the local binding is LESSON-SCOPED — a pair, not a bare id, so
@@ -879,7 +920,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       if (next !== null) setNarrowPane(next)
     },
   },
-    createElement(CourseRail, { data, activate, setFocus: guardedSetFocus, searchLessons, deleteCourse, send,
+    createElement(CourseRail, { data, activate, setFocus: (id: string) => { setNextHint(null); return guardedSetFocus(id) }, searchLessons, deleteCourse, send,
       // C7: a bubble jump on narrow layout lands the learner on the chat pane.
       onJumped: () => { setNarrowPane('chat') },
       // D6: the bound thread's turn is live → its ball spins on the map.
@@ -892,7 +933,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       sendImport,
       endImportSession,
       // E4: the command palette's rail-side actions register here.
-      paletteBus }),
+      paletteBus, nextHintLessonId: nextHint }),
     // v0.29 pane-resize: the rail|right-half boundary handle (its drag target
     // is its previousElementSibling — the rail column; hidden in narrow mode
     // by the same container query that collapses the columns).
@@ -944,7 +985,10 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
             onScopeToggle: (next) => {
               const cid = data !== null && lesson !== null ? data.courses.find(c => c.sections.some(sec => sec.lessons.some(l => l.id === lesson.lessonId)))?.courseId : undefined
               if (cid !== undefined) void setCourseScope(cid, next)
-            }, contextMeter, contextBreakdown: breakdown, uploadAttachment }),
+            }, contextMeter, contextBreakdown: breakdown, uploadAttachment,
+            boundary,
+            onPointNext: pointAtNext,
+            onDismissBoundary: dismissBoundary }),
         // v0.29 pane-resize: the chat|notebook boundary handle (target = the
         // chat column; the exam wrapper carries the same lks14-chat identity).
         createElement(PaneResizeHandle, { side: 'chat', clampLive: chatClampLive, onCommit: px => commitPaneWidth('chat', px) }),
@@ -1221,7 +1265,7 @@ export function setPanelShell(shell: { suppressHandBack(fn: () => void): void } 
 }
 
 /** 左栏:course picker, tree, review box, import. */
-function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, streamingLessonId, turnActive, importProgress, stop, paletteBus, sendImport, endImportSession }: {
+function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, streamingLessonId, turnActive, importProgress, stop, paletteBus, sendImport, endImportSession, nextHintLessonId }: {
   data: StudyData
   activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
@@ -1244,6 +1288,8 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   sendImport: (prompt: string, label: string) => Promise<void>
   /** Forget the import session — every funnel exit calls this. */
   endImportSession: () => void
+  /** Upstream v0.37 boundary card: the pointed-at next lesson (pulse ring). */
+  nextHintLessonId?: string | null
 }): ReactNode {
   const [selectedCourse, setSelectedCourse] = useState('')
   const [query, setQuery] = useState('')
@@ -1477,6 +1523,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
             return [createElement(ListSectionView, {
               key: section.title,
               streamingId: streamingLessonId,
+              hintId: nextHintLessonId ?? null,
               section: {
                 title: section.title, index: section.index,
                 // C12: the optimistic focus rides alongside the feed's focus.
@@ -1874,7 +1921,7 @@ export function epubFolderPath(path: string): string {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, onThreadRename, onThreadArchive, onThreadDelete, courseScope, onScopeToggle, contextMeter, contextBreakdown, uploadAttachment }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, onThreadRename, onThreadArchive, onThreadDelete, courseScope, onScopeToggle, contextMeter, contextBreakdown, uploadAttachment, boundary, onPointNext, onDismissBoundary }: {
   data: StudyData
   lesson: NonNullable<StudyData>['lesson']
   rows: ReturnType<typeof feedRows>
@@ -1906,6 +1953,12 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   contextBreakdown: { systemTokens: number; toolsTokens: number; messageTokens: number } | null
   /** E3: land one attachment in the study workspace (returns its path). */
   uploadAttachment: (name: string, dataBase64: string) => Promise<string>
+  /** Upstream v0.37 progression-boundary card (null = nothing to show). */
+  boundary: { lessonId: string; nextId: string | null; nextTitle: string | null; last: boolean } | null
+  /** 「指出下一课」— point at the next row in the rail (never auto-switch). */
+  onPointNext: (nextId: string) => void
+  /** Dismiss the card (persisted per lesson). */
+  onDismissBoundary: () => void
 }): ReactNode {
   // C1 sticky-follow: follow new rows only while the reader sits at the bottom
   // (80px tolerance); scrolling up detaches, the FAB comes back.
@@ -2402,7 +2455,39 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           onClick: () => { if (!dormant) send(s.message) },
         }, s.label)))
       : null,
-    createElement('div', { className: 'lks14-composer' },
+    // Upstream v0.37: the progression-boundary card — 本课完成 + a single
+    // affordance that POINTS at the next rail row (bot points, user drives).
+    boundary !== null
+      ? createElement('div', { className: 'lks14-boundary', 'data-testid': 'boundary-card' },
+        createElement(IconCrownFill16, { size: 16 }),
+        createElement('div', { className: 'lks14-boundary-text' },
+          createElement('div', { className: 'lks14-boundary-title' }, boundary.last ? tr('boundary.course.done') : tr('boundary.done')),
+          createElement('div', { className: 'lks14-boundary-sub' },
+            boundary.last
+              ? tr('boundary.last.sub')
+              : (boundary.nextTitle !== null
+                ? (courseScope === 'course' ? tr('boundary.thread.sub', { title: boundary.nextTitle }) : tr('boundary.next.sub', { title: boundary.nextTitle }))
+                : ''))),
+        !boundary.last && boundary.nextId !== null
+          ? createElement('button', {
+            className: 'lks-btn primary',
+            'data-testid': 'boundary-next',
+            onClick: () => {
+              // 跨课时线: the thread CONTINUES — tapping sends the message and the
+              // tutor opens the next lesson with study_lesson in this same line.
+              // 课时档: the thread ends here — point at the next rail row only.
+              if (courseScope === 'course' && !dormant) {
+                send(tr('boundary.thread.send', { title: boundary.nextTitle ?? '' }))
+                onDismissBoundary()
+              } else {
+                onPointNext(boundary.nextId!)
+              }
+            },
+          }, courseScope === 'course' ? tr('boundary.thread.point') : tr('boundary.point'))
+          : null,
+        createElement('button', { className: 'lks14-boundary-x', 'aria-label': tr('boundary.dismiss'), onClick: onDismissBoundary }, '✕'))
+      : null,
+    createElement('div', { className: 'lks14-composer'},
       // E1: the context meter — slim bar above the composer (projection-backed
       // pct + token pair; the estimate is labeled as such).
       createElement('div', {

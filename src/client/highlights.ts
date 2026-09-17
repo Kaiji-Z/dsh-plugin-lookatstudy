@@ -101,12 +101,49 @@ export function getTextModel(container: HTMLElement, opts?: { includeMarks?: boo
   return { text, nodes }
 }
 
-/** The mark class applied to persisted highlights. */
+/** The mark class applied to persisted highlights (DOM fallback channel only). */
 export const HIGHLIGHT_MARK = 'lks-hl'
+
+/**
+ * Persistent-note highlight registry name — the CSS Custom Highlight API
+ * channel (upstream v0.35.1 root fix): the old scheme split text nodes and
+ * inserted <mark>, rewriting DOM a framework may reconcile over — any later
+ * re-render could throw a DOMException into the error boundary. The registry
+ * channel registers Ranges in CSS.highlights and touches ZERO DOM nodes.
+ * Styled by the `::highlight(lks-note-hl)` rule in the upstream skin.
+ */
+export const NOTE_HIGHLIGHT_NAME = 'lks-note-hl'
+
+/** Whether the registration channel exists (Highlight ctor + CSS.highlights). */
+export function supportsHighlightMarks(): boolean {
+  return (
+    typeof Highlight !== 'undefined' &&
+    !!(CSS as unknown as { highlights?: Map<string, unknown> }).highlights
+  )
+}
+
+/** Live note ranges: quote → Range. CSS.highlights is a document-level
+ *  singleton, so every container shares one Highlight; dead ranges (nodes
+ *  detached by a re-render of the source) are pruned on rebuild so the map
+ *  cannot grow without bound. */
+const liveNoteRanges = new Map<string, Range>()
+const noteRangeOwners = new WeakMap<HTMLElement, Set<string>>()
+
+function rebuildNoteHighlight(): void {
+  const cssLike = CSS as unknown as { highlights?: Map<string, unknown> }
+  for (const [quote, r] of liveNoteRanges) {
+    if (!r.startContainer.isConnected) liveNoteRanges.delete(quote)
+  }
+  try {
+    if (liveNoteRanges.size === 0) cssLike.highlights?.delete(NOTE_HIGHLIGHT_NAME)
+    else cssLike.highlights?.set(NOTE_HIGHLIGHT_NAME, new Highlight(...liveNoteRanges.values()))
+  } catch { /* unreachable behind supportsHighlightMarks() */ }
+}
 
 /**
  * Apply one highlight range to the live DOM: split the boundary text nodes
  * and wrap the covering segments in marks. Returns the created marks.
+ * (The DOM fallback channel — only reached when the Highlight API is absent.)
  */
 export function wrapRange(model: TextModel<Text>, start: number, end: number): HTMLElement[] {
   const marks: HTMLElement[] = []
@@ -129,12 +166,35 @@ export function wrapRange(model: TextModel<Text>, start: number, end: number): H
 
 /**
  * Render the persisted highlights for one lesson: each record-zone note with a
- * quote anchors a mark. Idempotent per call — call on a freshly rendered
- * (pre-mark) container; the model skips existing marks so re-entry is safe.
- * @returns how many notes got at least one mark.
+ * quote anchors a highlight. Registry channel first (zero DOM mutation — a
+ * framework re-render can never hit a foreign node); the mark-wrapping
+ * fallback only runs on engines without CSS.highlights. Idempotent per call —
+ * call on a freshly rendered container; re-entry replaces this container's
+ * registered ranges first.
+ * @returns how many notes got at least one highlight.
  */
 export function applyHighlights(container: HTMLElement, quotes: readonly string[]): number {
   let applied = 0
+  if (supportsHighlightMarks()) {
+    const owned = noteRangeOwners.get(container)
+    if (owned !== undefined) for (const quote of owned) liveNoteRanges.delete(quote)
+    const hits = new Map<string, Range>()
+    for (const quote of quotes) {
+      const trimmed = quote.trim()
+      if (trimmed.length < 2) continue
+      const model = getTextModel(container)
+      const located = locateInModel(model, trimmed, undefined)
+      if (located === null) continue
+      const range = offsetsToRange(model, located.start, located.end)
+      if (range === null) continue
+      hits.set(trimmed, range)
+      liveNoteRanges.set(trimmed, range)
+      applied += 1
+    }
+    noteRangeOwners.set(container, new Set(hits.keys()))
+    rebuildNoteHighlight()
+    return applied
+  }
   for (const quote of quotes) {
     const trimmed = quote.trim()
     if (trimmed.length < 2) continue
@@ -144,4 +204,21 @@ export function applyHighlights(container: HTMLElement, quotes: readonly string[
     if (wrapRange(model, located.start, located.end).length > 0) applied += 1
   }
   return applied
+}
+
+/** Build one Range across the model's text nodes (null when the browser
+ *  refuses — e.g. a detached node between model build and call). */
+function offsetsToRange(model: TextModel<Text>, start: number, end: number): Range | null {
+  const segments = planSegments(model.nodes, start, end)
+  if (segments.length === 0) return null
+  const first = segments[0]!
+  const last = segments[segments.length - 1]!
+  try {
+    const range = new Range()
+    range.setStart(model.nodes[first.index]!.node, first.localStart)
+    range.setEnd(model.nodes[last.index]!.node, last.localEnd)
+    return range
+  } catch {
+    return null
+  }
 }

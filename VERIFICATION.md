@@ -209,7 +209,7 @@ A feature is done if and only if ALL hold:
 ### 8.5 Acceptance criteria — FROZEN 2026-09-14
 > Owner ratified by delegation ("都按照你的推荐来", 2026-09-14, answering the diagnosis batch) — the criteria below are the recommended set from that batch, now THE standard. Same-commit rule: any change accepting new behavior edits this section in the commit that ships it.
 
-**Happy path (the core workflow):** 学习者给材料（markdown / 文件夹 / GitHub / URL 文章·arXiv / B站 CC / 课程包）→ 导师用 `study_import_*` 取设计简报 → `study_apply_design` 落成课程（章节树 + 知识组件）→ 学习循环：点课时 = 零 LLM、种子 BKT + 双轨解锁 → 对话教学、出题判分（`recordAnswer`，BKT 演进）→ 掌握度 ≥85 时导师可提案、学习者决定（floor 0.95 不降）→ 完成课进 SM-2 复习池 → 到期复习回流到对应课时的线程组。
+**Happy path (the core workflow):** 学习者给材料（markdown / 文件夹 / GitHub / URL 文章·arXiv / B站 CC / 课程包）→ 导师用 `study_import_*` 取设计简报 → `study_apply_design` 落成课程（章节树 + 知识组件）→ 学习循环：点课时 = 零 LLM、种子 BKT + 双轨解锁 → 对话教学、出题判分（`recordAnswer`，BKT 演进；导师单方判分封顶 85%，练习卡判分或提案接受即解除——上游 v0.35 防刷）→ 掌握度 ≥85 时导师可提案、学习者决定（floor 0.95 不降；`study_complete_lesson` 同为提案制，无直通毕业——上游 v0.37 对齐）→ 完成课进 SM-2 复习池 → 到期复习回流到对应课时的线程组。完成卡（v0.37 边界卡）只指向下一课，切换永远由学习者在课程栏点按。(2026-09-17 upstream v0.34–v0.37.1 alignment round — same-commit edit per the rule above.)
 
 **Acceptance criteria（在 X 条件下，应该 Y）:**
 1. **导入幂等**：同一来源（同 sourceRef 或同标题同 id）重复导入必须返回既有课程——绝不新建重复课、绝不静默丢数据（issue #5 的教训）。

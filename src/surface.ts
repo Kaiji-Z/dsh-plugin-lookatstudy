@@ -12,6 +12,7 @@
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { studyTools, type StudyStore } from './tools.ts'
 import { conceptViews, learnerSnapshot, type LearningState, type StudyMode } from './state.ts'
+import { profileSectionText as profileText } from './learner-profile.ts'
 import { threadOwnerKey } from './thread-key.ts'
 import { localeToLanguageName } from './vendor/locale-names.ts'
 
@@ -103,6 +104,17 @@ export function tutorCoreText(state: LearningState): string {
   return state.active ? TUTOR_CORE : ''
 }
 
+/**
+ * The learner-profile injection layer (upstream v0.36's 第④层): independent
+ * of the node-bound snapshot — declared facts adjust HOW the tutor teaches,
+ * never what the lesson is. Empty profile (or dormant surface) renders '',
+ * and empty sections are dropped at assembly.
+ */
+export function profileSectionText(state: LearningState): string {
+  if (!state.active) return ''
+  return profileText(state.profile)
+}
+
 /** The active soul under the same gate (inactive renders empty). */
 export function soulText(state: LearningState): string {
   return state.active ? SOULS[state.mode] : ''
@@ -186,6 +198,11 @@ export function snapshotSectionText(state: LearningState): string {
       lines.push(`本对话线已覆盖课时: ${names}; 当前焦点: ${sanitizePromptText(snap.focus.lessonTitle)}`)
     }
     lines.push('出跨课时综合题前,先调用 study_lesson 调出相关课时正文再命题——组合题优先利用本线已有的跨课时现场。')
+    lines.push('')
+    lines.push('【课程推进边界·跨课时线】本线就是跨课时的:一课收尾后,学习者说"继续"或点完成卡上的"开始下一课"时,你先调用 study_lesson 打开下一课调出正文(进度摘要只是地图,不是教材),然后就在本线接着讲——不要让学习者去课程栏换线,不要重复开场白,也不跳过下一课的出题与掌握纪律。课程推进由学习者的这些动作驱动,不由你擅自推进。')
+  } else if (snap.focus !== null) {
+    lines.push('')
+    lines.push('【课程推进边界】每课时一条对话线,你无法把对话带到另一课——课程推进由学习者在课程栏点按完成。一课收尾后,完成卡会出现,引导学习者去课程栏点下一课。学习者说"继续"时:本课没讲完就继续讲;已收尾就指向课程栏的下一课。绝不承诺"你说继续,我就顺着开讲下一课"——在这条线里这个承诺兑现不了。')
   }
   if (focusCourse?.languageTarget != null && focusCourse.languageTarget !== '') {
     const t = localeToLanguageName(focusCourse.languageTarget)

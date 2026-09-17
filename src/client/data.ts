@@ -98,6 +98,18 @@ export interface StudyState {
   readonly version: string
   /** Host-resolved tutor model facts (the meter's real context capacity). */
   readonly model: { readonly id: string; readonly contextWindow: number | null } | null
+  /** Upstream v0.36: the declared learner profile (null = nothing declared yet). */
+  readonly profile: {
+    readonly name: string | null
+    readonly mbti: string | null
+    readonly style: { readonly start: string | null; readonly interaction: string | null; readonly feedback: string | null; readonly pacing: string | null }
+    readonly motiveStage: string | null
+    readonly interests: readonly string[] | null
+    readonly freeNote: string | null
+    readonly updatedAt: string
+  } | null
+  /** Pending AI profile suggestions (consumed in the settings page). */
+  readonly pendingProfileProposals: ReadonlyArray<{ readonly id: string; readonly rationale: string; readonly createdAt: string }>
 }
 
 /** ── Exam v2 wire shapes (GET /lookatstudy/api/exam; upstream ExamStatusView). ── */
@@ -367,6 +379,37 @@ class StudyStore {
     this.refresh()
   }
 
+  /** Upstream v0.36: save the learner's OWN profile edit (the human path —
+   *  this is also what marks older AI suggestions stale). */
+  async saveProfile(patch: Record<string, unknown>): Promise<void> {
+    await fetchJson('/lookatstudy/api/profile', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(patch),
+    })
+    this.refresh()
+  }
+
+  /** Accept or ignore one AI profile suggestion (the settings-page consumer). */
+  async resolveProfileProposal(id: string, accept: boolean): Promise<void> {
+    await fetchJson('/lookatstudy/api/profile/resolve', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id, accept }),
+    })
+    this.refresh()
+  }
+
+  /** Anti-farming (upstream v0.35): a locally-judged practice card is human
+   *  grading — report it so the tutor-only mastery cap lifts on the lesson. */
+  async reportPracticeGraded(lessonId: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/practice-graded', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId }),
+    }).catch(() => undefined)
+  }
+
   /** Delete one notebook entry from a lesson's Cornell zones. */
   async deleteNote(lessonId: string, noteId: string): Promise<void> {
     await fetchJson('/lookatstudy/api/note/delete', {
@@ -529,6 +572,9 @@ export function useStudy(): {
   lessonThreadOp: (lessonId: string, sessionId: string, op: 'rename' | 'archive' | 'delete', extra?: { title?: string; archived?: boolean }) => Promise<{ active: string | null; threads: number }>
   setCourseScope: (courseId: string, scope: 'lesson' | 'course') => Promise<void>
   tts: (text: string, voice?: string) => Promise<Uint8Array>
+  saveProfile: (patch: Record<string, unknown>) => Promise<void>
+  resolveProfileProposal: (id: string, accept: boolean) => Promise<void>
+  reportPracticeGraded: (lessonId: string) => Promise<void>
 } {
   const data = useSyncExternalStore(studyStore.subscribe, studyStore.getSnapshot, studyStore.getSnapshot)
   return {
@@ -541,6 +587,9 @@ export function useStudy(): {
     setFocus: studyStore.setFocus.bind(studyStore),
     searchLessons: studyStore.searchLessons.bind(studyStore),
     tts: studyStore.tts.bind(studyStore),
+    saveProfile: studyStore.saveProfile.bind(studyStore),
+    resolveProfileProposal: studyStore.resolveProfileProposal.bind(studyStore),
+    reportPracticeGraded: studyStore.reportPracticeGraded.bind(studyStore),
     setCourseScope: studyStore.setCourseScope.bind(studyStore),
     deleteCourse: studyStore.deleteCourse.bind(studyStore),
     deleteNote: studyStore.deleteNote.bind(studyStore),

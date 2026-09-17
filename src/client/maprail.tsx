@@ -34,8 +34,7 @@ export function rowStateClass(lesson: Pick<MapLesson, 'kind' | 'status'>, examAl
 }
 
 /** The row's mastery-bar fill: mastered reads full, in-progress reads live. */
-export function rowMasteryPct(lesson: Pick<MapLesson, 'status' | 'masteryPct'>): number | null {
-  if (lesson.status === 'mastered') return 100
+export function rowMasteryPct(lesson: Pick<MapLesson, 'status' | 'masteryPct'>): number | null {  if (lesson.status === 'mastered') return 100
   if (lesson.status === 'in_progress') return lesson.masteryPct ?? 0
   return null
 }
@@ -46,12 +45,44 @@ export function rowMasteryPct(lesson: Pick<MapLesson, 'status' | 'masteryPct'>):
  * section is the practice world iff it is non-empty and purely practice
  * (the design protocol marks sections, keeping them homogeneous).
  */
+/**
+ * The next STUDY lesson after a graduation over the client's course view
+ * (upstream v0.37 shared/next-lesson.ts, the boundary card's ordering
+ * truth): same-section successor, else the next section's first study
+ * lesson (empty sections skipped), else null — endpoint. Unknown ids return
+ * null (course-switch race — no card). Pure.
+ */
+/** Minimal course-view shape nextStudyAfterView folds over (StudyState.courses subset). */
+type NextHintCourse = { readonly sections: ReadonlyArray<{ readonly lessons: ReadonlyArray<Pick<MapLesson, 'id' | 'title' | 'kind'>> }> }
+
+export function nextStudyAfterView(
+  courses: readonly NextHintCourse[],
+  lessonId: string,
+): { id: string; title: string } | null {
+  for (const course of courses) {
+    for (let si = 0; si < course.sections.length; si++) {
+      const lessons = course.sections[si]!.lessons
+      const li = lessons.findIndex(l => l.id === lessonId)
+      if (li < 0) continue
+      for (let j = li + 1; j < lessons.length; j++) {
+        if (lessons[j]!.kind === 'study') return { id: lessons[j]!.id, title: lessons[j]!.title }
+      }
+      for (let s = si + 1; s < course.sections.length; s++) {
+        const first = course.sections[s]!.lessons.find(l => l.kind === 'study')
+        if (first !== undefined) return { id: first.id, title: first.title }
+      }
+      return null
+    }
+  }
+  return null
+}
+
 export function sectionWorldOf(section: { lessons: readonly Pick<MapLesson, 'kind'>[] }): 'study' | 'practice' {
   return section.lessons.length > 0 && section.lessons.every(l => l.kind === 'practice') ? 'practice' : 'study'
 }
 
 /** One section: a quiet header toggle + the lesson rows. */
-export function ListSectionView({ section, examAllowed, open, onToggle, onJump, streamingId }: {
+export function ListSectionView({ section, examAllowed, open, onToggle, onJump, streamingId, hintId }: {
   section: { title: string; index: number; lessons: readonly MapLesson[] }
   examAllowed: boolean
   open: boolean
@@ -59,6 +90,9 @@ export function ListSectionView({ section, examAllowed, open, onToggle, onJump, 
   onJump: (lessonId: string) => void
   /** D6: the lesson whose thread is streaming (its row wears the spinner). */
   streamingId?: string | null
+  /** Upstream v0.37 boundary card: the row the completion card pointed at —
+   *  wears the pulse ring until clicked (bot points, user drives). */
+  hintId?: string | null
 }): ReactNode {
   const lessons = section.lessons
   const done = lessons.filter(l => l.status === 'mastered').length
@@ -92,7 +126,7 @@ export function ListSectionView({ section, examAllowed, open, onToggle, onJump, 
           return createElement('button', {
             key: lesson.id,
             type: 'button',
-            className: `lks-lessorow st-${state}${lesson.focus ? ' selected' : ''}`,
+            className: `lks-lessorow st-${state}${lesson.focus ? ' selected' : ''}${hintId !== undefined && hintId !== null && hintId === lesson.id ? ' next-hint' : ''}`,
             'data-node-id': lesson.id,
             'aria-disabled': locked || undefined,
             'data-tooltip': `${lesson.title} — ${stateWord}`,

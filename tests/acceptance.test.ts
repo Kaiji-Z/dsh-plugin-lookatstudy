@@ -30,7 +30,9 @@ function setup(): { byName: Map<string, ToolDefinition>; state: LearningState; d
   const path = join(dir, 'state.json')
   const state = loadState(path)
   const store = { get: () => state, save: () => saveState(path, state) }
-  const byName = new Map(studyTools(store).map(t => [t.name, t]))
+  // The frozen loop spans many tutor turns in one process — widen the
+  // record_answer sliding window (its production default has a dedicated test).
+  const byName = new Map(studyTools(store, { answerRate: { limit: 1000, windowMs: 60_000 } }).map(t => [t.name, t]))
   return { byName, state, dir }
 }
 
