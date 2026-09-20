@@ -22,6 +22,11 @@ import {
   IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16, IconBookOutline16, IconPenOutline16 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
+
+/** Session-reference source label for `ctx.sessions.retain` (replaces the
+ * removed `ctx.sessions.open`); identifies the plugin's ownership of a
+ * generation's lifetime in the Host's reference-count map. */
+const LKS_SESSION_SOURCE = 'lookatstudy'
 import { renderMarkdown } from '../markdown.ts'
 import { threadOwnerKey } from '../thread-key.ts'
 import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
@@ -566,8 +571,8 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     }
     // stage under suppression — an internal open must never hand the column back
     const shell = PANEL_SHELL.current
-    if (shell !== null) shell.suppressHandBack(() => { ctx.sessions.open(sessionId!) })
-    else ctx.sessions.open(sessionId)
+    if (shell !== null) shell.suppressHandBack(() => { ctx.sessions.retain(sessionId!, { source: LKS_SESSION_SOURCE }) })
+    else ctx.sessions.retain(sessionId, { source: LKS_SESSION_SOURCE })
     const actx = ctx.sessions.scope(sessionId)
     const face: SessionPromptFace | undefined = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
     if (face === undefined) throw new Error('import session is not addressable yet')
@@ -697,8 +702,8 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       if (!sessionKnown(ctx, boundId)) return
       try {
         const shell = PANEL_SHELL.current
-        if (shell !== null) shell.suppressHandBack(() => { ctx.sessions.open(boundId) })
-        else ctx.sessions.open(boundId)
+        if (shell !== null) shell.suppressHandBack(() => { ctx.sessions.retain(boundId, { source: LKS_SESSION_SOURCE }) })
+        else ctx.sessions.retain(boundId, { source: LKS_SESSION_SOURCE })
       } catch { /* staging raced a shutdown; the next send re-mints */ }
     }
     // binding() is PURE resolution — it can succeed while the session is
@@ -812,9 +817,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         // internal navigation must not hand the panel back.
         const shell = PANEL_SHELL.current
         if (shell !== null) {
-          shell.suppressHandBack(() => { ctx.sessions.open(sessionId!) })
+          shell.suppressHandBack(() => { ctx.sessions.retain(sessionId!, { source: LKS_SESSION_SOURCE }) })
         } else {
-          ctx.sessions.open(sessionId)
+          ctx.sessions.retain(sessionId, { source: LKS_SESSION_SOURCE })
         }
         const actx = ctx.sessions.scope(sessionId)
         const face: SessionPromptFace | undefined = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
@@ -856,9 +861,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     void bindLessonSession(lesson.lessonId, sessionId)
     const shell = PANEL_SHELL.current
     if (shell !== null) {
-      shell.suppressHandBack(() => { ctx.sessions.open(sessionId) })
+      shell.suppressHandBack(() => { ctx.sessions.retain(sessionId, { source: LKS_SESSION_SOURCE }) })
     } else {
-      ctx.sessions.open(sessionId)
+      ctx.sessions.retain(sessionId, { source: LKS_SESSION_SOURCE })
     }
   }
   // issue #11: ＋新建 — clear the active pointer; the group's threads stay
