@@ -39,7 +39,17 @@ export type ClientContext = Context & {
     /** Create (or adopt) a session on the host — 0.1.3+; the panel's mint path. */
     create(options?: { workspaceId?: string }): Promise<string>
     binding(sessionId: string): unknown | undefined
-    open(sessionId: string): void
+    /**
+     * Retain an exact Client generation and start its shared initial history
+     * opening — replaced `open` after the sessions-service refactor (the host no
+     * longer exposes `open`; retaining both opens history and makes the session
+     * addressable through `scope`/`sessionOf`). `ready` settles once the initial
+     * open attempt resolves.
+     */
+    retain(
+      sessionId: string,
+      options: { source: string },
+    ): { readonly sessionId: string; readonly ready: Promise<unknown>; release(): void }
     scope(sessionId: string): unknown | undefined
     sessionOf(actx: unknown): SessionPromptFace | undefined
     /** Session list + current selection (the hand-back trigger's source). */

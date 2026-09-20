@@ -22,6 +22,29 @@ import {
   IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16, IconBookOutline16, IconPenOutline16 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
+
+/** Session-reference source label for `ctx.sessions.retain` (replaces the
+ * removed `ctx.sessions.open`). MUST be `mainView`: the session-list snapshot's
+ * `current` is derived from `retainedBy.mainView > 0` (see ui-workspace's
+ * `mainSessionId`), and the panel only attaches the lesson feed once the host
+ * reports the bound thread as current. Retaining under any other label opens
+ * history but leaves the thread off-stage — the prompt goes out with no feed. */
+const LKS_SESSION_SOURCE = 'mainView'
+
+/** The plugin's held main-view reference. The host derives the session list's
+ * `current` from `retainedBy.mainView > 0`, so staging MUST retain under that
+ * label — and it must release the previous reference, or every send leaks a
+ * count and pins the main view to the first lesson thread forever. */
+let mainViewRef: { readonly sessionId: string; release(): void } | null = null
+function stageMainView(ctx: ClientContext, sessionId: string): void {
+  try {
+    const prev = mainViewRef
+    if (prev !== null && prev.sessionId === sessionId) return
+    const ref = ctx.sessions.retain(sessionId, { source: LKS_SESSION_SOURCE })
+    prev?.release()
+    mainViewRef = ref
+  } catch { /* staging is best-effort — the binding effect's reconcile retries */ }
+}
 import { renderMarkdown } from '../markdown.ts'
 import { threadOwnerKey } from '../thread-key.ts'
 import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
@@ -566,8 +589,8 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     }
     // stage under suppression — an internal open must never hand the column back
     const shell = PANEL_SHELL.current
-    if (shell !== null) shell.suppressHandBack(() => { ctx.sessions.open(sessionId!) })
-    else ctx.sessions.open(sessionId)
+    if (shell !== null) shell.suppressHandBack(() => { stageMainView(ctx, sessionId!) })
+    else stageMainView(ctx, sessionId)
     const actx = ctx.sessions.scope(sessionId)
     const face: SessionPromptFace | undefined = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
     if (face === undefined) throw new Error('import session is not addressable yet')
@@ -697,8 +720,8 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       if (!sessionKnown(ctx, boundId)) return
       try {
         const shell = PANEL_SHELL.current
-        if (shell !== null) shell.suppressHandBack(() => { ctx.sessions.open(boundId) })
-        else ctx.sessions.open(boundId)
+        if (shell !== null) shell.suppressHandBack(() => { stageMainView(ctx, boundId) })
+        else stageMainView(ctx, boundId)
       } catch { /* staging raced a shutdown; the next send re-mints */ }
     }
     // binding() is PURE resolution — it can succeed while the session is
@@ -812,9 +835,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         // internal navigation must not hand the panel back.
         const shell = PANEL_SHELL.current
         if (shell !== null) {
-          shell.suppressHandBack(() => { ctx.sessions.open(sessionId!) })
+          shell.suppressHandBack(() => { stageMainView(ctx, sessionId!) })
         } else {
-          ctx.sessions.open(sessionId)
+          stageMainView(ctx, sessionId)
         }
         const actx = ctx.sessions.scope(sessionId)
         const face: SessionPromptFace | undefined = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
@@ -856,9 +879,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     void bindLessonSession(lesson.lessonId, sessionId)
     const shell = PANEL_SHELL.current
     if (shell !== null) {
-      shell.suppressHandBack(() => { ctx.sessions.open(sessionId) })
+      shell.suppressHandBack(() => { stageMainView(ctx, sessionId) })
     } else {
-      ctx.sessions.open(sessionId)
+      stageMainView(ctx, sessionId)
     }
   }
   // issue #11: ＋新建 — clear the active pointer; the group's threads stay
