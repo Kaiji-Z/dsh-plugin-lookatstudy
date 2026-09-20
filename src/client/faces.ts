@@ -39,12 +39,20 @@ export type ClientContext = Context & {
     /** Create (or adopt) a session on the host — 0.1.3+; the panel's mint path. */
     create(options?: { workspaceId?: string }): Promise<string>
     binding(sessionId: string): unknown | undefined
-    open(sessionId: string): void
+    /** rc generations (≤ 0.1.5-rc): select as current — the event window opens
+     * ⟺ current. Removed by the 0.1.6 session-ownership refactor. */
+    open?(sessionId: string): void
+    /** 0.1.6-alpha+: own a session reference — retention opens history and
+     * makes scope/binding resolve. `release` is per-reference; see
+     * client/stage-session.ts for the staging discipline (own source label,
+     * never the view owner's 'mainView'). */
+    retain?(sessionId: string, options: { source: string }): { readonly sessionId: string; release(): void }
     scope(sessionId: string): unknown | undefined
     sessionOf(actx: unknown): SessionPromptFace | undefined
-    /** Session list + current selection (the hand-back trigger's source). */
+    /** Session list + current selection (rc) / retention counts (alpha) —
+     * the hand-back trigger's source either way. */
     list?: {
-      getSnapshot(): { current?: unknown }
+      getSnapshot(): { current?: unknown; byId?: Readonly<Record<string, unknown>> }
       subscribe(listener: () => void): () => void
     }
   }

@@ -21,6 +21,7 @@ import {
   IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16, IconWrenchOutline16,
   IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16, IconBookOutline16, IconPenOutline16 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
+import { acquireStageReference, stageSession, stagingMode } from './stage-session.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
 import { threadOwnerKey } from '../thread-key.ts'
@@ -564,10 +565,10 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       sessionId = await ctx.sessions.create({ workspaceId: workspace.workspaceId })
       setImportSessionId(sessionId)
     }
-    // stage under suppression — an internal open must never hand the column back
+    // stage under suppression — an internal staging must never hand the column back
     const shell = PANEL_SHELL.current
-    if (shell !== null) shell.suppressHandBack(() => { ctx.sessions.open(sessionId!) })
-    else ctx.sessions.open(sessionId)
+    if (shell !== null) shell.suppressHandBack(() => { stageSession(ctx.sessions, sessionId!) })
+    else stageSession(ctx.sessions, sessionId)
     const actx = ctx.sessions.scope(sessionId)
     const face: SessionPromptFace | undefined = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
     if (face === undefined) throw new Error('import session is not addressable yet')
@@ -603,6 +604,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   useEffect(() => {
     setPressure(null)
     if (boundId === null) return
+    // alpha: scope resolves only for retained generations — hold a transient
+    // reference for the effect's lifetime (rc: the closer is a no-op)
+    const closeStage = acquireStageReference(ctx.sessions, boundId)
     let disposed = false
     let off: (() => void) | undefined
     try {
@@ -621,11 +625,12 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
           }
         }
         read()
-        off = proj.subscribe(read)
-        return () => { disposed = true; off?.() }
+        // deferred notification reads (alpha fiber re-entrancy — see the feed)
+        off = proj.subscribe(() => { queueMicrotask(read) })
+        return () => { disposed = true; off?.(); closeStage?.() }
       }
     } catch { /* projections absent — the estimate path covers it */ }
-    return () => { disposed = true; off?.() }
+    return () => { disposed = true; off?.(); closeStage?.() }
   }, [boundId, ctx.sessions])
   // E6: the model/effort switcher state — catalog + current selection off the
   // bound session (modelSelection projection); switching rides the host's
@@ -634,6 +639,8 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   useEffect(() => {
     setModelFace(null)
     if (boundId === null) return
+    // alpha: as E1 — a transient reference keeps scope resolvable (rc no-op)
+    const closeStage = acquireStageReference(ctx.sessions, boundId)
     let disposed = false
     let off: (() => void) | undefined
     try {
@@ -646,18 +653,20 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
           if (!disposed && snap !== undefined && typeof snap === 'object' && snap.next !== undefined && snap.next !== null) setModelFace(snap.next)
         }
         read()
-        off = proj.subscribe(read)
-        return () => { disposed = true; off?.() }
+        // deferred notification reads (alpha fiber re-entrancy — see the feed)
+        off = proj.subscribe(() => { queueMicrotask(read) })
+        return () => { disposed = true; off?.(); closeStage?.() }
       }
     } catch { /* modelSelection absent — read-only mode */ }
-    return () => { disposed = true; off?.() }
+    return () => { disposed = true; off?.(); closeStage?.() }
   }, [boundId, ctx.sessions])
 
   // The tutor chat stream: subscribe to the bound lesson thread's event window.
-  // The host only opens a window for the STAGED (current) session, so when the
-  // binding is absent (fresh page load / panel reopen), stage the thread first
-  // — an internal navigation, suppressed so it never hands the column back —
-  // and attach when the session list's current flips onto it. A binding the
+  // The host only opens a window for the STAGED session — rc: current via
+  // open(); alpha: our retention (stage-session.ts) — so when the binding is
+  // absent (fresh page load / panel reopen), stage the thread first (an
+  // internal navigation, suppressed so it never hands the column back) and
+  // attach once staged. A binding the
   // host no longer knows (dropped by a restart) renders an empty stream; the
   // next send re-mints and re-binds. Nothing in here may throw into React.
   useEffect(() => {
@@ -690,23 +699,33 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       }
       update()
       setFeedAttached(true)
-      offSource = source.subscribe(update)
+      // deferred notification reads: reading host services synchronously inside
+      // a subscriber callback re-enters the alpha fiber's attach machinery
+      // until the stack blows (live alpha-probe catch) — a microtask breaks
+      // the cycle and is imperceptible on rc
+      offSource = source.subscribe(() => { queueMicrotask(update) })
       return true
     }
     const stage = (): void => {
       if (!sessionKnown(ctx, boundId)) return
       try {
         const shell = PANEL_SHELL.current
-        if (shell !== null) shell.suppressHandBack(() => { ctx.sessions.open(boundId) })
-        else ctx.sessions.open(boundId)
+        if (shell !== null) shell.suppressHandBack(() => { stageSession(ctx.sessions, boundId) })
+        else stageSession(ctx.sessions, boundId)
       } catch { /* staging raced a shutdown; the next send re-mints */ }
     }
     // binding() is PURE resolution — it can succeed while the session is
     // still off-stage, leaving the window unopened and the stream empty
-    // (live 0.14.0 catch: 'attached-empty' forever). The window opens ⟺ the
-    // session is the list's CURRENT, so reconcile stage-first, then attach.
+    // (live 0.14.0 catch: 'attached-empty' forever). The window opens ⟺
+    // staged — rc: the session is the list's CURRENT; alpha: our retention
+    // (stage-session.ts) — so reconcile stage-first, then attach.
     const reconcile = (): boolean => {
       if (disposed || offSource !== undefined) return true
+      if (stagingMode(ctx.sessions) === 'retain') {
+        // alpha: retention IS the open signal; attach to the binding at once
+        stage()
+        return attach()
+      }
       const current = ctx.sessions.list?.getSnapshot().current
       if (current !== boundId) {
         stage()
@@ -726,10 +745,13 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       const list = ctx.sessions.list
       if (list !== undefined) {
         offList = list.subscribe(() => {
-          if (disposed || reconcile()) {
-            offList?.()
-            offList = undefined
-          }
+          // deferred for the same fiber-reentrancy reason as the feed source
+          queueMicrotask(() => {
+            if (disposed || reconcile()) {
+              offList?.()
+              offList = undefined
+            }
+          })
         })
       }
       return () => {
@@ -808,13 +830,13 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
           // reuses invisible to the group (probe 2c/3 catch)
           await bindLessonSession(bindId, sessionId)
         }
-        // Stage the thread (its event window only opens while current); the
+        // Stage the thread (its event window only opens while staged); the
         // internal navigation must not hand the panel back.
         const shell = PANEL_SHELL.current
         if (shell !== null) {
-          shell.suppressHandBack(() => { ctx.sessions.open(sessionId!) })
+          shell.suppressHandBack(() => { stageSession(ctx.sessions, sessionId!) })
         } else {
-          ctx.sessions.open(sessionId)
+          stageSession(ctx.sessions, sessionId)
         }
         const actx = ctx.sessions.scope(sessionId)
         const face: SessionPromptFace | undefined = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
@@ -856,9 +878,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     void bindLessonSession(lesson.lessonId, sessionId)
     const shell = PANEL_SHELL.current
     if (shell !== null) {
-      shell.suppressHandBack(() => { ctx.sessions.open(sessionId) })
+      shell.suppressHandBack(() => { stageSession(ctx.sessions, sessionId) })
     } else {
-      ctx.sessions.open(sessionId)
+      stageSession(ctx.sessions, sessionId)
     }
   }
   // issue #11: ＋新建 — clear the active pointer; the group's threads stay
@@ -878,9 +900,15 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const renameLessonThreadUi = (sessionId: string, title: string): void => {
     if (lesson === null) return
     void lessonThreadOp(lesson.lessonId, sessionId, 'rename', { title }).then(() => {
+      // alpha: scope resolves only for retained generations — hold a transient
+      // reference for the rename's flight (rc: the closer is a no-op)
+      const closeRef = acquireStageReference(ctx.sessions, sessionId)
+      if (closeRef === undefined) return
       const actx = ctx.sessions.scope(sessionId)
       const face = actx === undefined ? undefined : ctx.sessions.sessionOf(actx)
-      void face?.rename?.(title).catch(() => { /* state title already renamed */ })
+      void face?.rename?.(title)
+        .catch(() => { /* state title already renamed */ })
+        .finally(() => { closeRef() })
     }, err => { setSendError(friendlyError(err, 'action')) })
   }
   // archive: the pill leaves the list; if it was current, the state layer rolls

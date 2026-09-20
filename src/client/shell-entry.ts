@@ -11,8 +11,8 @@
  * event.
  *
  * Differences from stardeck's original: our own attribute namespace, a
- * hand-back SUPPRESSION hook (the panel itself calls sessions.open to stage
- * the focus lesson's thread — an internal navigation must not close the
+ * hand-back SUPPRESSION hook (the panel itself stages the focus lesson's
+ * thread through stage-session.ts — an internal navigation must not close the
  * panel; only USER session navigation hands the column back), and dsw-token
  * styling via the injected stylesheet.
  * @module dsh-plugin-lookatstudy/client/shell-entry
@@ -21,6 +21,7 @@
 import { createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { ReactNode } from 'react'
+import { mainSelectionOf, unstageSession } from './stage-session.ts'
 
 const ROW_ATTRIBUTE = 'data-dsh-lookatstudy-entry'
 const ROW_SELECTOR = `[${ROW_ATTRIBUTE}]`
@@ -43,10 +44,12 @@ interface SidebarMountDeps {
   doc?: Document
 }
 
-/** The host session list: current-session changes are the hand-back trigger. */
+/** The host session list: main-selection changes are the hand-back trigger.
+ * rc snapshots carry `current`; alpha (0.1.6 session ownership) removed it and
+ * the view owner's `mainView` retention is the only public trace. */
 interface SessionListFace {
   list?: {
-    getSnapshot(): { current?: unknown }
+    getSnapshot(): { current?: unknown; byId?: Readonly<Record<string, unknown>> }
     subscribe(listener: () => void): () => void
   }
 }
@@ -203,17 +206,31 @@ export function mountStudyShell(
   doc.addEventListener('click', onClickSidebarRow, true)
   doc.addEventListener(ACTIVATE_EVENT, onOtherActivate)
   // USER session navigation hands the center column back to the conversation
-  // (the panel's own sessions.open runs under suppressHandBack, and the
-  // hydration flip — undefined → first current — is not a navigation).
+  // (the panel's own staging runs under suppressHandBack, and the hydration
+  // flip — undefined → first selection — is not a navigation).
   let unsubscribeSessions: (() => void) | undefined
   if (sessions?.list !== undefined) {
-    let lastCurrent = sessions.list.getSnapshot().current
+    // rc reads the persisted `current`; alpha derives the main selection from
+    // the view owner's `mainView` retention counts (stage-session.ts) — rc
+    // snapshots carry no retainedBy, which reads as no selection.
+    const readSelection = (): unknown => {
+      const snap = sessions.list!.getSnapshot() as { current?: unknown; byId?: Readonly<Record<string, unknown>> }
+      if (snap.current !== undefined) return snap.current
+      return mainSelectionOf(snap.byId as Readonly<Record<string, Readonly<{ retainedBy?: Readonly<Record<string, number>> }> | undefined>> | undefined)
+    }
+    let lastCurrent = readSelection()
     unsubscribeSessions = sessions.list.subscribe(() => {
-      const next = sessions.list!.getSnapshot().current
-      if (next === lastCurrent) return
-      const wasHydration = lastCurrent === undefined
-      lastCurrent = next
-      if (shouldHandBack(suppressed, wasHydration)) state.setOpen(false)
+      // capture the suppression window at notification time, decide deferred —
+      // reading host services synchronously inside the callback re-enters the
+      // alpha fiber's attach machinery until the stack blows (alpha-probe catch)
+      const wasSuppressed = suppressed
+      queueMicrotask(() => {
+        const next = readSelection()
+        if (next === lastCurrent) return
+        const wasHydration = lastCurrent === undefined
+        lastCurrent = next
+        if (shouldHandBack(wasSuppressed, wasHydration)) state.setOpen(false)
+      })
     })
   }
   const unsubscribe = state.subscribe(applyActive)
@@ -235,6 +252,7 @@ export function mountStudyShell(
       doc.removeEventListener(ACTIVATE_EVENT, onOtherActivate)
       unsubscribeSessions?.()
       unsubscribe()
+      unstageSession() // release the alpha staging reference (rc: no-op)
       root?.unmount()
       container?.remove()
       row.remove()
