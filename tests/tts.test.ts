@@ -7,7 +7,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, existsSync, readdirSync } from 'node:fs'
+import { mkdtempSync, existsSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { secMsGec, buildSsml, ttsCachePath, cachedTtsMp3, normalizeVoice, DEFAULT_TTS_VOICE } from '../src/tts.ts'
@@ -39,20 +39,25 @@ test('normalizeVoice allowlists and falls back to 晓晓', () => {
 })
 
 test('cachedTtsMp3 caches by voice+text and replays from disk', async () => {
-  const cacheDir = join(mkdtempSync(join(tmpdir(), 'lks-tts-')), 'tts-cache')
-  let synths = 0
-  const fake = async (text: string, voice: string): Promise<Buffer> => {
-    synths += 1
-    return Buffer.from(`mp3:${voice}:${text}`)
+  const dir = mkdtempSync(join(tmpdir(), 'lks-tts-'))
+  const cacheDir = join(dir, 'tts-cache')
+  try {
+    let synths = 0
+    const fake = async (text: string, voice: string): Promise<Buffer> => {
+      synths += 1
+      return Buffer.from(`mp3:${voice}:${text}`)
+    }
+    const first = await cachedTtsMp3(cacheDir, '第一句。', 'zh-CN-XiaoxiaoNeural', fake)
+    const second = await cachedTtsMp3(cacheDir, '第一句。', 'zh-CN-XiaoxiaoNeural', fake)
+    assert.equal(first.toString(), 'mp3:zh-CN-XiaoxiaoNeural:第一句。')
+    assert.equal(second.toString(), first.toString())
+    assert.equal(synths, 1, 'the second listen replays from the cache')
+    assert.equal(readdirSync(cacheDir).length, 1, 'exactly one cache file')
+    const other = await cachedTtsMp3(cacheDir, '第一句。', 'zh-CN-YunxiNeural', fake)
+    assert.equal(other.toString(), 'mp3:zh-CN-YunxiNeural:第一句。', 'a different voice is a different cache key')
+    assert.equal(synths, 2)
+    assert.ok(existsSync(ttsCachePath(cacheDir, '第一句。', 'zh-CN-YunxiNeural')))
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
   }
-  const first = await cachedTtsMp3(cacheDir, '第一句。', 'zh-CN-XiaoxiaoNeural', fake)
-  const second = await cachedTtsMp3(cacheDir, '第一句。', 'zh-CN-XiaoxiaoNeural', fake)
-  assert.equal(first.toString(), 'mp3:zh-CN-XiaoxiaoNeural:第一句。')
-  assert.equal(second.toString(), first.toString())
-  assert.equal(synths, 1, 'the second listen replays from the cache')
-  assert.equal(readdirSync(cacheDir).length, 1, 'exactly one cache file')
-  const other = await cachedTtsMp3(cacheDir, '第一句。', 'zh-CN-YunxiNeural', fake)
-  assert.equal(other.toString(), 'mp3:zh-CN-YunxiNeural:第一句。', 'a different voice is a different cache key')
-  assert.equal(synths, 2)
-  assert.ok(existsSync(ttsCachePath(cacheDir, '第一句。', 'zh-CN-YunxiNeural')))
 })

@@ -79,6 +79,23 @@ const answerPendingAsk = async () => page.evaluate(() => {
   el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
   return true
 })
+// 0.2.0-rc hosts greet a fresh browser profile with the 预览版说明 notice — a
+// role=presentation modal whose mask blocks every host UI click until 继续.
+// Playwright runs a fresh context each launch (no localStorage memory), so the
+// probe dismisses it itself. Only a presentation div carrying a LITERAL button
+// with non-empty text is treated as a notice (the strip-tabs presentation div
+// has no such button and is left alone); dispatched, not clicked — the mask
+// would fail hit-testing.
+const dismissHostNotice = async () => page.evaluate(() => {
+  for (const modal of document.querySelectorAll('div[role="presentation"]')) {
+    const button = [...modal.querySelectorAll('button')]
+      .find(b => (b.textContent ?? '').trim() !== '' && b.closest('.lks14-shell-view') === null)
+    if (button === undefined) continue
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    return true
+  }
+  return false
+})
 const settleTurn = async () => {
   // 300s: a fresh thread's first turn runs the full course tool loop
   // (study_lesson + snapshot), which can outlast 180s on the alpha host
@@ -99,6 +116,7 @@ const settleTurn = async () => {
         console.log(`  (settle miss #${String(misses)}: ${JSON.stringify(d)})`)
       }
       if (await answerPendingAsk()) await page.waitForTimeout(4000)
+      else if (await dismissHostNotice()) await page.waitForTimeout(1000)
     }
   }
   if (!settled) await page.waitForFunction(turnOver, undefined, { timeout: 30000 })
@@ -150,6 +168,7 @@ probe('3 thread group written; active thread titled by the first message',
   `title="${g3?.threads?.[0]?.title ?? 'none'}"`)
 
 // —— 4. hand-back: host new-session navigation closes the panel ——
+if (await dismissHostNotice()) await page.waitForTimeout(1000)
 await page.click('button[class*="newSession"]')
 try {
   await page.waitForFunction(() => document.documentElement.getAttribute('data-dsh-lookatstudy-active') === null, undefined, { timeout: 25000 })
@@ -160,6 +179,7 @@ try {
 
 // —— 5. reload + reopen: fresh mount re-stages via retain; history returns ——
 await page.reload({ waitUntil: 'domcontentloaded' })
+if (await dismissHostNotice()) await page.waitForTimeout(1000)
 await openPanel()
 try {
   await page.waitForFunction((needle) => [...document.querySelectorAll('.lks14-msg-user')].some(m => (m.textContent ?? '').includes(needle)), MSG1, { timeout: 45000 })

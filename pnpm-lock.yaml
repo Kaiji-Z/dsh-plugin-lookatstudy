@@ -11,9 +11,6 @@ importers:
       '@deepseek-ai/cordis':
         specifier: '>=0.1.0-rc.0'
         version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
-      '@deepseek-ai/dsh-client-runtime':
-        specifier: '>=0.1.0-rc.0'
-        version: 0.1.0-rc.6(5ee287bd07c00b3171c7ee342e9431a4)
       '@deepseek-ai/dsh-client-ui-conversation':
         specifier: '>=0.1.0-rc.0'
         version: 0.1.0-rc.6(d29c9974ac2869171d8d115d6553c6f8)

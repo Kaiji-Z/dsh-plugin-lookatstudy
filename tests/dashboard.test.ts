@@ -4,7 +4,7 @@
  * switching, mode, lesson-session binding, and course deletion.
  */
 
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -373,45 +373,49 @@ test('review route: records the SM-2 self-rating, 400 on bad quality, 404 withou
 test('attachment route: base64 payload rides a lifted body cap, the 20 MiB ceiling and the 64 kB default stay armed (issue #4)', async () => {
   const { state } = fixture()
   const dir = mkdtempSync(join(tmpdir(), 'lks-attach-'))
-  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: dir, statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
+  try {
+    const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+    registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, { store: { get: () => state, save: () => {} }, studyAreaPath: dir, statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null })
 
-  // the regression: 256 kB raw → ~342 kB of base64 JSON sailed past the old
-  // hard 64 kB reader cap and died as 'request body too large'
-  const payload = Buffer.alloc(256 * 1024, 7)
-  const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/attachment', { name: 'shot.png', dataBase64: payload.toString('base64') }), new FakeResponse())
-  assert.equal(ok.status, 200, `expected 200, got ${ok.status} ${ok.body}`)
-  const okBody = ok.json() as { path: string; bytes: number }
-  assert.equal(okBody.bytes, payload.length)
-  assert.ok(readFileSync(join(dir, okBody.path)).equals(payload), 'the bytes land verbatim in the study workspace')
+    // the regression: 256 kB raw → ~342 kB of base64 JSON sailed past the old
+    // hard 64 kB reader cap and died as 'request body too large'
+    const payload = Buffer.alloc(256 * 1024, 7)
+    const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/attachment', { name: 'shot.png', dataBase64: payload.toString('base64') }), new FakeResponse())
+    assert.equal(ok.status, 200, `expected 200, got ${ok.status} ${ok.body}`)
+    const okBody = ok.json() as { path: string; bytes: number }
+    assert.equal(okBody.bytes, payload.length)
+    assert.ok(readFileSync(join(dir, okBody.path)).equals(payload), 'the bytes land verbatim in the study workspace')
 
-  // 20 MiB + 1 KiB raw: base64 (~27.97 MB) fits the lifted 28 MiB reader cap,
-  // so the rejection comes from the route's own size validation
-  const overFile = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/attachment', { name: 'big.bin', dataBase64: Buffer.alloc(20 * 1024 * 1024 + 1024, 1).toString('base64') }), new FakeResponse())
-  assert.equal(overFile.status, 400)
-  assert.equal((overFile.json() as { error: string }).error, 'attachment must be 1B..20MiB')
+    // 20 MiB + 1 KiB raw: base64 (~27.97 MB) fits the lifted 28 MiB reader cap,
+    // so the rejection comes from the route's own size validation
+    const overFile = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/attachment', { name: 'big.bin', dataBase64: Buffer.alloc(20 * 1024 * 1024 + 1024, 1).toString('base64') }), new FakeResponse())
+    assert.equal(overFile.status, 400)
+    assert.equal((overFile.json() as { error: string }).error, 'attachment must be 1B..20MiB')
 
-  // 22 MiB raw: base64 (~30.8 MB) exceeds even the lifted cap — the reader rejects
-  const overBody = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/attachment', { name: 'huge.bin', dataBase64: Buffer.alloc(22 * 1024 * 1024, 1).toString('base64') }), new FakeResponse())
-  assert.equal(overBody.status, 400)
-  assert.equal((overBody.json() as { error: string }).error, 'request body too large')
+    // 22 MiB raw: base64 (~30.8 MB) exceeds even the lifted cap — the reader rejects
+    const overBody = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/attachment', { name: 'huge.bin', dataBase64: Buffer.alloc(22 * 1024 * 1024, 1).toString('base64') }), new FakeResponse())
+    assert.equal(overBody.status, 400)
+    assert.equal((overBody.json() as { error: string }).error, 'request body too large')
 
-  // issue #7: the read-back route serves what the intake wrote, byte-exact
-  const served = await handle(routes, new FakeRequest('GET', `/lookatstudy/api/attachment/${encodeURIComponent(okBody.path.split('/').pop()!)}`), new FakeResponse())
-  assert.equal(served.status, 200)
-  assert.equal(served.headers['content-type'], 'image/png')
-  assert.ok(Buffer.from(served.body, 'utf8').equals(payload), 'the GET route returns the stored bytes')
+    // issue #7: the read-back route serves what the intake wrote, byte-exact
+    const served = await handle(routes, new FakeRequest('GET', `/lookatstudy/api/attachment/${encodeURIComponent(okBody.path.split('/').pop()!)}`), new FakeResponse())
+    assert.equal(served.status, 200)
+    assert.equal(served.headers['content-type'], 'image/png')
+    assert.ok(Buffer.from(served.body, 'utf8').equals(payload), 'the GET route returns the stored bytes')
 
-  const traversal = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/attachment/..%2Fstate.json'), new FakeResponse())
-  assert.equal(traversal.status, 404, 'path traversal is rejected server-side')
+    const traversal = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/attachment/..%2Fstate.json'), new FakeResponse())
+    assert.equal(traversal.status, 404, 'path traversal is rejected server-side')
 
-  const ghost = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/attachment/nope.png'), new FakeResponse())
-  assert.equal(ghost.status, 404)
+    const ghost = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/attachment/nope.png'), new FakeResponse())
+    assert.equal(ghost.status, 404)
 
-  // every other route keeps the tight default: a 70 kB /api/active body 400s
-  const tight = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/active', { on: true, pad: 'x'.repeat(70_000) }), new FakeResponse())
-  assert.equal(tight.status, 400)
-  assert.equal((tight.json() as { error: string }).error, 'request body too large')
+    // every other route keeps the tight default: a 70 kB /api/active body 400s
+    const tight = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/active', { on: true, pad: 'x'.repeat(70_000) }), new FakeResponse())
+    assert.equal(tight.status, 400)
+    assert.equal((tight.json() as { error: string }).error, 'request body too large')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('user-note route: a selection becomes a record-zone note whose quote is the highlight anchor', async () => {
@@ -436,46 +440,50 @@ test('user-note route: a selection becomes a record-zone note whose quote is the
 test('tts route: streams the synthesis (cache-first), 400 on empty text, 502 when the synth fails', async () => {
   const { state } = fixture()
   const studyArea = mkdtempSync(join(tmpdir(), 'lks-tts-route-'))
-  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  const synths: string[] = []
-  registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, {
-    store: { get: () => state, save: () => {} },
-    studyAreaPath: studyArea,
-    statePath: 'C:/state.json',
-    onActiveChange: () => {},
-    modelInfo: async () => null,
-    tts: {
-      synthesize: async (text, voice) => {
-        synths.push(`${voice}:${text}`)
-        return Buffer.from(`mp3:${voice}:${text}`)
+  try {
+    const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+    const synths: string[] = []
+    registerDashboard({ register: (route) => { routes.push(route); return () => {} } }, {
+      store: { get: () => state, save: () => {} },
+      studyAreaPath: studyArea,
+      statePath: 'C:/state.json',
+      onActiveChange: () => {},
+      modelInfo: async () => null,
+      tts: {
+        synthesize: async (text, voice) => {
+          synths.push(`${voice}:${text}`)
+          return Buffer.from(`mp3:${voice}:${text}`)
+        },
       },
-    },
-  })
+    })
 
-  const empty = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '  ' }), new FakeResponse())
-  assert.equal(empty.status, 400, 'blank text is a 400')
+    const empty = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '  ' }), new FakeResponse())
+    assert.equal(empty.status, 400, 'blank text is a 400')
 
-  const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '第一句。' }), new FakeResponse())
-  assert.equal(ok.status, 200)
-  const payload = ok.json() as { ok?: boolean; mime?: string; dataBase64?: string }
-  assert.equal(payload.mime, 'audio/mpeg')
-  assert.equal(Buffer.from(payload.dataBase64 ?? '', 'base64').toString(), 'mp3:zh-CN-XiaoxiaoNeural:第一句。', 'base64 payload decodes to the synthesis (default voice 晓晓)')
+    const ok = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '第一句。' }), new FakeResponse())
+    assert.equal(ok.status, 200)
+    const payload = ok.json() as { ok?: boolean; mime?: string; dataBase64?: string }
+    assert.equal(payload.mime, 'audio/mpeg')
+    assert.equal(Buffer.from(payload.dataBase64 ?? '', 'base64').toString(), 'mp3:zh-CN-XiaoxiaoNeural:第一句。', 'base64 payload decodes to the synthesis (default voice 晓晓)')
 
-  const again = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '第一句。' }), new FakeResponse())
-  assert.equal(again.status, 200)
-  assert.equal(synths.length, 1, 'the second identical request replays from the cache without synthesizing')
+    const again = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '第一句。' }), new FakeResponse())
+    assert.equal(again.status, 200)
+    assert.equal(synths.length, 1, 'the second identical request replays from the cache without synthesizing')
 
-  const failingRoutes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
-  registerDashboard({ register: (route) => { failingRoutes.push(route); return () => {} } }, {
-    store: { get: () => state, save: () => {} },
-    studyAreaPath: studyArea,
-    statePath: 'C:/state.json',
-    onActiveChange: () => {},
-    modelInfo: async () => null,
-    tts: { synthesize: async () => { throw new Error('endpoint gone') } },
-  })
-  const dead = await handle(failingRoutes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '第二句。' }), new FakeResponse())
-  assert.equal(dead.status, 502, 'a synthesis failure surfaces as a 502 (the client falls back to speechSynthesis)')
+    const failingRoutes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+    registerDashboard({ register: (route) => { failingRoutes.push(route); return () => {} } }, {
+      store: { get: () => state, save: () => {} },
+      studyAreaPath: studyArea,
+      statePath: 'C:/state.json',
+      onActiveChange: () => {},
+      modelInfo: async () => null,
+      tts: { synthesize: async () => { throw new Error('endpoint gone') } },
+    })
+    const dead = await handle(failingRoutes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '第二句。' }), new FakeResponse())
+    assert.equal(dead.status, 502, 'a synthesis failure surfaces as a 502 (the client falls back to speechSynthesis)')
+  } finally {
+    rmSync(studyArea, { recursive: true, force: true })
+  }
 })
 
 test('mode route: switches and persists the soul mode; 400 on bad values', async () => {
