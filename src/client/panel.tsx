@@ -2180,7 +2180,10 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     const artifact = lesson.artifacts.find((a: { id: string }) => a.id === row.artifactId)
     // The state feed fell behind the fold — the chip stands in until it lands.
     if (artifact === undefined) return chatRow({ ...row, role: 'tool', toolState: 'done' })
-    return createElement('div', { className: 'lks14-inline-artifact' },
+    // key: an artifact row swapping identity in place (hydration re-match,
+    // lesson switch) must remount, never reconcile positionally into the
+    // previous card's fold/quiz state
+    return createElement('div', { className: 'lks14-inline-artifact', key: row.artifactId },
       // issue #14: quizzes wear the fold bar too (inline starts open, like
       // every feed card); folding unmounts safely — progress + hook receipt persist
       artifact.artifactType === 'quiz'

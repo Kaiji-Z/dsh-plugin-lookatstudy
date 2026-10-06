@@ -269,6 +269,12 @@ function FoldShell({ artifactId, title, defaultFolded, children }: {
   children?: ReactNode
 }): ReactNode {
   const [folded, setFolded] = useState<boolean>(() => acardFoldStoredOf(artifactId) ?? defaultFolded)
+  // Identity re-sync (mirrors QuizCard's lesson-switch effect): an unkeyed
+  // position reuse that swaps the artifact must not leak the previous card's
+  // fold state into the new one (review catch on the issue-#14 round).
+  useEffect(() => {
+    setFolded(acardFoldStoredOf(artifactId) ?? defaultFolded)
+  }, [artifactId, defaultFolded])
   const toggle = (): void => {
     setFolded(cur => {
       const next = !cur
