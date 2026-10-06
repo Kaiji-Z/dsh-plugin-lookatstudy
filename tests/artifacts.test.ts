@@ -103,8 +103,8 @@ test('quiz progress persists and scores over recorded answers', async () => {
   const key = quizProgressKey('c:0:0', 'quiz-abc')
   assert.match(key, /^dsh-plugin-lookatstudy:quiz:c:0:0:quiz-abc$/)
   let progress = loadQuizProgress('c:0:0', 'quiz-abc', 2, storage)
-  assert.deepEqual(progress, { answers: [-1, -1], done: false }, 'no stored progress starts blank')
-  progress = { answers: [0, -1], done: false }
+  assert.deepEqual(progress, { answers: [-1, -1], done: false, hooked: false }, 'no stored progress starts blank')
+  progress = { answers: [0, -1], done: false, hooked: false }
   saveQuizProgress('c:0:0', 'quiz-abc', progress, storage)
   assert.deepEqual(loadQuizProgress('c:0:0', 'quiz-abc', 2, storage).answers, [0, -1], 'progress survives a reload')
   assert.deepEqual(loadQuizProgress('c:0:0', 'quiz-abc', 2, storage).done, false)
@@ -113,6 +113,66 @@ test('quiz progress persists and scores over recorded answers', async () => {
   assert.deepEqual(loadQuizProgress('c:0:0', 'quiz-abc', 2, storage).answers, [-1, -1])
   assert.deepEqual(quizScore(data, [0, 1]), { correct: 2, total: 2 })
   assert.deepEqual(quizScore(data, [1, -1]), { correct: 0, total: 1 }, 'unanswered questions do not count')
+})
+
+test('issue #14: the completion-hook receipt persists with the progress — a done card never replays', async () => {
+  const { quizProgressKey, loadQuizProgress, saveQuizProgress } = await import('../src/client/quizcard.tsx')
+  const store = new Map<string, string>()
+  const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v) } }
+  const key = quizProgressKey('c:0:0', 'quiz-abc')
+  // pre-#14 record: done without a receipt — done was only ever written by the
+  // completion effect itself, so it doubles as the receipt (upgrade must NOT
+  // re-blast every historical card's notification once)
+  store.set(key, JSON.stringify({ answers: [0, 1], done: true }))
+  assert.equal(loadQuizProgress('c:0:0', 'quiz-abc', 2, storage).hooked, true, 'legacy done implies hooked')
+  // the receipt round-trips beside the answers
+  saveQuizProgress('c:0:0', 'quiz-abc', { answers: [0, 1], done: true, hooked: true }, storage)
+  assert.deepEqual(loadQuizProgress('c:0:0', 'quiz-abc', 2, storage), { answers: [0, 1], done: true, hooked: true })
+  // in-progress cards carry no receipt (a real completion still fires once)
+  saveQuizProgress('c:0:0', 'quiz-abc', { answers: [0, -1], done: false, hooked: false }, storage)
+  assert.equal(loadQuizProgress('c:0:0', 'quiz-abc', 2, storage).hooked, false)
+  // junk receipt values degrade to the done-derived truth, never throw
+  store.set(key, JSON.stringify({ answers: [0, 1], done: false, hooked: 'yes' }))
+  assert.equal(loadQuizProgress('c:0:0', 'quiz-abc', 2, storage).hooked, false)
+})
+
+test('issue #14: quiz cards wear the fold bar — backlog default folded, stored choice wins, body unmounts', async () => {
+  // FoldShell/QuizCard read the global localStorage by default — shim it
+  const store = new Map<string, string>()
+  const shim = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v) } } as Storage
+  const glob = globalThis as { localStorage?: Storage }
+  const hadOwn = 'localStorage' in glob
+  const prev = glob.localStorage
+  glob.localStorage = shim
+  try {
+    const { renderToString } = await import('react-dom/server')
+    const { createElement } = await import('react')
+    const { FoldableQuizCard, markAcardFoldStored } = await import('../src/client/artifact-cards.tsx')
+    const artifact = { id: 'quiz-x1', artifactType: 'quiz', title: '', data: { questions: [
+      { prompt: 'p', options: ['a', 'b'], answer: 0, explanation: 'e' },
+    ] } }
+    const send = (): void => {}
+    // backlog mount: one thin line — the fold bar renders, the quiz body does not
+    const foldedHtml = renderToString(createElement(FoldableQuizCard, { lessonId: 'c:0:0', artifact, masteryPct: null, send, defaultFolded: true }))
+    assert.ok(foldedHtml.includes('lks-acard-foldwrap folded'), 'the folded wrapper carries its class')
+    assert.ok(foldedHtml.includes('lks-acard-fold-title'), 'the fold bar renders')
+    assert.ok(!foldedHtml.includes('lks-qcard'), 'a folded backlog quiz renders no quiz body — one thin line')
+    assert.ok(foldedHtml.includes('练习'), 'an untitled quiz falls back to the 练习 kind label')
+    // inline mount: starts open — the interactive card mounts under the bar
+    const openHtml = renderToString(createElement(FoldableQuizCard, { lessonId: 'c:0:0', artifact, masteryPct: null, send }))
+    assert.ok(openHtml.includes('lks-acard-foldwrap"'), 'the open wrapper carries no folded class')
+    assert.ok(openHtml.includes('lks-qcard'), 'an open quiz mounts its interactive body')
+    // the explicit toggle persists and beats both defaults (issue #8 semantics)
+    markAcardFoldStored('quiz-x1', false, shim)
+    const storedOpen = renderToString(createElement(FoldableQuizCard, { lessonId: 'c:0:0', artifact, masteryPct: null, send, defaultFolded: true }))
+    assert.ok(storedOpen.includes('lks-qcard'), 'a stored unfold wins over the backlog default')
+    markAcardFoldStored('quiz-x1', true, shim)
+    const storedFolded = renderToString(createElement(FoldableQuizCard, { lessonId: 'c:0:0', artifact, masteryPct: null, send }))
+    assert.ok(!storedFolded.includes('lks-qcard'), 'a stored fold wins over the open default')
+  } finally {
+    if (hadOwn) glob.localStorage = prev
+    else delete glob.localStorage
+  }
 })
 
 test('the four artifact sanitizers validate their shapes and fail loud', async () => {

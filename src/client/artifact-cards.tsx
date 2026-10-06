@@ -12,6 +12,7 @@ import type { ReactNode } from 'react'
 import { tr } from './locale.ts'
 import { IconCloseFill16, IconMaximizeOutline16 } from './icons.tsx'
 import { CanvasStage } from './canvasstage.tsx'
+import { QuizCard, type QuizData } from './quizcard.tsx'
 
 /** One artifact row from the state feed. */
 export interface ArtifactRow {
@@ -250,6 +251,7 @@ const KIND_LABEL_KEY: Readonly<Record<string, string>> = {
   code_walkthrough: 'artifact.kind.code_walkthrough',
   diagram: 'artifact.kind.diagram',
   guess: 'artifact.guess.title',
+  quiz: 'quiz.card.title',
 }
 
 /**
@@ -260,22 +262,21 @@ const KIND_LABEL_KEY: Readonly<Record<string, string>> = {
  * the teach-stage and backlog surfaces start folded — the lesson prose owns
  * the first screen, issue #10).
  */
-export function FoldableArtifactCard({ artifact, send, defaultFolded = false, revealed = false }: {
-  artifact: ArtifactRow
-  send: (text: string) => void
-  defaultFolded?: boolean
-  revealed?: boolean
+function FoldShell({ artifactId, title, defaultFolded, children }: {
+  artifactId: string
+  title: string
+  defaultFolded: boolean
+  children?: ReactNode
 }): ReactNode {
-  const [folded, setFolded] = useState<boolean>(() => acardFoldStoredOf(artifact.id) ?? defaultFolded)
+  const [folded, setFolded] = useState<boolean>(() => acardFoldStoredOf(artifactId) ?? defaultFolded)
   const toggle = (): void => {
     setFolded(cur => {
       const next = !cur
-      markAcardFoldStored(artifact.id, next)
+      markAcardFoldStored(artifactId, next)
       return next
     })
   }
-  const title = artifact.title.trim() !== '' ? artifact.title : tr(KIND_LABEL_KEY[artifact.artifactType] ?? 'artifact.fold')
-  return createElement('div', { className: `lks-acard-foldwrap${folded ? ' folded' : ''}`, 'data-lks-artifact': artifact.id },
+  return createElement('div', { className: `lks-acard-foldwrap${folded ? ' folded' : ''}`, 'data-lks-artifact': artifactId },
     createElement('button', {
       className: 'lks-acard-fold',
       'aria-expanded': String(!folded),
@@ -284,5 +285,44 @@ export function FoldableArtifactCard({ artifact, send, defaultFolded = false, re
     },
       createElement('span', { className: 'lks-acard-fold-caret', 'aria-hidden': 'true' }, folded ? '▸' : '▾'),
       createElement('span', { className: 'lks-acard-fold-title' }, title)),
-    folded ? null : createElement(ArtifactCard, { artifact, send, revealed }))
+    folded ? null : children)
+}
+
+export function FoldableArtifactCard({ artifact, send, defaultFolded = false, revealed = false }: {
+  artifact: ArtifactRow
+  send: (text: string) => void
+  defaultFolded?: boolean
+  revealed?: boolean
+}): ReactNode {
+  const title = artifact.title.trim() !== '' ? artifact.title : tr(KIND_LABEL_KEY[artifact.artifactType] ?? 'artifact.fold')
+  return createElement(FoldShell, { artifactId: artifact.id, title, defaultFolded },
+    createElement(ArtifactCard, { artifact, send, revealed }))
+}
+
+/**
+ * Issue #14: quiz cards wear the same fold bar — a finished card's review
+ * screen (every prompt + pick + answer + explanation) otherwise stacks open
+ * forever, and the sediment backlog grows unbounded. Folding UNMOUNTS the
+ * QuizCard: safe, because the answers AND the completion-hook receipt both
+ * persist per artifact — unfolding neither loses progress nor re-fires the
+ * 练习卡完成 hook.
+ */
+export function FoldableQuizCard({ lessonId, artifact, masteryPct, send, defaultFolded = false, onFinished }: {
+  lessonId: string
+  artifact: ArtifactRow
+  masteryPct: number | null
+  send: (text: string) => void
+  defaultFolded?: boolean
+  onFinished?: (allCorrect: boolean) => void
+}): ReactNode {
+  const title = artifact.title.trim() !== '' ? artifact.title : tr(KIND_LABEL_KEY.quiz!)
+  return createElement(FoldShell, { artifactId: artifact.id, title, defaultFolded },
+    createElement(QuizCard, {
+      lessonId,
+      artifactId: artifact.id,
+      data: artifact.data as unknown as QuizData,
+      masteryPct,
+      send,
+      onFinished,
+    }))
 }

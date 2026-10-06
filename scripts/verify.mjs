@@ -289,6 +289,10 @@ gate('bundle', () => {
     [client, '--lks-rail-w', 'the container-level pane width vars'],
     [host, 'historyBudget', 'the budget flag + directive host-side'],
     [host, 'registerStudyCommand', '/study slash command'],
+    // issue #14: the quiz fold bar (FoldableQuizCard rides the shared fold
+    // store — backlog starts folded) + the persisted completion-hook receipt
+    [client, 'FoldableQuizCard', 'the quiz card fold wrapper'],
+    [client, 'hooked', 'the completion-hook receipt field'],
   ]
   const forbidden = [
     [client, 'agentReady', 'stale agentReady gate (removed in 0.4.1)'],

@@ -54,10 +54,16 @@ export interface QuizData {
   readonly warnings?: readonly string[]
 }
 
-/** Progress under localStorage: chosen option per question (-1 unanswered). */
+/** Progress under localStorage: chosen option per question (-1 unanswered).
+ *  `hooked` is the completion-hook receipt — the "练习卡完成" notification and
+ *  the practice-graded report are durable facts about the card, so the flag
+ *  lives in the same record as `done` (issue #14: a React-state-only flag
+ *  resets on every remount while `done` reopens the score screen — the guard
+ *  re-armed and the hook re-fired on every re-entry). */
 export interface QuizProgress {
   readonly answers: number[]
   readonly done: boolean
+  readonly hooked: boolean
 }
 
 /** localStorage key (upstream quizProgressKey semantics: per artifact). */
@@ -68,16 +74,19 @@ export function quizProgressKey(lessonId: string, artifactId: string): string {
 export function loadQuizProgress(lessonId: string, artifactId: string, questionCount: number, storage: Pick<Storage, 'getItem'> = localStorage): QuizProgress {
   try {
     const raw = storage.getItem(quizProgressKey(lessonId, artifactId))
-    if (raw === null) return { answers: Array<number>(questionCount).fill(-1), done: false }
-    const parsed = JSON.parse(raw) as { answers?: unknown; done?: unknown }
+    if (raw === null) return { answers: Array<number>(questionCount).fill(-1), done: false, hooked: false }
+    const parsed = JSON.parse(raw) as { answers?: unknown; done?: unknown; hooked?: unknown }
     const answers = Array.isArray(parsed.answers)
       ? parsed.answers.map(a => (typeof a === 'number' ? a : -1))
       : []
     const padded = Array<number>(questionCount).fill(-1)
     for (let i = 0; i < Math.min(answers.length, questionCount); i += 1) padded[i] = answers[i]!
-    return { answers: padded, done: parsed.done === true }
+    // Legacy records (pre-issue-#14) carry done without hooked — done:true was
+    // only ever written by the completion effect itself, so it doubles as the
+    // receipt: upgraded cards must NOT replay their notification once.
+    return { answers: padded, done: parsed.done === true, hooked: parsed.hooked === true || parsed.done === true }
   } catch {
-    return { answers: Array<number>(questionCount).fill(-1), done: false }
+    return { answers: Array<number>(questionCount).fill(-1), done: false, hooked: false }
   }
 }
 
@@ -125,7 +134,8 @@ const ACTION_ICONS: Record<PostQuizActionId, (props: { size?: number }) => React
  * The card: one question at a time, click-to-answer (instant local judge +
  * explanation reveal — the cursor is explicit, so the reveal is never skipped),
  * progress persisted per artifact; the score screen is an explicit step, and
- * on first arrival its completion hook goes to the tutor exactly once.
+ * its completion hook goes to the tutor exactly once per card — the receipt
+ * persists beside the progress (issue #14).
  */
 export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinished }: {
   lessonId: string
@@ -145,14 +155,16 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
   const [pending, setPending] = useState<number | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
 
-  // (Re)load when the artifact identity changes (lesson switch).
+  // (Re)load when the artifact identity changes (lesson switch). A persisted
+  // hooked receipt seeds hookSent — a done card re-entered (or folded/unfolded
+  // through a remount) must NOT re-deliver its completion hook.
   useEffect(() => {
     const next = loadQuizProgress(lessonId, artifactId, questions.length)
     setProgress(next)
     setShowScore(next.done)
     const firstUnanswered = next.answers.findIndex(a => a < 0)
     setCursor(firstUnanswered === -1 ? questions.length - 1 : firstUnanswered)
-    setHookSent(false)
+    setHookSent(next.hooked)
     setPending(null)
   }, [lessonId, artifactId, questions.length])
 
@@ -160,7 +172,9 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
   const score = quizScore(data, progress.answers)
   const mastery = masteryPct === null ? null : masteryPct / 100
 
-  // The completion hook: once, when the score screen first shows with a full card.
+  // The completion hook: once per card lifetime, when the score screen first
+  // shows with a full card — the receipt is persisted with the progress, so a
+  // remount (lesson switch, fold/unfold, thread re-entry) never re-sends.
   useEffect(() => {
     if (!showScore || !allAnswered || hookSent) return
     setHookSent(true)
@@ -169,14 +183,14 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
     // card — that is human grading; report it so the tutor-only mastery cap
     // lifts on this lesson. Fire-and-forget; failure changes nothing here.
     void studyStore.reportPracticeGraded(lessonId)
-    const next = { answers: [...progress.answers], done: true }
+    const next = { answers: [...progress.answers], done: true, hooked: true }
     setProgress(next)
     saveQuizProgress(lessonId, artifactId, next)
     send(tr('quiz.hook', { correct: score.correct, total: score.total }))
   }, [showScore, allAnswered, hookSent, lessonId, artifactId, progress.answers, score.correct, score.total, send])
 
   const answer = (choice: number): void => {
-    const next = { answers: [...progress.answers], done: progress.done }
+    const next = { answers: [...progress.answers], done: progress.done, hooked: progress.hooked }
     next.answers[cursor] = choice
     setProgress(next)
     saveQuizProgress(lessonId, artifactId, next)

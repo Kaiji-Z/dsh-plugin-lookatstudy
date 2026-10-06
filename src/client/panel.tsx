@@ -43,8 +43,7 @@ import { wireCodeBlockCopy } from './codeblock.ts'
 import { panelTheme, subscribePanelTheme } from './theme.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
-import { QuizCard, type QuizData } from './quizcard.tsx'
-import { ArtifactCard, FoldableArtifactCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
+import { ArtifactCard, FoldableArtifactCard, FoldableQuizCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
 import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, type ChatRow } from './views.tsx'
@@ -2182,14 +2181,14 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     // The state feed fell behind the fold — the chip stands in until it lands.
     if (artifact === undefined) return chatRow({ ...row, role: 'tool', toolState: 'done' })
     return createElement('div', { className: 'lks14-inline-artifact' },
+      // issue #14: quizzes wear the fold bar too (inline starts open, like
+      // every feed card); folding unmounts safely — progress + hook receipt persist
       artifact.artifactType === 'quiz'
-        ? createElement(QuizCard, {
+        ? createElement(FoldableQuizCard, {
           lessonId: lesson.lessonId,
-          artifactId: artifact.id,
-          data: artifact.data as unknown as QuizData,
+          artifact: artifact as ArtifactRow,
           masteryPct: lesson.masteryPct,
           send,
-          onFinished: () => {},
         })
         // issue #8: fold bar + guess lifecycle (the pick persists; a later
         // assistant reply flips the wait line to the reveal note)
@@ -2456,16 +2455,17 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     ),
     // D4: the sediment backlog — artifacts this window hasn't rendered inline,
     // unseen first (the stream owns the live thread; this is the backlog).
+    // Issue #14: the backlog starts folded — one thin line each, quiz cards
+    // included (they used to render bare and stack their full review open).
     ...backlog
       .filter(a => a.artifactType === 'quiz')
-      .map(a => createElement(QuizCard, {
+      .map(a => createElement(FoldableQuizCard, {
         key: a.id,
         lessonId: lesson!.lessonId,
-        artifactId: a.id,
-        data: a.data as unknown as QuizData,
+        artifact: a as ArtifactRow,
         masteryPct: lesson!.masteryPct,
         send,
-        onFinished: () => {},
+        defaultFolded: true,
       })),
     ...backlog
       .filter(a => a.artifactType !== 'quiz')

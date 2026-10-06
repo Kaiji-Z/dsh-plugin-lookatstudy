@@ -59,11 +59,13 @@
     "./package.json": "./package.json"
   },
   "devDependencies": {
+    "@types/node": "^22.20.0",
     "@types/react": "~18.3.31",
+    "@types/react-dom": "~18.3.7",
     "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsdown": "^0.22.2",
     "tsx": "^4.22.4",
-    "@types/node": "^22.20.0",
     "typescript": "^6.0.3"
   },
   "repository": {
