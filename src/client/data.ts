@@ -76,11 +76,25 @@ export interface StudyState {
   readonly dueCount: number
   readonly due: ReadonlyArray<{ lessonId: string; lessonTitle: string; courseTitle: string; overdueDays: number }>
   readonly pendingProposals: ReadonlyArray<{ id: string; lessonTitle: string; rationale: string }>
+  /** Upstream v0.41 提议撤销: recent APPLIED proposals (newest first) — the
+   *  resident undo strip's data. */
+  readonly appliedProposals: ReadonlyArray<{ id: string; kind: 'mastery' | 'profile'; label: string; appliedAt: string }>
   readonly memory: { global: string | null; lesson: string | null; pattern: string | null }
   readonly lessonSessions: Readonly<Record<string, string>>
   /** The thread groups (issue #11): OWNER key (lesson id, or `course:<id>`
    *  under 0.23.0 course scope) → group; drives the per-lesson switcher. */
-  readonly lessonThreads: Readonly<Record<string, { active: string | null; threads: ReadonlyArray<{ id: string; title: string; createdAt: string; lastAt: string; status?: 'active' | 'archived'; touchedLessons?: string[] }> }>>
+  readonly lessonThreads: Readonly<Record<string, { active: string | null; threads: ReadonlyArray<{ id: string; title: string; createdAt: string; lastAt: string; status?: 'active' | 'archived'; kind?: 'chat' | 'review'; touchedLessons?: string[] }> }>>
+  /** Upstream v0.39 review sessions: the FOCUS lesson's review thread state —
+   *  the fallback self-rate strip (round open) and the outcome strip's data. */
+  readonly activeReview: {
+    readonly lessonId: string
+    readonly threadId: string
+    readonly open: boolean
+    readonly lastQuality?: number
+    readonly weakPoints?: readonly string[]
+    readonly intervalDays?: number
+    readonly nextDueAt?: string
+  } | null
   /** XP + streak block (mirrors study_courses; feeds the dock pill and the settings page). */
   readonly progress: {
     readonly totalXp: number
@@ -379,6 +393,56 @@ class StudyStore {
     this.refresh()
   }
 
+  /** Upstream v0.39: open a review round on the bound review thread (the
+   *  review send's state half — the snapshot posture and the end tool's gate
+   *  key on the open round). Call AFTER binding, BEFORE the prompt. */
+  async reviewKickoff(lessonId: string, sessionId: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/review/kickoff', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId, sessionId }),
+    })
+    this.refresh()
+  }
+
+  /** Upstream v0.39: settle the review round from the FALLBACK self-rate strip
+   *  (the tutor never converged) — same state path as the end tool. */
+  async endReview(lessonId: string, quality: number): Promise<{ lessonTitle: string; intervalDays: number; nextDueLessonId: string | null; nextDueLessonTitle: string | null } | null> {
+    const r = await fetchJson('/lookatstudy/api/review/end', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lessonId, quality }),
+    }) as { lessonTitle?: string; intervalDays?: number; nextDue?: { lessonId: string; lessonTitle: string } | null }
+    this.refresh()
+    if (r === null || typeof r !== 'object') return null
+    return {
+      lessonTitle: r.lessonTitle ?? '',
+      intervalDays: r.intervalDays ?? 0,
+      nextDueLessonId: r.nextDue?.lessonId ?? null,
+      nextDueLessonTitle: r.nextDue?.lessonTitle ?? null,
+    }
+  }
+
+  /** Upstream v0.41: system-executed revert of an applied proposal. */
+  async revokeProposal(id: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/proposal/revoke', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    this.refresh()
+  }
+
+  /** Upstream v0.41: system-executed revert of an applied profile proposal. */
+  async revokeProfileProposal(id: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/profile/revoke', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    this.refresh()
+  }
+
   /** Upstream v0.36: save the learner's OWN profile edit (the human path —
    *  this is also what marks older AI suggestions stale). */
   async saveProfile(patch: Record<string, unknown>): Promise<void> {
@@ -568,6 +632,10 @@ export function useStudy(): {
   examRegenerate: (lessonId: string) => Promise<void>
   addUserNote: (lessonId: string, quote: string) => Promise<void>
   recordReview: (lessonId: string, quality: 1 | 4 | 5) => Promise<void>
+  reviewKickoff: (lessonId: string, sessionId: string) => Promise<void>
+  endReview: (lessonId: string, quality: number) => Promise<{ lessonTitle: string; intervalDays: number; nextDueLessonId: string | null; nextDueLessonTitle: string | null } | null>
+  revokeProposal: (id: string) => Promise<void>
+  revokeProfileProposal: (id: string) => Promise<void>
   bindLessonSession: (lessonId: string, sessionId: string | null, title?: string) => Promise<void>
   lessonThreadOp: (lessonId: string, sessionId: string, op: 'rename' | 'archive' | 'delete', extra?: { title?: string; archived?: boolean }) => Promise<{ active: string | null; threads: number }>
   setCourseScope: (courseId: string, scope: 'lesson' | 'course') => Promise<void>
@@ -603,6 +671,10 @@ export function useStudy(): {
     examRegenerate: studyStore.examRegenerate.bind(studyStore),
     addUserNote: studyStore.addUserNote.bind(studyStore),
     recordReview: studyStore.recordReview.bind(studyStore),
+    reviewKickoff: studyStore.reviewKickoff.bind(studyStore),
+    endReview: studyStore.endReview.bind(studyStore),
+    revokeProposal: studyStore.revokeProposal.bind(studyStore),
+    revokeProfileProposal: studyStore.revokeProfileProposal.bind(studyStore),
     bindLessonSession: studyStore.bindLessonSession.bind(studyStore),
     lessonThreadOp: studyStore.lessonThreadOp.bind(studyStore),
   }

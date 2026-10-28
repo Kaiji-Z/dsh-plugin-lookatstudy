@@ -180,6 +180,29 @@ export function reviewLine(value: ReviewValue): string {
   return `🔁 quality ${value.quality}/5 — next review in ${value.intervalDays}d (${value.repetitions} in a row), due ${value.dueAt.slice(0, 10)}`
 }
 
+/** Structural slice of the end-review tool value (both status arms). */
+export interface ReviewOutcomeValue {
+  status?: string
+  lessonTitle?: string
+  quality?: number
+  intervalDays?: number
+  nextDueLessonTitle?: string
+  message?: string
+}
+
+/**
+ * Display lines for a settled review round (upstream v0.39 收束卡's text half).
+ * @param value - end-review tool value.
+ * @returns card lines.
+ */
+export function reviewOutcomeLine(value: ReviewOutcomeValue): string[] {
+  if (value.status !== 'ended') {
+    return [`⛔ ${value.message ?? 'review settlement rejected'}`]
+  }
+  const next = value.nextDueLessonTitle !== undefined ? ` · next due: ${value.nextDueLessonTitle}` : ''
+  return [`🏁 Review settled — quality ${String(value.quality ?? '?')}/5, next in ${String(value.intervalDays ?? '?')}d${next}`]
+}
+
 /**
  * Display lines for a completed lesson.
  * @param value - complete tool value.

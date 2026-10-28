@@ -247,6 +247,16 @@ body.pane-dragging *{cursor:col-resize}
 .lks-ratecard{flex:none;display:flex;flex-direction:column;gap:8px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-state-business-tertiary);padding:10px 12px;margin-bottom:8px}
 .lks-ratecard-title{font-size:13px;font-weight:600;color:var(--dsw-alias-label-primary-bluish)}
 .lks-ratecard-opts{display:flex;gap:6px}
+.lks-ratecard-review{margin:0 0 8px}
+.lks-undostrip{flex:none;display:flex;align-items:center;gap:6px;margin:6px 12px 0;padding:4px 8px;border-radius:8px;background:var(--dsw-alias-state-neutral-secondary);border:1px dashed var(--dsw-alias-border-l2);overflow-x:auto}
+.lks-undostrip-row{flex:none;display:inline-flex;align-items:center;gap:6px;padding:3px 8px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-state-neutral-primary);font-size:12px;color:var(--dsw-alias-label-primary-bluish);cursor:pointer}
+.lks-undostrip-row:hover{border-color:var(--dsw-alias-border-active)}
+.lks-undostrip-label{max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lks-undostrip-act{color:var(--dsw-alias-label-brand);font-weight:600}
+.lks14-reviewstrip{flex:none;display:flex;align-items:center;gap:10px;margin:8px 12px 0;padding:10px 12px;border-radius:10px;background:var(--dsw-alias-state-business-tertiary);border:1px solid var(--dsw-alias-border-l2);font-size:12.5px;color:var(--dsw-alias-label-primary-bluish)}
+.lks14-reviewstrip .lks14-reviewstrip-label{flex:1;min-width:0}
+.lks14-reviewstrip.outcome .lks14-reviewstrip-text{flex:1;min-width:0}
+.lks14-threadmenu-kind{flex:none;padding:1px 6px;border-radius:6px;font-size:11px;background:var(--dsw-alias-state-business-tertiary);color:var(--dsw-alias-label-brand)}
 .lks-ratecard-opt{flex:1;font:inherit;font-size:12.5px;font-weight:600;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:9px;padding:7px 10px;cursor:pointer}
 .lks-ratecard-opt:hover{border-color:var(--dsw-alias-state-business-primary)}
 .lks-ratecard-opt.again:hover{border-color:var(--dsw-alias-state-error-primary)}

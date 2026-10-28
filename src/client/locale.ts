@@ -84,10 +84,29 @@ export const ZH: StudyDict = {
   'review.done.good': '已安排下次复习',
   'review.done.again': '明天再来一遍',
   'review.jump': '点开这一课去复习',
+  // v0.39 复习会话(conversational review sessions)
+  'review.session.kickoff': '开始复习「{lesson}」——请以复习导师身份主持:先忆后问,开场用一个回忆性问题,不要先贴课文。{weak}复习 3~6 轮后调用 study_end_review_session 收束(quality 按标尺 1~5 评定,附 summary 与 weakPoints)。',
+  'review.session.kickoff.weak': '上一轮留下的薄弱点({weak})是第一提问对象。',
+  'review.session.go': '和导师复习',
+  'review.session.quick': '快速自评',
+  'review.session.quick.hint': '不开对话,直接三键自评',
+  'review.fallback.title': '导师没收束?自评收束本轮复习:',
+  'review.fallback.soso': '勉强想起',
+  'review.outcome.title': '复习已收束 — 质量 {q}/5',
+  'review.outcome.sub': '下次复习约 {days} 天后',
+  'review.outcome.weak': '下轮重点:{weak}',
+  'review.outcome.next': '复习下一课:{lesson}',
+  'review.outcome.done': '本轮复习已收束,约 {days} 天后再来',
+  'threads.review.tag': '复习',
   'review.nudge': '有 {n} 课到了复习时间，先回来练一遍？',
   'review.nudge.go': '去复习',
   'rail.search.jump': '打开这一课',
   'proposal.banner': '《{lesson}》可以提前毕业了',
+  // v0.41 提议撤销
+  'proposal.undo': '撤销',
+  'proposal.undo.done': '已撤销,恢复到应用前',
+  'proposal.undo.lesson': '撤销「{lesson}」的完成提议',
+  'proposal.undo.profile': '撤销画像提议',
   'proposal.accept.msg': '我接受《{lesson}》的掌握度提议，帮我标记为掌握。',
   'proposal.decline.msg': '《{lesson}》我先再练练，暂不接受提前毕业。',
   'boundary.done': '本课完成，皇冠到手！',
@@ -499,10 +518,29 @@ export const EN: StudyDict = {
   'review.done.good': 'Next review scheduled',
   'review.done.again': 'Back again tomorrow',
   'review.jump': 'Open this lesson to review',
+  // v0.39 review sessions (conversational review tutor)
+  'review.session.kickoff': 'Start reviewing "{lesson}" — host this as the review tutor: recall first, open with one recall question, never open with the lesson text. {weak}After 3-6 rounds close with study_end_review_session (grade quality on the 1-5 scale, with summary and weakPoints).',
+  'review.session.kickoff.weak': 'The weak points left last round ({weak}) are your first questions.',
+  'review.session.go': 'Review with tutor',
+  'review.session.quick': 'Quick self-rate',
+  'review.session.quick.hint': 'No conversation — straight to the 3-key self-rate',
+  'review.fallback.title': 'Tutor never closed the round? Settle it yourself:',
+  'review.fallback.soso': 'Barely recalled',
+  'review.outcome.title': 'Review settled — quality {q}/5',
+  'review.outcome.sub': 'next review in about {days} days',
+  'review.outcome.weak': 'focus next round: {weak}',
+  'review.outcome.next': 'Review next: {lesson}',
+  'review.outcome.done': 'Review settled — see you in about {days} days',
+  'threads.review.tag': 'review',
   'review.nudge': '{n} lessons are due for review — come practice first?',
   'review.nudge.go': 'Review now',
   'rail.search.jump': 'Open this lesson',
   'proposal.banner': '{lesson} is ready to graduate early',
+  // v0.41 proposal undo
+  'proposal.undo': 'Undo',
+  'proposal.undo.done': 'Undone — restored to pre-apply',
+  'proposal.undo.lesson': 'Undo the completion proposal for "{lesson}"',
+  'proposal.undo.profile': 'Undo the profile proposal',
   'proposal.accept.msg': 'I accept the mastery proposal for "{lesson}" — mark it mastered.',
   'proposal.decline.msg': 'I want more practice on "{lesson}" before graduating.',
   'boundary.done': 'Lesson complete — crown earned!',
@@ -852,6 +890,21 @@ export const STUDY_NS = 'lookatstudy'
 export type StudyT = (key: string, params?: Record<string, unknown>) => string
 
 /**
+ * First-boot language follows the system locale (upstream v0.39.1
+ * localeToUiLang): a zh variant → zh, anything else → en, NO locale info →
+ * zh (the pre-0.27 default, zero drift). Only the FALLBACK path (no host
+ * locale service) ever consults this — the host's own locale decision (its
+ * settings) always wins, exactly like upstream's "explicit choice never
+ * overwritten" tier. Pure; injectable for tests.
+ */
+export function systemStudyLang(nav?: { language?: string; languages?: readonly string[] } | null): 'zh' | 'en' {
+  const langs = nav?.languages !== undefined && nav.languages.length > 0 ? nav.languages : nav?.language !== undefined ? [nav.language] : []
+  const first = langs.find(l => typeof l === 'string' && l.trim() !== '')
+  if (first === undefined) return 'zh'
+  return first.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+}
+
+/**
  * Pure translator with the service's semantics: own-locale dict → zh
  * fallback → the key itself, `{name}` interpolation left untouched when the
  * param is missing.
@@ -899,11 +952,12 @@ export function registerStudyLocale(locale?: LocaleServiceFace): () => void {
  * @param locale - the client locale service when present.
  */
 export function studyTranslator(locale?: LocaleServiceFace): StudyT {
-  return locale === undefined ? makeT('zh') : locale.bind(STUDY_NS)
+  return locale === undefined ? makeT(systemStudyLang(typeof navigator === 'undefined' ? null : navigator)) : locale.bind(STUDY_NS)
 }
 
-/** The module's active translator — zh until the view factory installs the live bind. */
-let activeT: StudyT = makeT('zh')
+/** The module's active translator — system-locale default (upstream v0.39.1)
+ * until the view factory installs the live bind. */
+let activeT: StudyT = makeT(systemStudyLang(typeof navigator === 'undefined' ? null : navigator))
 
 /**
  * Install the client-wide translator (called once at client apply, before

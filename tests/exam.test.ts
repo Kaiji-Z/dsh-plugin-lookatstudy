@@ -58,9 +58,17 @@ test('pure exam logic mirrors upstream: stars, quota, dynamic time limits', () =
   assert.equal(accuracyToStars(0.6), 1)
   assert.equal(accuracyToStars(0.59), 0)
   assert.deepEqual(planExamQuota([]), [])
-  assert.equal(planExamQuota(['a', 'b', 'c', 'd']).reduce((x, y) => x + y), 6)
-  assert.equal(planExamQuota(Array.from({ length: 8 }, (_v, i) => `k${i}`)).reduce((x, y) => x + y), 12)
-  assert.equal(planExamQuota(Array.from({ length: 12 }, (_v, i) => `k${i}`)).reduce((x, y) => x + y), 15)
+  // v0.38 coverage-first quota (upstream 6bdd2ce): every KC exactly one
+  // question, clamp(3, 15); a KC shortage tops the total up to the floor,
+  // a surplus samples evenly with first and last always in.
+  assert.deepEqual(planExamQuota(['a', 'b', 'c', 'd']), [1, 1, 1, 1])
+  assert.equal(planExamQuota(['a', 'b']).reduce((x, y) => x + y), 3)
+  assert.equal(planExamQuota(Array.from({ length: 8 }, (_v, i) => `k${i}`)).reduce((x, y) => x + y), 8)
+  assert.equal(planExamQuota(Array.from({ length: 12 }, (_v, i) => `k${i}`)).reduce((x, y) => x + y), 12)
+  const sampled = planExamQuota(Array.from({ length: 20 }, (_v, i) => `k${i}`))
+  assert.equal(sampled.reduce((x, y) => x + y, 0), 15)
+  assert.equal(sampled[0], 1)
+  assert.equal(sampled[19], 1)
   // dynamic relaxation: short base ≥60s; code and formulas push up; clamp at 300
   const short = questionTimeLimitSec('1+1=?')
   const withCode = questionTimeLimitSec('阅读代码:\n```\nconst x = 1\n```\n输出什么?')
@@ -119,7 +127,7 @@ test('study_lesson on an exam node carries examGuide (quota from section KCs + r
   assert.ok(lesson.examGuide, 'exam nodes carry the guide')
   // section KCs: 概念A+概念B on lesson one, none on the other → kcCount 2, quota ceil(2*1.5)=3 → clamp min 5
   assert.equal(lesson.examGuide.kcCount, 2)
-  assert.equal(lesson.examGuide.questionCount, 5, 'quota clamps to the 5-question floor')
+  assert.equal(lesson.examGuide.questionCount, 3, 'v0.38 coverage-first quota: every KC exactly one, tops up to the 3-question floor')
   assert.ok(lesson.examGuide.timeLimitRule.includes('clamp 60–300'))
   assert.ok(lesson.examGuide.starsRule.includes('≥95%'))
   // study lessons never carry it
@@ -132,6 +140,6 @@ test('the rendered lesson text carries the examGuide (live-test defect fix: rend
   const tool = byName.get('study_lesson')!
   const value = await tool.execute({ lessonId: examId }, { signal: new AbortController().signal } as never)
   const rendered = tool.output!.render!({ lessonId: examId }, value as never).map(b => (b as { text: string }).text).join('\n')
-  assert.ok(rendered.includes('exam: 5 questions'), `render must surface the guide: ${rendered.slice(0, 200)}`)
+  assert.ok(rendered.includes('exam: 3 questions'), `render must surface the guide: ${rendered.slice(0, 200)}`)
   assert.ok(rendered.includes('clamp 60–300'))
 })

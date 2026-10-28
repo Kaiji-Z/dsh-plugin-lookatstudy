@@ -13,7 +13,7 @@ import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { computeSm2, type ReviewQuality, type Sm2State } from './vendor/sm2.ts'
 import { masteryToCrown, updateMastery } from './vendor/bkt.ts'
-import { accuracyToStars, EXAM_MAX_QUESTIONS, EXAM_MIN_QUESTIONS } from './vendor/exam-logic.ts'
+import { accuracyToStars, EXAM_MAX_QUESTIONS, EXAM_MIN_QUESTIONS, planExamQuota } from './vendor/exam-logic.ts'
 import { computeStreakTransition } from './vendor/streak-transition.ts'
 import { XP_CORRECT, XP_WRONG, XP_MASTERED } from './vendor/xp.ts'
 import { emptyProfile, applyProfilePatch, parseProfile, type LearnerProfile, type LearnerProfilePatch, type MotiveStage } from './learner-profile.ts'
@@ -69,13 +69,35 @@ export interface FrictionEntry {
   at: string
 }
 
+/**
+ * The row-level diff snapshot taken when a mastery proposal is APPLIED
+ * (upstream v0.41 提议撤销, git-revert style): revoke restores exactly these
+ * rows. Deliberately conservative (0.27 SPEC): the lesson's own `status` and
+ * every unlock it caused stay — a revert never re-locks course progression.
+ */
+export interface MasteryApplySnapshot {
+  mastery: number | null
+  conceptMastery: Record<number, number> | null
+  humanGraded: boolean
+  completedAt: string | null
+  sm2: Sm2State | null
+  dueAt: string | null
+  /** XP total at apply time + what this apply itself awarded — the inverse
+   *  compensation's inputs (apply-then-earn is never clawed back). */
+  xpTotalBefore: number
+  xpAwarded: number
+}
+
 /** A tutor-proposed state change awaiting the learner's decision in chat. */
 export interface MasteryProposal {
   id: string
   lessonId: string
   rationale: string
-  status: 'pending' | 'applied' | 'rejected'
+  status: 'pending' | 'applied' | 'rejected' | 'revoked'
   createdAt: string
+  /** Present on applied proposals (the revoke path's restore source). */
+  appliedSnapshot?: MasteryApplySnapshot
+  appliedAt?: string
 }
 
 /**
@@ -89,8 +111,11 @@ export interface ProfileProposal {
   id: string
   rationale: string
   patch: LearnerProfilePatch
-  status: 'pending' | 'applied' | 'rejected' | 'stale'
+  status: 'pending' | 'applied' | 'rejected' | 'stale' | 'revoked'
   createdAt: string
+  /** Present on applied proposals (the revoke path's restore source). */
+  appliedSnapshot?: { profileBefore: LearnerProfile; updatedAtAtApply: string }
+  appliedAt?: string
 }
 
 /** One lesson: content plus the learner's tracked state. */
@@ -217,10 +242,44 @@ export interface LessonThreadMeta {
   /** Upstream gear-menu archive: archived threads keep their sediment but
    *  leave the switcher list (and the active pointer). Absent = active. */
   status?: 'active' | 'archived'
+  /** Upstream v0.39 review sessions: 'review' threads host the conversational
+   *  review tutor (【复习导师姿态】 + study_end_review_session); 'chat' is every
+   *  teaching thread. Absent = 'chat' (pre-0.27 files migrate idempotently). */
+  kind?: 'chat' | 'review'
+  /** Review threads only — the live round + the last closing record (upstream
+   *  review-session round state + weak-point continuity). Absent on chat
+   *  threads and on review threads that never opened a round. */
+  reviewState?: ThreadReviewState
   /** The lessons this thread has been sent from (0.23.0 course scope): the
    *  coverage label's source and the mirror-sync set. Order-preserving,
    *  deduped; absent on pre-0.23 entries. */
   touchedLessons?: string[]
+}
+
+/**
+ * A review thread's round state (upstream v0.39 shared/review-session,
+ * state-ified): `open` is the double-gate against double settlement (our
+ * rounds are STATE-driven — we own both the kickoff send and the end tool, so
+ * no history-marker scan is needed); `lastOutcome` is the closing record the
+ * next round's opening question targets (weak-point continuity).
+ */
+export interface ThreadReviewState {
+  /** The lesson this review thread reviews — under course scope the shared
+   *  group hosts review threads of MANY lessons; this is the discriminator
+   *  ({@link reviewThreadOf} filters on it). */
+  lessonId: string
+  /** True from the kickoff until study_end_review_session (or the fallback
+   *  card) settles the round. A settled thread re-opens on the next kickoff. */
+  open: boolean
+  /** The most recent closing record, when a round ever settled. */
+  lastOutcome?: {
+    quality: number
+    summary: string
+    weakPoints: string[]
+    intervalDays: number
+    nextDueAt: string
+    endedAt: string
+  }
 }
 
 /** A lesson's thread group (upstream v0.5: 节点 = 会话组 — many threads, one active). */
@@ -1025,7 +1084,7 @@ export interface ExamBankQuestionInput {
 }
 
 /** Validate and land the tutor's question bank (anti-hallucination: KC titles must exist). */
-export function applyExamBank(state: LearningState, lessonId: string, questions: ExamBankQuestionInput[], now: Date): { questionCount: number; kcCount: number } {
+export function applyExamBank(state: LearningState, lessonId: string, questions: ExamBankQuestionInput[], now: Date): { questionCount: number; kcCount: number; hints: string[] } {
   const ref = findLesson(state, lessonId)
   if (ref.lesson.kind !== 'exam') {
     throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} is not an exam node`)
@@ -1057,7 +1116,25 @@ export function applyExamBank(state: LearningState, lessonId: string, questions:
     }
   })
   ref.lesson.examBank = { status: 'ready', questions: bank, generatedAt: now.toISOString() }
-  return { questionCount: bank.length, kcCount: new Set(bank.map(q => q.kcTitle).filter(k => k !== null)).size }
+  // Upstream v0.38 考试范围三修's quota discipline, SOFT here (SPEC): the bank
+  // lands, and the receipt carries coverage hints the tutor (or the next
+  // regeneration) can act on — never a hard rejection for volume alone.
+  const hints: string[] = []
+  const kcUnionList = [...kcUnion]
+  const quotaOf = new Map(kcUnionList.map((title, i) => [title, planExamQuota(kcUnionList)[i] ?? 0]))
+  const perKc = new Map<string, number>()
+  for (const q of bank) {
+    if (q.kcTitle !== null) perKc.set(q.kcTitle, (perKc.get(q.kcTitle) ?? 0) + 1)
+  }
+  const overQuota = [...perKc.entries()].filter(([title, count]) => count > (quotaOf.get(title) ?? 1))
+  if (overQuota.length > 0) {
+    hints.push(`coverage beats volume (upstream v0.38): each knowledge component should carry exactly one question — ${overQuota.map(([title, count]) => `${title}×${String(count)}`).join(', ')} exceed their quota`)
+  }
+  const uncovered = kcUnionList.filter(title => !(perKc.has(title) || quotaOf.get(title) === 0))
+  if (uncovered.length > 0 && bank.length < EXAM_MAX_QUESTIONS) {
+    hints.push(`these section concepts have no question yet: ${uncovered.slice(0, 8).join(' / ')} — prefer covering them over adding seconds elsewhere`)
+  }
+  return { questionCount: bank.length, kcCount: new Set(bank.map(q => q.kcTitle).filter(k => k !== null)).size, hints }
 }
 
 /** Drop the bank back to idle (regenerate; open attempts settle against their
@@ -1353,7 +1430,7 @@ function repointMirrorsOff(state: LearningState, key: string, threadId: string |
  * thread's touchedLessons coverage, and mirrors sync per
  * {@link repointRolledMirrors}.
  */
-export function bindLessonThread(state: LearningState, lessonId: string, sessionId: string | null, title?: string | null): LessonThreadGroup {
+export function bindLessonThread(state: LearningState, lessonId: string, sessionId: string | null, title?: string | null, kind?: 'review'): LessonThreadGroup {
   // Audit C26: every other mutator validates existence first — an
   // unauthenticated route must not mint orphan groups for arbitrary strings.
   const { key, scope } = ownerKeyFor(state, lessonId)
@@ -1370,7 +1447,7 @@ export function bindLessonThread(state: LearningState, lessonId: string, session
   const existing = group.threads.find(t => t.id === sessionId)
   if (existing === undefined) {
     const now = new Date().toISOString()
-    group.threads.push({ id: sessionId, title: (title ?? '').trim() !== '' ? title!.trim() : lessonId, createdAt: now, lastAt: now, touchedLessons: [lessonId] })
+    group.threads.push({ id: sessionId, title: (title ?? '').trim() !== '' ? title!.trim() : lessonId, createdAt: now, lastAt: now, kind: kind === 'review' ? 'review' : 'chat', touchedLessons: [lessonId] })
   } else {
     existing.lastAt = new Date().toISOString()
     // an active pointer at an archived thread is a contradiction — re-binding
@@ -1383,6 +1460,52 @@ export function bindLessonThread(state: LearningState, lessonId: string, session
   state.lessonThreads[key] = group
   state.lessonSessions[lessonId] = sessionId
   return group
+}
+
+/**
+ * The lesson's owner group (whatever scope) — the one access point review
+ * helpers use; null when the lesson never minted a group.
+ */
+function ownerGroupOf(state: LearningState, lessonId: string): LessonThreadGroup | null {
+  const { key } = ownerKeyFor(state, lessonId)
+  return state.lessonThreads?.[key] ?? null
+}
+
+/**
+ * The lesson's review thread (upstream v0.39: one per lesson, continued
+ * across rounds). Under course scope the group is the course's — the review
+ * thread is still per-lesson by identity (kind=review inside the shared
+ * group). Null when no review session ever started.
+ */
+export function reviewThreadOf(state: LearningState, lessonId: string): LessonThreadMeta | null {
+  return ownerGroupOf(state, lessonId)?.threads.find(t => t.kind === 'review' && t.status !== 'archived' && t.reviewState?.lessonId === lessonId) ?? null
+}
+
+/**
+ * The lesson's owner group's ACTIVE thread (the panel's staged session is the
+ * group's active pointer) — the snapshot's review-posture fork keys on this.
+ */
+export function activeThreadOf(state: LearningState, lessonId: string): LessonThreadMeta | null {
+  const group = ownerGroupOf(state, lessonId)
+  return group?.threads.find(t => t.id === group.active) ?? null
+}
+
+/**
+ * Open a review round: called at the kickoff send — the thread (existing or
+ * freshly minted by {@link bindLessonThread}) becomes the group's active and
+ * its round flips open (the end tool's double-gate partner). Returns the
+ * thread for the kickoff prompt's continuity lines.
+ */
+export function openReviewRound(state: LearningState, lessonId: string, sessionId: string, now: Date): LessonThreadMeta {
+  const { key } = ownerKeyFor(state, lessonId)
+  const group = bindLessonThread(state, lessonId, sessionId, undefined, 'review')
+  const thread = group.threads.find(t => t.id === sessionId)
+  if (thread === undefined) throw new Error(`lookatstudy-plugin: review thread ${JSON.stringify(sessionId)} missing after bind`)
+  if (thread.kind !== 'review') thread.kind = 'review'
+  thread.reviewState = { lessonId, open: true, ...(thread.reviewState?.lastOutcome === undefined ? {} : { lastOutcome: thread.reviewState.lastOutcome }) }
+  state.lessonThreads[key] = group
+  void now
+  return thread
 }
 
 /** Roll the group's active pointer to the freshest ACTIVE thread (or null)
@@ -1704,6 +1827,21 @@ export function resolveProposal(state: LearningState, proposalId: string, accept
   }
   if (accept) {
     const ref = findLesson(state, proposal.lessonId)
+    // Upstream v0.41 提议撤销: snapshot the rows this apply touches BEFORE
+    // mutating — revoke (below) restores exactly these. Status and unlocks
+    // stay out of the snapshot by design (a revert never re-locks).
+    proposal.appliedSnapshot = {
+      mastery: ref.lesson.mastery,
+      conceptMastery: ref.lesson.conceptMastery === null ? null : { ...ref.lesson.conceptMastery },
+      humanGraded: ref.lesson.humanGraded === true,
+      completedAt: ref.lesson.completedAt,
+      sm2: ref.lesson.sm2 === null ? null : { ...ref.lesson.sm2 },
+      dueAt: ref.lesson.dueAt,
+      xpTotalBefore: state.xp.total,
+      // Today's apply awards no XP itself (graduation XP rides recordAnswer
+      // only) — recorded anyway so a future XP-on-apply reverts correctly.
+      xpAwarded: 0,
+    }
     // The learner's explicit acceptance IS human grading — it lifts the
     // tutor-only mastery cap on this lesson (upstream v0.35 anti-farming).
     ref.lesson.humanGraded = true
@@ -1723,6 +1861,7 @@ export function resolveProposal(state: LearningState, proposalId: string, accept
       ref.lesson.sm2 = { easeFactor: review.easeFactor, intervalDays: review.intervalDays, repetitions: review.repetitions }
       ref.lesson.dueAt = review.dueAt
     }
+    proposal.appliedAt = now.toISOString()
   }
   proposal.status = accept ? 'applied' : 'rejected'
   // Audit C28: resolved proposals are sediment — keep the newest 20 plus every
@@ -1808,7 +1947,16 @@ export function resolveProfileProposal(state: LearningState, proposalId: string,
       proposal.status = 'stale'
       return proposal
     }
+    // Upstream v0.41 提议撤销: the pre-merge profile is the revoke source —
+    // copied, never referenced (later patches must not leak into a revert).
+    // updatedAtAtApply pins the stamp for the revoke conflict check: any later
+    // change to it means a hand edit (or another apply) followed this apply.
+    const profileBefore = { ...(state.profile ?? emptyProfile()) }
     state.profile = applyProfilePatch(state.profile ?? emptyProfile(), proposal.patch)
+    // Pin the stamp the APPLY itself left — a later hand edit re-stamps and
+    // the revoke conflict check compares against exactly this value.
+    proposal.appliedSnapshot = { profileBefore, updatedAtAtApply: state.profile.updatedAt }
+    proposal.appliedAt = now.toISOString()
   }
   proposal.status = accept ? 'applied' : 'rejected'
   // Sediment discipline (mirrors resolveProposal): resolved entries keep the
@@ -1819,6 +1967,141 @@ export function resolveProfileProposal(state: LearningState, proposalId: string,
     const keep = new Set(resolved.slice(resolved.length - 20).map(p => p.id))
     state.profileProposals = state.profileProposals.filter(p => p.status === 'pending' || keep.has(p.id))
   }
+  return proposal
+}
+
+/**
+ * Settle a review round (upstream v0.39 end_review_session, both call sites —
+ * the tutor's tool and the learner's fallback card): writes SM-2 ONLY (never
+ * BKT — mastery evolves through graded answers alone), XP by the same mapping
+ * as the self-rate path (≥4 correct / ≤2 wrong / 3 nothing), and the streak
+ * always (a pure-review day never breaks the chain — the v0.39 fix). The
+ * round closes and the closing record becomes the next round's continuity
+ * source. Double-gate: the lesson's review thread must exist and be open.
+ * @param state - state to mutate.
+ * @param lessonId - the reviewed lesson.
+ * @param quality - the 1–5 closing grade (passed to SM-2 as-is, like the
+ *        self-rate card's 1/4/5).
+ * @param summary - one or two sentences on this round (shown to the learner).
+ * @param weakPoints - concept names to target first next round.
+ * @param now - current time.
+ * @returns the receipt (interval, next due, XP/streak delta, and the NEXT due
+ *          lesson for the 复习下一课 affordance).
+ */
+export function endReviewSession(
+  state: LearningState,
+  lessonId: string,
+  quality: number,
+  summary: string,
+  weakPoints: string[],
+  now: Date,
+): { lessonId: string; lessonTitle: string; intervalDays: number; nextDueAt: string; xp: { totalXp: number; todayXp: number; streak: LearningState['streak'] }; nextDue: DueReview | null } {
+  const thread = reviewThreadOf(state, lessonId)
+  if (thread === null) {
+    throw new Error(`lookatstudy-plugin: lesson ${JSON.stringify(lessonId)} has no review session — start one from the review entry first`)
+  }
+  if (thread.reviewState?.open !== true) {
+    throw new Error(`lookatstudy-plugin: this review round is already settled — do not call study_end_review_session again (just answer normally)`)
+  }
+  const schedule = recordReview(state, lessonId, quality as ReviewQuality, now)
+  const xpKind = quality >= 4 ? XP_CORRECT : quality <= 2 ? XP_WRONG : 0
+  const xp = noteXpActivity(state, xpKind, now)
+  thread.reviewState = {
+    lessonId,
+    open: false,
+    lastOutcome: {
+      quality,
+      summary,
+      weakPoints,
+      intervalDays: schedule.intervalDays,
+      nextDueAt: schedule.dueAt,
+      endedAt: now.toISOString(),
+    },
+  }
+  // 复习下一课's target: the oldest due lesson OTHER than this one.
+  const nextDue = dueReviews(state, undefined, now).find(d => d.lessonId !== lessonId) ?? null
+  return {
+    lessonId,
+    lessonTitle: schedule.ref.lesson.title,
+    intervalDays: schedule.intervalDays,
+    nextDueAt: schedule.dueAt,
+    xp,
+    nextDue,
+  }
+}
+
+/**
+ * Revoke an APPLIED mastery proposal (upstream v0.41 提议撤销, git-revert
+ * style): the rows snapshotted at apply restore exactly; the lesson's own
+ * status and every unlock it caused stay (a revert never re-locks progression
+ * — the 0.27 SPEC's conservative call); XP applies the inverse compensation
+ * (post-apply earnings are never clawed back). Conflict refusal: a NEWER
+ * applied proposal on the same lesson exists — reverting this one would
+ * overwrite its result.
+ * @param state - state to mutate.
+ * @param proposalId - the applied proposal to revert.
+ * @param now - current time.
+ * @returns the revoked proposal.
+ */
+export function revokeProposal(state: LearningState, proposalId: string, now: Date): MasteryProposal {
+  const proposal = state.proposals.find(p => p.id === proposalId)
+  if (proposal === undefined) throw new Error(`lookatstudy-plugin: unknown proposal id ${JSON.stringify(proposalId)}`)
+  if (proposal.status !== 'applied') {
+    throw new Error(`lookatstudy-plugin: proposal ${JSON.stringify(proposalId)} is ${proposal.status}, not applied — only an applied proposal can be revoked`)
+  }
+  const conflict = state.proposals.find(p => p.lessonId === proposal.lessonId && p.status === 'applied' && p.id !== proposal.id && (p.appliedAt ?? '') > (proposal.appliedAt ?? ''))
+  if (conflict !== undefined) {
+    throw new Error(`lookatstudy-plugin: a later applied proposal (${conflict.id}) exists on this lesson — revoke that one first`)
+  }
+  const snap = proposal.appliedSnapshot
+  if (snap === undefined) {
+    throw new Error(`lookatstudy-plugin: proposal ${JSON.stringify(proposalId)} predates revocation snapshots and cannot be reverted`)
+  }
+  const ref = findLesson(state, proposal.lessonId)
+  ref.lesson.mastery = snap.mastery
+  ref.lesson.conceptMastery = snap.conceptMastery === null ? null : { ...snap.conceptMastery }
+  ref.lesson.humanGraded = snap.humanGraded
+  ref.lesson.completedAt = snap.completedAt
+  ref.lesson.sm2 = snap.sm2 === null ? null : { ...snap.sm2 }
+  ref.lesson.dueAt = snap.dueAt
+  // Inverse XP compensation: subtract what THIS apply awarded, floor at the
+  // pre-apply total — anything earned after the apply survives untouched.
+  if (snap.xpAwarded > 0) {
+    state.xp.total = Math.max(snap.xpTotalBefore, state.xp.total - snap.xpAwarded)
+    state.xp.todayXp = Math.max(0, state.xp.todayXp - snap.xpAwarded)
+  }
+  proposal.status = 'revoked'
+  void now
+  return proposal
+}
+
+/**
+ * Revoke an APPLIED profile proposal: restores the pre-merge profile — unless
+ * the learner hand-edited since (profile.updatedAt past the apply), the same
+ * newer-human-input arbitration that makes proposals stale.
+ * @param state - state to mutate.
+ * @param proposalId - the applied proposal to revert.
+ * @param now - current time.
+ * @returns the revoked proposal.
+ */
+export function revokeProfileProposal(state: LearningState, proposalId: string, now: Date): ProfileProposal {
+  state.profileProposals ??= []
+  const proposal = state.profileProposals.find(p => p.id === proposalId)
+  if (proposal === undefined) throw new Error(`lookatstudy-plugin: unknown profile proposal id ${JSON.stringify(proposalId)}`)
+  if (proposal.status !== 'applied') {
+    throw new Error(`lookatstudy-plugin: profile proposal ${JSON.stringify(proposalId)} is ${proposal.status}, not applied — only an applied proposal can be revoked`)
+  }
+  const stampNow = (state.profile ?? emptyProfile()).updatedAt
+  const stampAtApply = proposal.appliedSnapshot?.updatedAtAtApply
+  if (stampAtApply !== undefined && stampNow !== stampAtApply) {
+    throw new Error(`lookatstudy-plugin: the profile was hand-edited after this proposal applied — revoking would overwrite newer human input`)
+  }
+  if (proposal.appliedSnapshot === undefined) {
+    throw new Error(`lookatstudy-plugin: profile proposal ${JSON.stringify(proposalId)} predates revocation snapshots and cannot be reverted`)
+  }
+  state.profile = { ...proposal.appliedSnapshot.profileBefore }
+  proposal.status = 'revoked'
+  void now
   return proposal
 }
 

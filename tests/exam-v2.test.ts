@@ -51,17 +51,17 @@ test('bank lifecycle: begin → apply (validated, anti-hallucination) → regene
   assert.equal(findLesson(state, examId).lesson.examBank?.status, 'generating')
   // ready banks resist a second begin (regeneration resets first)
   const applied = applyExamBank(state, examId, bank(), T0)
-  assert.deepEqual(applied, { questionCount: 5, kcCount: 2 })
+  assert.deepEqual(applied, { questionCount: 5, kcCount: 2, hints: ['coverage beats volume (upstream v0.38): each knowledge component should carry exactly one question — 概念A×3, 概念B×2 exceed their quota'] })
   beginExamGeneration(state, examId)
   assert.equal(findLesson(state, examId).lesson.examBank?.status, 'ready')
   // ids are plugin-assigned, kcTitle normalized
   const q0 = findLesson(state, examId).lesson.examBank!.questions[0]!
   assert.equal(q0.id, 'q0')
   assert.equal(q0.kcTitle, '概念A')
-  // validation: count window (5-15)
-  assert.throws(() => applyExamBank(state, examId, bank(4), T0), /5-15/)
-  assert.throws(() => applyExamBank(state, examId, bank(16), T0), /5-15/)
-  // validation: shape (pad to the 5-question floor so the count gate passes)
+  // validation: count window (3-15, the v0.38 coverage-first floor)
+  assert.throws(() => applyExamBank(state, examId, bank(2), T0), /3-15/)
+  assert.throws(() => applyExamBank(state, examId, bank(16), T0), /3-15/)
+  // validation: shape (pad inside the count window so the count gate passes)
   const padded = (bad: ExamBankQuestionInput): ExamBankQuestionInput[] => [...bank(4), bad]
   assert.throws(() => applyExamBank(state, examId, padded({ prompt: '', options: ['a', 'b'], answer: 0 }), T0), /empty prompt/)
   assert.throws(() => applyExamBank(state, examId, padded({ prompt: 'p', options: ['only'], answer: 0 }), T0), /2\+ non-empty options/)
@@ -158,8 +158,8 @@ test('study_exam_bank_apply lands the tutor bank; failures surface as tool error
   const byName = new Map<string, ToolDefinition>(tools.map(t => [t.name, t]))
   const tool = byName.get('study_exam_bank_apply')!
   assert.ok(tool, 'study_exam_bank_apply registered')
-  const out = await tool.execute({ lessonId: examId, questions: bank() }, exec) as { questionCount: number; kcCount: number; status: string }
-  assert.deepEqual(out, { lessonId: examId, questionCount: 5, kcCount: 2, status: 'ready' })
+  const out = await tool.execute({ lessonId: examId, questions: bank() }, exec) as { questionCount: number; kcCount: number; status: string; hints: string[] }
+  assert.deepEqual(out, { lessonId: examId, questionCount: 5, kcCount: 2, status: 'ready', hints: ['coverage beats volume (upstream v0.38): each knowledge component should carry exactly one question — 概念A×3, 概念B×2 exceed their quota'] })
   await assert.rejects(
     () => tool.execute({ lessonId: examId, questions: bank(5, () => '幻觉概念') }, exec),
     /concept union/,

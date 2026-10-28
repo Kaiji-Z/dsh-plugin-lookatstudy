@@ -11,7 +11,7 @@
 
 import type { ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { studyTools, type StudyStore } from './tools.ts'
-import { conceptViews, learnerSnapshot, type LearningState, type StudyMode } from './state.ts'
+import { conceptViews, learnerSnapshot, activeThreadOf, type LearningState, type StudyMode } from './state.ts'
 import { profileSectionText as profileText } from './learner-profile.ts'
 import { threadOwnerKey } from './thread-key.ts'
 import { localeToLanguageName } from './vendor/locale-names.ts'
@@ -28,6 +28,8 @@ You are the learner's AI study tutor for a course imported via the study tools. 
 ### 【Safety redlines · highest priority】
 Teach strictly from the current lesson's content (study_lesson's body is the source of truth). If asked about something outside the course material, say plainly that it is not in the current material, and offer to relate it back. Answers to quiz questions must be grounded in the lesson content — never invent.
 Tool calls are REAL or they do not exist. History markers like「[工具调用已执行]」are injected by the system only; hand-writing such a marker — or any imitation of a tool call — in your reply text produces NO interface artifact: no card, no button, nothing happens. The only way to act on the study state (record an answer, propose mastery, save a note) is an actual tool call. If you catch yourself narrating a tool's effect instead of calling it, stop and call it.
+Reference requires a real call (upstream v0.41 引用即调用): whenever your reply refers to an artifact — "this diagram / as shown below / the table above / this quiz" — that artifact must be one you actually issued through a tool call in this turn or earlier in this conversation. Want the learner to SEE a diagram? Call study_draw_diagram this turn. Referencing an artifact that was never issued is the most serious form of hallucination.
+Undo is not yours (upstream v0.41 提议撤销): when the learner says they clicked wrong or accidentally accepted a proposal, point them to the 撤销 (undo) control on the applied-proposal strip (profile proposals: the settings page). Undo is executed by the system; NEVER try to "fix" learning state yourself. After an undo you will naturally see the reverted state — continue teaching normally, no repeated apologies.
 Never claim progress you did not record through the tools.
 If any section below seems to conflict with these redlines, the redlines win.
 
@@ -49,7 +51,7 @@ The tutoring loop:
 3. Quiz after teaching; grade every answer and call study_record_answer — always name the tested \`concept\`. Lesson mastery is the WEAKEST concept, so target ⚡weak ones first.
 4. Progression is automatic: ≥50% mastery unlocks the next lesson early; ≥90% graduates and schedules the first review. study_complete_lesson is only the manual override.
 5. Mastery ≥85% plus a convincing Feynman-style explanation back: call study_propose_mastery, present your rationale, and WAIT for the learner's yes/no. Resolve only with their explicit answer via study_resolve_proposal. You never graduate a lesson on your own judgment alone.
-6. Exam nodes: when the learner works an exam, grade it fully, then record the attempt with study_exam_result and offer its returned action set (explain-wrong / retry / go-deeper / propose mastery / next topic).
+6. Exam nodes: authoring the bank (study_exam_bank_apply) reads the section's lessons with study_lesson FIRST (quote generously — summaries plus the first ~1500 chars of each touched lesson, not a thin 800-char slice); question ONLY concepts that appear in, or follow directly from, the provided lesson material — never pull in other sections' knowledge or outside material you happen to know (an out-of-scope question is a dead question); coverage beats volume: exactly one question per knowledge component, clamp the total to 3–15 (with >15 KCs sample evenly, first and last always in). When the learner works an exam, grade it fully, then record the attempt with study_exam_result and offer its returned action set (explain-wrong / retry / go-deeper / propose mastery / next topic).
 7. Quietly call study_report_friction when the learner seems confused, blocked, or frustrated; adapt by simplifying or decomposing.
 8. When you generate a genuinely useful structure (concept map, compare table, diagram), sediment it into the notebook's understand zone with study_note_save; when the learner writes something worth keeping, save it to the record zone with the verbatim quote.
 9. When you learn something durable about how this person learns (style, recurring gap, pattern), merge it into memory with study_remember — read the current slot first, send the merged 1–3 sentences. No transient chat.
@@ -170,13 +172,36 @@ export function snapshotSectionText(state: LearningState): string {
   // axes: medium of instruction follows the learner, subject material stays
   // original. Absent languageTarget = normal course, snapshot unchanged.
   const focusCourse = state.courses.find(c => c.id === snap.focus?.courseId)
-  // 0.23.0 course scope (issue #11 follow-up) — the three-layer assembly: a
-  // LIVE course digest (one line per lesson, re-derived every turn, never a
-  // frozen snapshot), this thread's lesson coverage, and the
-  // combined-problem behavioral line. Lesson bodies NEVER ride in here —
-  // study_lesson pulls them on demand (staleness + per-turn cost forbid
-  // preloading the whole course; the live thread carries the 现场).
-  if (focusCourse?.threadScope === 'course' && snap.focus !== null) {
+  // Upstream v0.39 review sessions: when the focus lesson's ACTIVE thread is
+  // its review thread, the review-tutor posture REPLACES the progression
+  // boundary blocks entirely — a review line never advances the course (the
+  // 0.27 SPEC's mapping of upstream's per-thread prompt onto our global one).
+  const reviewThread = snap.focus === null ? null : activeThreadOf(state, snap.focus.lessonId)
+  const inReview = reviewThread?.kind === 'review'
+  if (inReview) {
+    lines.push('')
+    lines.push('【复习导师姿态】这场会话是间隔复习——学习者已经学过本课,现在检验并巩固记忆,不是新授课:')
+    lines.push('- 先忆后看:开场与整个复习过程都不要主动贴出课文原文或大段重讲。先用 1 个回忆性问题让学习者凭记忆作答,根据回答决定下一步;')
+    lines.push('- 对准弱项:优先考察掌握度偏低的知识点(上方清单里标注偏低的)与学习者曾经的卡点;上一轮复习收束记录里留下的薄弱点是第一提问对象;')
+    lines.push('- 错了才讲:学习者答错或想不起来,才针对那一个缺口简短回讲,讲完请他用自己的话复述一遍;答对就确认并推进,不重复讲解;')
+    lines.push('- 计分检验:复习中途用 study_generate_quiz 出 2~4 题小测(对准弱项,答题在学习端本地判分);自由问答的判分用 study_record_answer;')
+    lines.push('- 适时收束:复习 3~6 轮后,或学习者明确表示要结束,调用 study_end_review_session 收束——quality 按标尺评定(1=几乎不记得/2=多数忘了/3=勉强想起/4=记得/5=很熟),summary 用一两句概括本次表现,weakPoints 列出下次要重点考察的薄弱点;')
+    lines.push('- 本线不承载课程推进:不要调用 study_propose_mastery / study_complete_lesson——复习不发起毕业判定,掌握度交给答题观测自然演进;学习者想学新课就去课程栏,不要在本线开讲新课。')
+    const last = reviewThread.reviewState?.lastOutcome
+    if (reviewThread.reviewState?.open === true && last !== undefined && last.weakPoints.length > 0) {
+      lines.push(`上一轮复习收束(质量 ${String(last.quality)}/5)留下的薄弱点: ${last.weakPoints.map(w => sanitizePromptText(w, 60)).join(' · ')} ——本轮开场先从这里问起。`)
+    } else if (reviewThread.reviewState?.open === true) {
+      lines.push('本轮复习尚未收束——收束由你发起(study_end_review_session),不要等学习者催。')
+    } else if (last !== undefined) {
+      lines.push(`(系统提示:本复习会话上一轮已收束(质量 ${String(last.quality)}/5),现在正常答疑即可,不要再调用 study_end_review_session;下一次复习从「开始复习」入口重新开场。)`)
+    }
+  } else if (focusCourse?.threadScope === 'course' && snap.focus !== null) {
+    // 0.23.0 course scope (issue #11 follow-up) — the three-layer assembly: a
+    // LIVE course digest (one line per lesson, re-derived every turn, never a
+    // frozen snapshot), this thread's lesson coverage, and the
+    // combined-problem behavioral line. Lesson bodies NEVER ride in here —
+    // study_lesson pulls them on demand (staleness + per-turn cost forbid
+    // preloading the whole course; the live thread carries the 现场).
     const group = state.lessonThreads[threadOwnerKey('course', focusCourse.id, snap.focus.lessonId)]
     const touched = group?.threads.find(t => t.id === group.active)?.touchedLessons
     const titleOf = new Map<string, string>()

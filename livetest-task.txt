@@ -32,4 +32,6 @@ A fragment is a reusable named selection set shared between queries. Fragments k
 
 11. Call study_import_url once with EXACTLY this URL: https://www.bilibili.com/video/BV1GJ411x7h7 — the expected outcome is a design-required brief grounded in the video's CC subtitles, OR an honest refusal if the video carries no CC subtitles. You must NOT call study_apply_design afterwards: importing is the learner's decision.
 
+12. Call study_end_review_session ONCE with quality 3 and a short summary — deliberately OUTSIDE any review session (no review thread was opened in this run). The honest result is a REJECTED status explaining that reviews run from the review entry; accept it, do NOT retry, and do not fabricate a review.
+
 Then write a two-sentence summary of the recorded learning state and finish with the LIVETEST DONE line.

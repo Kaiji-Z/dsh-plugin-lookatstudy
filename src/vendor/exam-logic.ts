@@ -5,25 +5,34 @@
 // state (bank + attempts in state.json); study_exam_result remains for
 // conversational grading and shares the same star thresholds.
 
-/** 每场考试的题量上限/下限。 */
-export const EXAM_MIN_QUESTIONS = 5;
+/** 每场考试的题量上限/下限。Plugin patch (v0.38 upstream 6bdd2ce): 5 → 3 —
+ * 配额改覆盖优先(每 KC 恰一题),题不在多而在精准。 */
+export const EXAM_MIN_QUESTIONS = 3;
 export const EXAM_MAX_QUESTIONS = 15;
 
 /**
- * 题量规划:目标题数 = clamp(ceil(KC数 × 1.5), 5, 15),round-robin 分配到各 KC。
- * 返回与 kcTitles 等长的数组,每项 = 该 KC 出几题。
- * 例:4 KC → 6 题 [2,2,1,1];8 KC → 12 题 [2,2,2,2,1,1,1,1];12 KC → 15 题。
+ * 题量规划:目标题数 = clamp(KC数, 3, 15),每 KC 恰好一题;KC > 15 时等距
+ * 采样(首尾必选)。Plugin patch (v0.38 upstream 6bdd2ce 覆盖优先):旧公式
+ * clamp(ceil(KC×1.5), 5, 15) round-robin 会把题堆到少数 KC 上,且 KC 少于
+ * 下限时被迫重复出题——覆盖优先下每 KC 一题,不足 3 题用非本 KC 题补足也
+ * 不再发生(题库本身允许无 kcTitle 的题)。返回与 kcTitles 等长的数组。
+ * 例:4 KC → [1,1,1,1] + 0 补齐位;8 KC → [1,1,1,1,1,1,1,1];18 KC → 15 题。
  */
 export function planExamQuota(kcTitles: string[]): number[] {
   const n = kcTitles.length;
   if (n === 0) return [];
-  const target = Math.min(
-    EXAM_MAX_QUESTIONS,
-    Math.max(EXAM_MIN_QUESTIONS, Math.ceil((n * 3) / 2)),
-  );
   const quotas = Array.from({ length: n }, () => 0);
-  for (let i = 0; i < target; i++) {
-    quotas[i % n]!++;
+  if (n <= EXAM_MAX_QUESTIONS) {
+    for (let i = 0; i < n; i++) quotas[i] = 1;
+    // KC 少于下限时,目标补到下限——前 (min - n) 个 KC 各再出一题。
+    const topUp = Math.max(0, EXAM_MIN_QUESTIONS - n);
+    for (let i = 0; i < topUp; i++) quotas[i % n]!++;
+    return quotas;
+  }
+  // n > max:等距采样 max 个(首尾必选)。
+  const step = (n - 1) / (EXAM_MAX_QUESTIONS - 1);
+  for (let i = 0; i < EXAM_MAX_QUESTIONS; i++) {
+    quotas[Math.round(i * step)] = 1;
   }
   return quotas;
 }

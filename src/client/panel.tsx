@@ -259,7 +259,7 @@ export function studyPanelView(ctx: ClientContext): () => ReactNode {
 type StudyData = ReturnType<typeof useStudy>['data']
 
 function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
-  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, lessonThreadOp, setCourseScope, uploadAttachment, setInterfaceLang } = useStudy()
+  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, lessonThreadOp, setCourseScope, uploadAttachment, setInterfaceLang, reviewKickoff, endReview, revokeProposal, revokeProfileProposal } = useStudy()
 
   // 0.24.0/0.24.1: push the host interface language to the plugin state (the
   // host keeps <html lang> in sync with the active locale) — study_apply_design
@@ -786,8 +786,11 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   /** The one send path: lazily stage the lesson thread, then prompt.
    * `targetLessonId` (issue #11 review routing) sends into ANOTHER lesson's
    * group: focus moves there first (the tutor's snapshot follows), then the
-   * target's active thread — or a fresh titled one — carries the prompt. */
-  const send = (text: string, threadTitle?: string, targetLessonId?: string): void => {
+   * target's active thread — or a fresh titled one — carries the prompt.
+   * `review` (upstream v0.39): route into the lesson's REVIEW thread (found
+   * or minted), open the review round state-side, and prompt with the review
+   * kickoff — the snapshot flips to the 复习导师姿态 on the same condition. */
+  const send = (text: string, threadTitle?: string, targetLessonId?: string, review?: boolean): void => {
     void (async () => {
       if (busy || lesson === null || text.trim() === '') return
       setBusy(true)
@@ -807,9 +810,20 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
         // active pointer first, the legacy single-binding map as fallback
         // (localBound is lesson-scoped: another lesson's group resolves from
         // the feed alone, and a stale rail focus never leaks in)
-        const fromLocal = boundSessionOf(bindId)
-        let sessionId = fromLocal ?? (threadGroupOf(bindId)?.active ?? data?.lessonSessions[bindId] ?? null)
+        // v0.39 review sessions: the REVIEW thread (kind=review) is the
+        // target — an existing one continues, absence mints a fresh session.
+        const ownerKey = threadKeyOf(bindId)
+        const group = ownerKey !== null ? data?.lessonThreads[ownerKey] : undefined
+        const reviewThreadId = review === true
+          ? group?.threads.find(t => t.kind === 'review' && t.status !== 'archived')?.id ?? null
+          : null
+        let sessionId = review === true ? reviewThreadId : null
         if (sessionId !== null && !sessionKnown(ctx, sessionId)) sessionId = null
+        if (sessionId === null) {
+          const fromLocal = review === true ? null : boundSessionOf(bindId)
+          sessionId = fromLocal ?? (threadGroupOf(bindId)?.active ?? data?.lessonSessions[bindId] ?? null)
+          if (sessionId !== null && !sessionKnown(ctx, sessionId)) sessionId = null
+        }
         if (sessionId === null) {
           const area = await fetch('/lookatstudy/api/study-workspace')
           if (!area.ok) throw new Error(`study area unavailable (HTTP ${String(area.status)})`)
@@ -829,6 +843,9 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
           // reuses invisible to the group (probe 2c/3 catch)
           await bindLessonSession(bindId, sessionId)
         }
+        // v0.39: open the review round BEFORE the prompt — the snapshot's
+        // review posture and the end tool's gate read the open round.
+        if (review === true) await reviewKickoff(bindId, sessionId)
         // Stage the thread (its event window only opens while staged); the
         // internal navigation must not hand the panel back.
         const shell = PANEL_SHELL.current
@@ -852,6 +869,19 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     })()
   }
 
+  /** v0.39: the review kickoff message (first round + continuity rounds).
+   * Weak-point continuity rides the HOST snapshot (it reads state directly);
+   * the kickoff text only carries them for the focus lesson, where the wire
+   * exposes them via activeReview. */
+  const sendReviewKickoff = (targetLessonId: string, lessonTitle: string): void => {
+    const weakOf = data?.activeReview?.lessonId === targetLessonId ? data.activeReview.weakPoints : undefined
+    const text = tr('review.session.kickoff', {
+      lesson: lessonTitle,
+      weak: weakOf !== undefined && weakOf.length > 0 ? tr('review.session.kickoff.weak', { weak: weakOf.join('、') }) : '',
+    })
+    send(text, tr('review.threadTitle', { lesson: lessonTitle }), targetLessonId, true)
+  }
+
   // P12 exam-v2: ExamView decouples itself from this panel's send() — when a
   // bank is wanted it fires the DOM event and THIS side speaks to the tutor.
   // (Must live after send's declaration: the deps array reads it at render.)
@@ -865,6 +895,19 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     return () => { window.removeEventListener('lookatstudy-exam-generate', onGenerate) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [send])
+
+  // v0.39: the blackboard's 复习对话 entry (the due ratecard) rides the same
+  // DOM-event decoupling as the exam generator — the panel owns the send path.
+  useEffect(() => {
+    const onReviewKickoff = (e: Event): void => {
+      const detail = (e as CustomEvent<{ lessonId: string; lessonTitle: string }>).detail
+      if (detail === undefined || typeof detail.lessonId !== 'string' || typeof detail.lessonTitle !== 'string') return
+      sendReviewKickoff(detail.lessonId, detail.lessonTitle)
+    }
+    window.addEventListener('lookatstudy-review-kickoff', onReviewKickoff)
+    return () => { window.removeEventListener('lookatstudy-review-kickoff', onReviewKickoff) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sendReviewKickoff])
 
   // issue #11: switch to another thread in the CURRENT lesson's group — the
   // local binding moves, the group's active pointer follows (lastAt bumps),
@@ -947,7 +990,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       if (next !== null) setNarrowPane(next)
     },
   },
-    createElement(CourseRail, { data, activate, setFocus: (id: string) => { setNextHint(null); return guardedSetFocus(id) }, searchLessons, deleteCourse, send,
+    createElement(CourseRail, { data, activate, setFocus: (id: string) => { setNextHint(null); return guardedSetFocus(id) }, searchLessons, deleteCourse, send, onReviewKickoff: sendReviewKickoff,
       // C7: a bubble jump on narrow layout lands the learner on the chat pane.
       onJumped: () => { setNarrowPane('chat') },
       // D6: the bound thread's turn is live → its ball spins on the map.
@@ -1015,7 +1058,22 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
             }, contextMeter, contextBreakdown: breakdown, uploadAttachment,
             boundary,
             onPointNext: pointAtNext,
-            onDismissBoundary: dismissBoundary }),
+            onDismissBoundary: dismissBoundary,
+            review: data?.activeReview ?? null,
+            onEndReview: (quality) => {
+              if (lesson === null) return
+              void endReview(lesson.lessonId, quality)
+                .then(receipt => {
+                  if (receipt !== null) showStudyToast(tr('review.outcome.done', { days: String(receipt.intervalDays) }), { severity: 'success' })
+                })
+                .catch((err: unknown) => { showStudyToast(friendlyError(err, 'send'), { severity: 'error' }) })
+            },
+            onReviewNext: (nextId, nextTitle) => { sendReviewKickoff(nextId, nextTitle) },
+            onRevoke: (id, kind) => {
+              void (kind === 'profile' ? revokeProfileProposal(id) : revokeProposal(id))
+                .then(() => { showStudyToast(tr('proposal.undo.done'), { severity: 'info' }) })
+                .catch((err: unknown) => { showStudyToast(friendlyError(err, 'send'), { severity: 'error' }) })
+            } }),
         // v0.29 pane-resize: the chat|notebook boundary handle (target = the
         // chat column; the exam wrapper carries the same lks14-chat identity).
         createElement(PaneResizeHandle, { side: 'chat', clampLive: chatClampLive, onCommit: px => commitPaneWidth('chat', px) }),
@@ -1292,13 +1350,15 @@ export function setPanelShell(shell: { suppressHandBack(fn: () => void): void } 
 }
 
 /** 左栏:course picker, tree, review box, import. */
-function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, streamingLessonId, turnActive, importProgress, stop, paletteBus, sendImport, endImportSession, nextHintLessonId }: {
+function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, send, onJumped, streamingLessonId, turnActive, importProgress, stop, paletteBus, sendImport, endImportSession, nextHintLessonId, onReviewKickoff }: {
   data: StudyData
   activate: (active: boolean) => Promise<void>
   setFocus: (id: string) => Promise<void>
   searchLessons: (query: string) => Promise<Array<{ lessonId: string; lessonTitle: string; snippet: string; courseTitle: string }>>
   deleteCourse: (courseId: string) => Promise<void>
   send: PanelSend
+  /** v0.39: open/continue the target lesson's review session (开始复习). */
+  onReviewKickoff: (lessonId: string, lessonTitle: string) => void
   /** C7: fired after a bubble jump (narrow layout switches to the chat pane). */
   onJumped: () => void
   /** D6: the lesson whose tutor thread is streaming (spinner ball + rail notice). */
@@ -1681,19 +1741,32 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
           createElement('button', {
             className: 'lks-btn primary',
             onClick: () => {
-              // issue #11: review routes to the TARGET lesson's group — focus
-              // moves there, its active thread carries the prompt (a fresh
-              // one mints titled 复习：<课名>), never a fragment elsewhere
+              // v0.39: 开始复习 opens the CONVERSATIONAL review session (the
+              // due lesson's review thread + 复习导师 kickoff) — the quick
+              // self-rate stays on the teach tab's ratecard.
               const first = data.due[0]
               setReviewOpen(false)
               if (first !== undefined) {
-                showStudyToast(tr('review.banner', { lesson: first.lessonTitle }), { severity: 'info' })
+                onReviewKickoff(first.lessonId, first.lessonTitle)
+              } else {
+                send(tr('prompt.review'))
+              }
+            },
+          }, tr('rail.due.start')),
+          createElement('button', {
+            className: 'lks-btn ghost',
+            'data-tooltip': tr('review.session.quick.hint'),
+            onClick: () => {
+              // legacy quick path: plain prompt on the group's chat thread
+              const first = data.due[0]
+              setReviewOpen(false)
+              if (first !== undefined) {
                 send(tr('prompt.review'), tr('review.threadTitle', { lesson: first.lessonTitle }), first.lessonId)
               } else {
                 send(tr('prompt.review'))
               }
             },
-          }, tr('rail.due.start')))
+          }, tr('review.session.quick')))
         : createElement('div', { className: 'lks14-empty' }, tr('rail.due.none')))
     : null
 
@@ -1948,7 +2021,7 @@ export function epubFolderPath(path: string): string {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, onThreadRename, onThreadArchive, onThreadDelete, courseScope, onScopeToggle, contextMeter, contextBreakdown, uploadAttachment, boundary, onPointNext, onDismissBoundary }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, onThreadRename, onThreadArchive, onThreadDelete, courseScope, onScopeToggle, contextMeter, contextBreakdown, uploadAttachment, boundary, onPointNext, onDismissBoundary, review, onEndReview, onReviewNext, onRevoke }: {
   data: StudyData
   lesson: NonNullable<StudyData>['lesson']
   rows: ReturnType<typeof feedRows>
@@ -1986,6 +2059,15 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   onPointNext: (nextId: string) => void
   /** Dismiss the card (persisted per lesson). */
   onDismissBoundary: () => void
+  /** v0.39: the FOCUS lesson's review-round state (the fallback strip while a
+   *  round is open, the outcome strip after it settles). */
+  review: { lessonId: string; open: boolean; lastQuality?: number; weakPoints?: readonly string[]; intervalDays?: number } | null
+  /** v0.39: settle the round from the fallback 3-key strip (system-side). */
+  onEndReview: (quality: number) => void
+  /** v0.39: 复习下一课 — open the next due lesson's review session. */
+  onReviewNext: (lessonId: string, title: string) => void
+  /** v0.41: system-executed revert of an applied proposal (undo strip). */
+  onRevoke: (id: string, kind: 'mastery' | 'profile') => void
 }): ReactNode {
   // C1 sticky-follow: follow new rows only while the reader sits at the bottom
   // (80px tolerance); scrolling up detaches, the FAB comes back.
@@ -2293,6 +2375,22 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             createElement('span', { className: 'lks-propbanner-why' },
               tr(decidedBadge.kind === 'accepted' ? 'proposal.applied' : 'proposal.rejected', { lesson: decidedBadge.title })))
         : null,
+    // v0.41 提议撤销: the resident undo strip — applied proposals (newest
+    // first), each revertable by the system; the tutor is red-lined away from
+    // ever reverting state itself (pointing here instead).
+    data !== null && data.appliedProposals.length > 0
+      ? createElement('div', { className: 'lks-undostrip' },
+          ...data.appliedProposals.map(ap => createElement('button', {
+            key: ap.id,
+            className: 'lks-undostrip-row',
+            'data-tooltip': ap.kind === 'profile' ? tr('proposal.undo.profile') : tr('proposal.undo.lesson', { lesson: ap.label }),
+            onClick: () => { onRevoke(ap.id, ap.kind) },
+          },
+            createElement(IconBookFill16, { size: 12 }),
+            createElement('span', { className: 'lks-undostrip-label' }, ap.kind === 'profile' ? tr('proposal.undo.profile') : ap.label),
+            createElement('span', { className: 'lks-undostrip-act' }, tr('proposal.undo'))))
+        )
+      : null,
     // B4: upstream has no per-column header — a thin current-lesson row instead
     // (ThreadSwitcher empty-state style); the mode pills live in the composer.
     lesson !== null || !dormant
@@ -2330,6 +2428,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
                   },
                 },
                   createElement('span', { className: 'lks14-threadmenu-dot', 'aria-hidden': 'true' }),
+                  p.kind === 'review' ? createElement('span', { className: 'lks14-threadmenu-kind', 'aria-hidden': 'true' }, tr('threads.review.tag')) : null,
                   renaming !== null && renaming.id === p.id
                     ? createElement('input', {
                       className: 'lks14-threadmenu-rename',
@@ -2486,6 +2585,36 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           onClick: () => { if (!dormant) send(s.message) },
         }, s.label)))
       : null,
+    // v0.39 review sessions — the fallback strip (round open, the tutor hasn't
+    // converged; three keys settle it system-side, same state path as the end
+    // tool) and the outcome strip (round settled: closing record + 复习下一课).
+    review !== null && review.open
+      ? createElement('div', { className: 'lks14-reviewstrip', 'data-testid': 'review-fallback' },
+          createElement('span', { className: 'lks14-reviewstrip-label' }, tr('review.fallback.title')),
+          ...([['1', 'review.again'], ['3', 'review.fallback.soso'], ['5', 'review.mastered']] as const).map(([q, key]) =>
+            createElement('button', {
+              key: q,
+              className: 'lks-btn ghost',
+              onClick: () => { onEndReview(Number(q)) },
+            }, tr(key))))
+      : review !== null && review.lastQuality !== undefined
+        ? createElement('div', { className: 'lks14-reviewstrip outcome', 'data-testid': 'review-outcome' },
+            createElement(IconBookFill16, { size: 14 }),
+            createElement('div', { className: 'lks14-reviewstrip-text' },
+              createElement('div', { className: 'lks14-boundary-title' }, tr('review.outcome.title', { q: String(review.lastQuality) })),
+              createElement('div', { className: 'lks14-boundary-sub' },
+                tr('review.outcome.sub', { days: String(review.intervalDays ?? '?') })
+                + (review.weakPoints !== undefined && review.weakPoints.length > 0 ? ` · ${tr('review.outcome.weak', { weak: review.weakPoints.join('、') })}` : ''))),
+            (() => {
+              const next = data?.due.find(d => d.lessonId !== review.lessonId)
+              return next !== undefined
+                ? createElement('button', {
+                  className: 'lks-btn primary',
+                  onClick: () => { onReviewNext(next.lessonId, next.lessonTitle) },
+                }, tr('review.outcome.next', { lesson: next.lessonTitle }))
+                : null
+            })())
+        : null,
     // Upstream v0.37: the progression-boundary card — 本课完成 + a single
     // affordance that POINTS at the next rail row (bot points, user drives).
     boundary !== null
@@ -2987,6 +3116,16 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
         ? createElement('div', null,
           lesson.due ? createElement('div', { className: 'lks-ratecard', 'data-lks-rate': lesson.lessonId },
             createElement('div', { className: 'lks-ratecard-title' }, tr('review.rate.title')),
+            // v0.39: the PRIMARY entry is the conversational review session
+            // (upstream replaced 看讲解自评 with the review tutor); the 3-key
+            // quick self-rate stays as the fast path below.
+            createElement('div', { className: 'lks-ratecard-review' },
+              createElement('button', {
+                className: 'lks-btn primary',
+                onClick: () => {
+                  window.dispatchEvent(new CustomEvent('lookatstudy-review-kickoff', { detail: { lessonId: lesson.lessonId, lessonTitle: lesson.title } }))
+                },
+              }, tr('review.session.go'))),
             createElement('div', { className: 'lks-ratecard-opts' },
               ...([['1', 'review.again'], ['4', 'review.remembered'], ['5', 'review.mastered']] as const).map(([q, key]) =>
                 createElement('button', {

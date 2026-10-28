@@ -198,14 +198,14 @@ export function threadAutoTitle(text: string, max = 80): string {
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine
 }
 
-export interface ThreadPillRow { id: string; title: string; current: boolean, touchedLessons?: string[] }
+export interface ThreadPillRow { id: string; title: string; current: boolean, touchedLessons?: string[], kind?: 'chat' | 'review' }
 
 /**
  * Issue #11: the switcher's rows = the CURRENT lesson's thread group (upstream
  * v0.5 节点 = 会话组) — every thread, freshest first, the active one marked.
  * Pure.
  */
-export function threadGroupPills(group: { active: string | null; threads: ReadonlyArray<{ id: string; title: string; lastAt: string; status?: string, touchedLessons?: string[] }> } | undefined): ThreadPillRow[] {
+export function threadGroupPills(group: { active: string | null; threads: ReadonlyArray<{ id: string; title: string; lastAt: string; status?: string, touchedLessons?: string[], kind?: 'chat' | 'review' }> } | undefined): ThreadPillRow[] {
   if (group === undefined) return []
   // upstream: archived threads leave the switcher list entirely (their gear
   // menu has no unarchive entry; the state API keeps archived:false symmetric)
@@ -213,7 +213,7 @@ export function threadGroupPills(group: { active: string | null; threads: Readon
     .filter(t => t.status !== 'archived')
     .slice()
     .sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1))
-    .map(t => ({ id: t.id, title: t.title, current: t.id === group.active, touchedLessons: t.touchedLessons }))
+    .map(t => ({ id: t.id, title: t.title, current: t.id === group.active, touchedLessons: t.touchedLessons, kind: t.kind }))
 }
 
 /**

@@ -66,6 +66,8 @@ import {
   recordExamResult,
   applyExamBank,
   recordReview,
+  endReviewSession,
+  reviewThreadOf,
   resolveProposal,
   searchLessons,
   setMemory,
@@ -1342,18 +1344,20 @@ ${p.text}`))
           questionCount: { type: 'integer', required: true },
           kcCount: { type: 'integer', required: true },
           status: { type: 'string', required: true },
+          hints: { type: 'array', items: { type: 'string' }, description: 'Upstream v0.38 coverage discipline, soft: per-KC over-quota and uncovered-concept notes to act on (or ignore) — the bank always lands.' },
         },
       },
       render: (_args, value) => [{
         type: 'text',
         text: `Exam bank ready: ${value.questionCount} questions across ${value.kcCount} knowledge components. `
+          + (Array.isArray(value.hints) && value.hints.length > 0 ? `Coverage hints: ${value.hints.join(' | ')} ` : '')
           + `The exam page settles into its ready state — tell the learner to hit 开始考试.`,
       }],
     },
     async execute(args) {
       return mutate((state) => {
         const r = applyExamBank(state, args.lessonId, args.questions, new Date())
-        return { lessonId: args.lessonId, questionCount: r.questionCount, kcCount: r.kcCount, status: 'ready' }
+        return { lessonId: args.lessonId, questionCount: r.questionCount, kcCount: r.kcCount, status: 'ready', hints: r.hints }
       })
     },
     presentCall: args => ({ card: 'generic' as const, title: `Exam bank: ${Array.isArray(args.questions) ? String(args.questions.length) : '?'} questions` }),
@@ -1386,7 +1390,7 @@ ${p.text}`))
         properties: {
           proposalId: { type: 'string', required: true },
           lessonTitle: { type: 'string', required: true },
-          status: { type: 'string', required: true, enum: ['pending', 'applied', 'rejected'] },
+          status: { type: 'string', required: true, enum: ['pending', 'applied', 'rejected', 'revoked'] },
           rationale: { type: 'string', required: true },
         },
       },
@@ -1505,6 +1509,74 @@ ${p.text}`))
       })
     },
     presentCall: args => ({ card: 'generic' as const, title: `Record review (quality ${args.quality}): ${args.lessonId}` }),
+    presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
+  })
+
+  // Upstream v0.39 end_review_session — the review session's closing tool.
+  // Registered on the global surface like every study_* tool (our host has one
+  // prompt for all sessions); the GUARDS carry the session semantics: the
+  // focus lesson must own an OPEN review round (the review posture appears on
+  // the same condition, so a tutor following its prompt can only land here
+  // from a review thread).
+  const endReviewSessionTool = defineTool({
+    name: 'study_end_review_session',
+    description:
+      'Close the current review round (review threads only). Grade the round on the scale, and the system schedules '
+      + 'the next SM-2 review itself — you only provide the grade. One call per round: after it settles, answer '
+      + 'normally and never call it again until the next round opens. NEVER call this outside a review thread, and '
+      + 'never use it to graduate or complete lessons — reviews never touch mastery.',
+    parameters: {
+      quality: { type: 'integer', required: true, enum: [1, 2, 3, 4, 5], description: 'Closing grade: 1 = remembered almost nothing, 2 = most of it gone, 3 = barely recalled, 4 = remembered, 5 = solid.' },
+      summary: { type: 'string', required: true, description: 'One or two sentences on this round (shown to the learner on the outcome card).' },
+      weakPoints: { type: 'array', items: { type: 'string' }, description: 'Concept names to target first in the NEXT review round (continuity).' },
+    },
+    output: {
+      presentationMeta: (_args, value) => cards.reviewOutcomeLine(value),
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          status: { type: 'string', required: true, enum: ['ended', 'rejected'] },
+          lessonId: { type: 'string', required: true },
+          lessonTitle: { type: 'string' },
+          quality: { type: 'integer' },
+          intervalDays: { type: 'integer' },
+          nextDueAt: { type: 'string' },
+          nextDueLessonId: { type: 'string' },
+          nextDueLessonTitle: { type: 'string' },
+          message: { type: 'string' },
+        },
+      },
+      render: (_args, value) => [{ type: 'text', text: cards.reviewOutcomeLine(value).join('\n') }],
+    },
+    async execute(args) {
+      return mutate((state) => {
+        const focus = state.focus?.lessonId
+        if (focus === undefined) {
+          return { status: 'rejected', lessonId: '', message: 'no lesson is in focus — review sessions run from a lesson\'s review entry' }
+        }
+        if (reviewThreadOf(state, focus) === null) {
+          return { status: 'rejected', lessonId: focus, message: 'this lesson has no open review session — do not call study_end_review_session outside a review thread' }
+        }
+        try {
+          const r = endReviewSession(state, focus, args.quality, args.summary, args.weakPoints ?? [], new Date())
+          return {
+            status: 'ended',
+            lessonId: r.lessonId,
+            lessonTitle: r.lessonTitle,
+            quality: args.quality,
+            intervalDays: r.intervalDays,
+            nextDueAt: r.nextDueAt,
+            nextDueLessonId: r.nextDue?.lessonId,
+            nextDueLessonTitle: r.nextDue?.lessonTitle,
+            message: `Review settled: quality ${String(args.quality)}/5, next review in about ${String(r.intervalDays)} days. Say goodbye naturally; if the learner wants more, point at the next due lesson.`,
+          }
+        } catch (error) {
+          return { status: 'rejected', lessonId: focus, message: error instanceof Error ? error.message : String(error) }
+        }
+      })
+    },
+    presentCall: args => ({ card: 'generic' as const, title: `End review session (quality ${String(args.quality)})` }),
     presentResult: (_args, result) => ({ card: 'generic' as const, content: textBlocks(result.meta as string[]) }),
   })
 
@@ -1671,7 +1743,7 @@ ${p.text}`))
         properties: {
           proposalId: { type: 'string', required: true },
           lessonTitle: { type: 'string', required: true },
-          status: { type: 'string', required: true, enum: ['pending', 'applied', 'rejected'] },
+          status: { type: 'string', required: true, enum: ['pending', 'applied', 'rejected', 'revoked'] },
           rationale: { type: 'string', required: true },
         },
       },
@@ -1715,7 +1787,7 @@ ${p.text}`))
         properties: {
           proposalId: { type: 'string', required: true },
           lessonId: { type: 'string', required: true },
-          status: { type: 'string', required: true, enum: ['applied', 'rejected'] },
+          status: { type: 'string', required: true, enum: ['applied', 'rejected', 'revoked'] },
         },
       },
       render: (_args, value) => [{
@@ -1728,7 +1800,7 @@ ${p.text}`))
     async execute(args) {
       return mutate((state) => {
         const proposal = resolveProposal(state, args.proposalId, args.accept, new Date())
-        return { proposalId: proposal.id, lessonId: proposal.lessonId, status: proposal.status as 'applied' | 'rejected' }
+        return { proposalId: proposal.id, lessonId: proposal.lessonId, status: proposal.status as 'applied' | 'rejected' | 'revoked' }
       })
     },
     presentCall: args => ({ card: 'generic' as const, title: `Resolve proposal: ${args.proposalId}` }),
@@ -2432,6 +2504,7 @@ ${p.text}`))
     completeLessonTool,
     dueReviewsTool,
     recordReviewTool,
+    endReviewSessionTool,
     deleteCourseTool,
     restoreCourseTool,
     defineConceptsTool,

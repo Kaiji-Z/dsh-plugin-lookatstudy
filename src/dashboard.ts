@@ -50,6 +50,11 @@ import {
   markHumanGraded,
   resolveProfileProposal,
   saveProfileEdit,
+  endReviewSession,
+  openReviewRound,
+  reviewThreadOf,
+  revokeProposal,
+  revokeProfileProposal,
   type LessonThreadGroup,
 } from './state.ts'
 import { hasProfileContent, parseInterestsInput, isValidMbti, MOTIVE_STAGES, type LearnerProfilePatch, type MotiveStage } from './learner-profile.ts'
@@ -184,6 +189,10 @@ export interface WorkbenchState {
   dueCount: number
   due: Array<{ lessonId: string; lessonTitle: string; courseTitle: string; overdueDays: number }>
   pendingProposals: Array<{ id: string; lessonTitle: string; rationale: string }>
+  /** Upstream v0.41 提议撤销: the most recent APPLIED proposals (both kinds,
+   *  newest first) — the resident undo strip's data. Empty when nothing
+   *  revocable is on record. */
+  appliedProposals: Array<{ id: string; kind: 'mastery' | 'profile'; label: string; appliedAt: string }>
   memory: { global: string | null; lesson: string | null; pattern: string | null }
   /** Lesson id → dsh session id (legacy single-binding; mirrors each group's active pointer). */
   lessonSessions: Record<string, string>
@@ -191,7 +200,19 @@ export interface WorkbenchState {
    *  under 0.23.0 course scope — derive via threadOwnerKey) → { active,
    *  threads[] } with first-message titles; drives the per-lesson switcher
    *  and review routing. */
-  lessonThreads: Record<string, { active: string | null; threads: Array<{ id: string; title: string; createdAt: string; lastAt: string; status?: 'active' | 'archived'; touchedLessons?: string[] }> }>
+  lessonThreads: Record<string, { active: string | null; threads: Array<{ id: string; title: string; createdAt: string; lastAt: string; status?: 'active' | 'archived'; kind?: 'chat' | 'review'; touchedLessons?: string[] }> }>
+  /** Upstream v0.39 review sessions: the FOCUS lesson's review thread state —
+   *  null when the focus owns no review thread; drives the fallback self-rate
+   *  strip (round open) and the outcome strip (round settled). */
+  activeReview: {
+    lessonId: string
+    threadId: string
+    open: boolean
+    lastQuality?: number
+    weakPoints?: string[]
+    intervalDays?: number
+    nextDueAt?: string
+  } | null
   /** XP + streak block (same shape as study_courses; feeds the dock pill and the settings page). */
   progress: {
     totalXp: number
@@ -321,12 +342,50 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
           return { id: p.id, lessonTitle: p.lessonId, rationale: p.rationale }
         }
       }),
+    // v0.41 提议撤销: newest-first applied entries (both kinds) for the undo
+    // strip — capped at 3; entries without snapshots (pre-0.27 files) are not
+    // revocable and stay off the strip.
+    appliedProposals: [
+      ...state.proposals
+        .filter(p => p.status === 'applied' && p.appliedSnapshot !== undefined)
+        .map(p => {
+          let label = p.lessonId
+          try { label = findLesson(state, p.lessonId).lesson.title } catch { /* deleted course — the raw id still names it */ }
+          return { id: p.id, kind: 'mastery' as const, label, appliedAt: p.appliedAt ?? p.createdAt }
+        }),
+      ...(state.profileProposals ?? [])
+        .filter(p => p.status === 'applied' && p.appliedSnapshot !== undefined)
+        .map(p => ({ id: p.id, kind: 'profile' as const, label: 'profile', appliedAt: p.appliedAt ?? p.createdAt })),
+    ].sort((a, b) => (a.appliedAt < b.appliedAt ? 1 : a.appliedAt > b.appliedAt ? -1 : 0)).slice(0, 3),
     memory: (() => {
       const snap = learnerSnapshot(state, now)
       return { global: snap.memoryGlobal, lesson: snap.memoryLesson, pattern: snap.memoryPattern }
     })(),
     lessonSessions: state.lessonSessions,
     lessonThreads: state.lessonThreads ?? {},
+    // v0.39 review sessions: the focus lesson's review thread state (the
+    // fallback strip and the outcome strip's data source).
+    activeReview: (() => {
+      if (focusId === null) return null
+      try {
+        const thread = reviewThreadOf(state, focusId)
+        if (thread === null) return null
+        const last = thread.reviewState?.lastOutcome
+        return {
+          lessonId: focusId,
+          threadId: thread.id,
+          open: thread.reviewState?.open === true,
+          ...(last === undefined ? {} : {
+            lastQuality: last.quality,
+            weakPoints: last.weakPoints,
+            intervalDays: last.intervalDays,
+            nextDueAt: last.nextDueAt,
+          }),
+        }
+      } catch {
+        return null
+      }
+    })(),
     progress: (() => {
       const xp = levelFromTotalXp(state.xp.total)
       return {
@@ -661,6 +720,89 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
           sendJson(res, 200, { ok: true })
         } catch (error) {
           sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      // ── Upstream v0.39 review sessions: the kickoff round-open (the client's
+      // review send calls this AFTER binding the review session, BEFORE the
+      // prompt — the snapshot posture and the end tool's gate key on it) and
+      // the fallback settlement (the 3-key self-rate strip under the composer
+      // when the tutor never converged — same state path as the tool). ──
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/review/kickoff') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.lessonId !== 'string' || typeof body.sessionId !== 'string' || body.sessionId === '') {
+          sendJson(res, 400, { ok: false, error: 'lessonId and sessionId required' })
+          return
+        }
+        try {
+          openReviewRound(deps.store.get(), body.lessonId, body.sessionId, new Date())
+          deps.store.save()
+          sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/review/end') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        const quality = body.quality
+        if (typeof body.lessonId !== 'string' || typeof quality !== 'number' || ![1, 2, 3, 4, 5].includes(quality)) {
+          sendJson(res, 400, { ok: false, error: 'lessonId and quality (1-5) required' })
+          return
+        }
+        try {
+          const receipt = endReviewSession(
+            deps.store.get(), body.lessonId, quality,
+            typeof body.summary === 'string' ? body.summary : '',
+            Array.isArray(body.weakPoints) ? body.weakPoints.filter((w: unknown) => typeof w === 'string') : [],
+            new Date())
+          deps.store.save()
+          sendJson(res, 200, {
+            ok: true,
+            lessonTitle: receipt.lessonTitle,
+            intervalDays: receipt.intervalDays,
+            nextDueAt: receipt.nextDueAt,
+            xp: receipt.xp,
+            nextDue: receipt.nextDue === null ? null : { lessonId: receipt.nextDue.lessonId, lessonTitle: receipt.nextDue.lessonTitle },
+          })
+        } catch (error) {
+          sendJson(res, 404, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      // ── Upstream v0.41 提议撤销: system-executed revert of an APPLIED
+      // proposal (the tutor never does this itself — base-prompt red line 3). ──
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/proposal/revoke') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.id !== 'string' || body.id === '') {
+          sendJson(res, 400, { ok: false, error: 'id required' })
+          return
+        }
+        try {
+          revokeProposal(deps.store.get(), body.id, new Date())
+          deps.store.save()
+          sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 409, { ok: false, error: error instanceof Error ? error.message : String(error) })
+        }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/profile/revoke') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        if (typeof body.id !== 'string' || body.id === '') {
+          sendJson(res, 400, { ok: false, error: 'id required' })
+          return
+        }
+        try {
+          revokeProfileProposal(deps.store.get(), body.id, new Date())
+          deps.store.save()
+          sendJson(res, 200, { ok: true })
+        } catch (error) {
+          sendJson(res, 409, { ok: false, error: error instanceof Error ? error.message : String(error) })
         }
         return
       }

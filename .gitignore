@@ -19,3 +19,6 @@ recritiqueA*.png
 .impeccable/
 .goal/SPEC.archive-*.md
 livetest-state.json.bak
+
+# zcode video-agent-kit plugin path marker (editor-side residue, recurs)
+.video_agent/

@@ -87,6 +87,8 @@ function statePayload(mode: StudyState['mode']): StudyState {
     dueCount: 0,
     due: [],
     pendingProposals: [],
+    appliedProposals: [],
+    activeReview: null,
     memory: { global: null, lesson: null, pattern: null },
     lessonSessions: {},
     lessonThreads: {},
