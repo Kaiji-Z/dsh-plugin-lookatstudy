@@ -954,12 +954,16 @@ export function registerStudyLocale(locale?: LocaleServiceFace): () => void {
  * @param locale - the client locale service when present.
  */
 export function studyTranslator(locale?: LocaleServiceFace): StudyT {
-  return locale === undefined ? makeT(systemStudyLang(typeof navigator === 'undefined' ? null : navigator)) : locale.bind(STUDY_NS)
+  // the gate is BROWSER presence, not navigator presence — Node 21+ also
+  // exposes a global navigator (CI runners resolve en-US), and the system-
+  // language follow is a first-boot BROWSER behavior only; every non-browser
+  // consumer (tests, SSR-ish tooling) keeps the historical zh default
+  return locale === undefined ? makeT(systemStudyLang(typeof window === 'undefined' ? null : navigator)) : locale.bind(STUDY_NS)
 }
 
 /** The module's active translator — system-locale default (upstream v0.39.1)
  * until the view factory installs the live bind. */
-let activeT: StudyT = makeT(systemStudyLang(typeof navigator === 'undefined' ? null : navigator))
+let activeT: StudyT = makeT(systemStudyLang(typeof window === 'undefined' ? null : navigator))
 
 /**
  * Install the client-wide translator (called once at client apply, before
