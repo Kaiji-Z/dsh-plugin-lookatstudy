@@ -8,7 +8,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { ctxSegments, fmtTokens, quizOptions, sectionDefaultOpen, statusTitle } from '../src/client/views.tsx'
+import { ctxSegments, fmtTokens, quizOptions, sectionDefaultOpen, statusTitle, unwrapRemoteValue, modelCatalogGroups } from '../src/client/views.tsx'
 import { studyStore, type StudyState } from '../src/client/data.ts'
 import { STUDY_CSS } from '../src/client/styles.ts'
 
@@ -624,4 +624,53 @@ test('notebook: sticky viewtabs, full column width, karaoke highlight styles', a
   assert.doesNotMatch(UPSTREAM_CSS, /lks14-notebody\{margin:0 auto;max-width:960px/, 'the centered 960px cap is gone')
   assert.match(UPSTREAM_CSS, /::highlight\(lks-reading\)/, 'the CSS Custom Highlight API pseudo styles the speaking sentence')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-reading-mark\{/, 'the no-Highlight-API fallback span carries the same skin')
+})
+
+
+test('unwrapRemoteValue serves every host generation (issue #15: rc.3 Remote envelope)', () => {
+  // bare value (hosts before 0.2.1-rc.3): passthrough, same reference
+  const bare = { groups: [{ id: 'p', name: 'P', models: [] }] }
+  assert.equal(unwrapRemoteValue(bare), bare)
+  assert.equal(unwrapRemoteValue(null), null)
+  assert.equal(unwrapRemoteValue(undefined), undefined)
+  // rc.3 envelope: ok:true unwraps the value
+  assert.deepEqual(unwrapRemoteValue({ ok: true, value: bare }), bare)
+  // ok:false throws code + message so callers land in their rejection path
+  assert.throws(() => unwrapRemoteValue({ ok: false, error: { code: 'E_X', message: 'boom' } }), /E_X: boom/)
+  assert.throws(() => unwrapRemoteValue({ ok: false, error: { message: 'no code' } }), /unknown: no code/)
+  assert.throws(() => unwrapRemoteValue({ ok: false }), /unknown: remote call failed/)
+  // a truthy-but-not-boolean ok is NOT an envelope — passthrough, never guess
+  const notEnvelope = { ok: 'yes', value: 1 }
+  assert.equal(unwrapRemoteValue(notEnvelope), notEnvelope)
+})
+
+test('modelCatalogGroups folds both catalog shapes into chip groups (issue #15)', () => {
+  const raw = {
+    groups: [
+      { id: 'deepseek', name: 'DeepSeek', models: [
+        { id: 'deepseek-flash', name: 'Flash', reasoning: { defaultEffort: 'max', efforts: [{ id: 'low' }, { id: 'max' }] } },
+        { id: 'deepseek-chat', reasoning: { efforts: [{ id: 'low' }] } }, // no name, no defaultEffort
+        { name: 'no-id' }, // no id — '?' fallback, no reasoning at all
+      ] },
+      { models: undefined }, // whole-group fallbacks
+    ],
+  }
+  const expect = [
+    { id: 'deepseek', name: 'DeepSeek', models: [
+      { id: 'deepseek-flash', name: 'Flash', effort: 'max' },
+      { id: 'deepseek-chat', name: 'deepseek-chat', effort: 'low' },
+      { id: '?', name: 'no-id', effort: undefined },
+    ] },
+    { id: '?', name: '?', models: [] },
+  ]
+  // bare shape (rc.2 and earlier)
+  assert.deepEqual(modelCatalogGroups(raw), expect)
+  // rc.3 Remote envelope — same fold through the wrapper
+  assert.deepEqual(modelCatalogGroups({ ok: true, value: raw }), expect)
+  // enveloped failure throws instead of silently rendering an empty panel
+  assert.throws(() => modelCatalogGroups({ ok: false, error: { code: 'E_CAT', message: 'gone' } }), /E_CAT: gone/)
+  // degenerate inputs stay []
+  assert.deepEqual(modelCatalogGroups({}), [])
+  assert.deepEqual(modelCatalogGroups({ groups: [] }), [])
+  assert.deepEqual(modelCatalogGroups(null), [])
 })

@@ -46,7 +46,7 @@ import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { ArtifactCard, FoldableArtifactCard, FoldableQuizCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, type ChatRow } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, unwrapRemoteValue, modelCatalogGroups, type ChatRow } from './views.tsx'
 import { ListSectionView, nextStudyAfterView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
@@ -1244,21 +1244,32 @@ function ModelFaceChip({ sessionId, current, selectModel }: {
   useEffect(() => { if (!open) setGroups(null) }, [open])
   const load = (): void => {
     if (groups !== null || selectModel?.modelCatalog === undefined) return
+    // issue #15: hosts from dsh 0.2.1-rc.3 wrap remote responses as
+    // { ok, value } / { ok, error } — modelCatalogGroups unwraps BOTH that
+    // envelope and the bare older shape, and throws on enveloped failures so
+    // the rejection branch can surface what actually happened.
     void selectModel.modelCatalog().then(cat => {
-      const c = cat as { groups?: Array<{ id?: string; name?: string; models?: Array<{ id?: string; name?: string; reasoning?: { efforts?: Array<{ id?: string }>, defaultEffort?: string } }> }> }
-      setGroups((c.groups ?? []).map(g => ({
-        id: g.id ?? '?', name: g.name ?? g.id ?? '?',
-        models: (g.models ?? []).map(m => ({ id: m.id ?? '?', name: m.name ?? m.id ?? '?', effort: m.reasoning?.defaultEffort ?? m.reasoning?.efforts?.[0]?.id })),
-      })))
-    }, () => { setGroups([]) })
+      setGroups(modelCatalogGroups(cat))
+    }, err => {
+      console.error('[lookatstudy] modelCatalog failed:', err)
+      setGroups([])
+      showStudyToast(tr('model.loadFailed'), { severity: 'error' })
+    })
   }
   const pick = (provider: string, model: string, effort: string | undefined): void => {
     if (selectModel?.selectModel === undefined || sessionId === null) return
     setBusy(true)
-    void selectModel.selectModel({ sessionId, provider, model, reasoningEffort: effort }).then(() => {
-      setOpen(false)
-      showStudyToast(tr('model.switched', { model }), { severity: 'success' })
-    }, () => { showStudyToast(tr('model.switchFailed'), { severity: 'error' }) }).finally(() => { setBusy(false) })
+    void selectModel.selectModel({ sessionId, provider, model, reasoningEffort: effort })
+      .then(res => { unwrapRemoteValue(res) })
+      .then(() => {
+        setOpen(false)
+        showStudyToast(tr('model.switched', { model }), { severity: 'success' })
+      })
+      .catch(err => {
+        console.error('[lookatstudy] selectModel failed:', err)
+        showStudyToast(tr('model.switchFailed'), { severity: 'error' })
+      })
+      .finally(() => { setBusy(false) })
   }
   return createElement('span', { className: 'lks-modelface' },
     createElement('button', {

@@ -340,3 +340,42 @@ export function friendlyError(err: unknown, kind: 'send' | 'action' = 'action', 
   console.error('[lookatstudy]', err)
   return t(kind === 'send' ? 'error.send' : 'error.action')
 }
+
+
+/**
+ * Unwrap a Remote-channel response (issue #15, dsh 0.2.1-rc.3): remote calls
+ * may resolve with the RPC envelope `{ ok: true, value }` / `{ ok: false,
+ * error: { code, message } }` instead of the bare value older hosts returned.
+ * Enveloped failures THROW (code + message) so they land in the caller's
+ * rejection path; bare and envelope-free responses pass through untouched —
+ * one code path serves every host generation. Pure.
+ */
+export function unwrapRemoteValue(res: unknown): unknown {
+  if (res !== null && typeof res === 'object' && 'ok' in res) {
+    const r = res as { ok?: unknown; value?: unknown; error?: { code?: unknown; message?: unknown } }
+    if (r.ok === true) return r.value
+    if (r.ok === false) {
+      const code = typeof r.error?.code === 'string' && r.error.code !== '' ? r.error.code : 'unknown'
+      const message = typeof r.error?.message === 'string' ? r.error.message : 'remote call failed'
+      throw new Error(`${code}: ${message}`)
+    }
+  }
+  return res
+}
+
+export interface ModelFaceGroup { id: string; name: string; models: Array<{ id: string; name: string; effort?: string }> }
+
+/**
+ * The model chip's catalog fold (ModelFaceChip load()): unwrap the remote
+ * envelope, then project providers → models → default effort with '?'
+ * fallbacks for missing ids/names. Accepts BOTH the bare `{ groups }` shape
+ * and the rc.3 `{ ok, value: { groups } }` envelope; an `ok: false` envelope
+ * throws. Pure.
+ */
+export function modelCatalogGroups(res: unknown): ModelFaceGroup[] {
+  const cat = unwrapRemoteValue(res) as { groups?: Array<{ id?: string; name?: string; models?: Array<{ id?: string; name?: string; reasoning?: { efforts?: Array<{ id?: string }>, defaultEffort?: string } }> }> } | null | undefined
+  return ((cat ?? {}).groups ?? []).map(g => ({
+    id: g.id ?? '?', name: g.name ?? g.id ?? '?',
+    models: (g.models ?? []).map(m => ({ id: m.id ?? '?', name: m.name ?? m.id ?? '?', effort: m.reasoning?.defaultEffort ?? m.reasoning?.efforts?.[0]?.id })),
+  }))
+}
