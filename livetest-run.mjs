@@ -156,5 +156,12 @@ transcript.push('## Step 11 gate', '',
   'bilibili import -- ' + biliLine + ' (design_required brief grounded in CC subtitles, or an honest no-CC refusal; apply_design withheld)',
   '', '---', '')
 
+// --- Step 12: review-session settle outside a review thread (honest rejection) ----
+const settle = await call('study_end_review_session', { quality: 4, summary: 'probe call outside any review session' })
+transcript.push('## Step 12 gate', '',
+  `study_end_review_session outside a review thread -- status **${String(settle.status)}**, message: ${String(settle.message ?? '')}`,
+  ' (the tool must NOT end a session it cannot see; a review round only opens from the lesson review entry)',
+  '', '---', '')
+
 writeFileSync(fileURLToPath(new URL('./livetest-output.md', import.meta.url)), transcript.join('\n') + '\n')
 console.log(`livetest complete; final lesson mastery: ${mastery}%`)
