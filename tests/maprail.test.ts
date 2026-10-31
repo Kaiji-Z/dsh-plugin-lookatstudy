@@ -36,7 +36,7 @@ test('D6: sectionWorldOf — purely-practice sections are the practice world', (
 
 // ——— P16: the panel theme resolution (host preference → panel theme) ———
 
-import { hostPanelTheme } from '../src/client/theme.ts'
+import { hostPanelTheme, followHostTheme, setFollowHostTheme, subscribeFollowHostTheme } from '../src/client/theme.ts'
 
 test('P16: hostPanelTheme resolves the host preference into the panel theme', () => {
   assert.equal(hostPanelTheme('light', false), 'light')
@@ -46,4 +46,41 @@ test('P16: hostPanelTheme resolves the host preference into the panel theme', ()
   assert.equal(hostPanelTheme(undefined, true), 'light')
   assert.equal(hostPanelTheme(undefined, false), 'dark')
   assert.equal(hostPanelTheme('garbage', true), 'light', 'unknown preference degrades to the media query')
+})
+
+test('issue #16: the follow-host preference defaults off, persists, and notifies', () => {
+  // localStorage shim (the artifacts.test.ts pattern) — the store's writes
+  // flow through the global, so the shim observes persistence live
+  const glob = globalThis as { localStorage?: Storage }
+  const shim = new Map<string, string>()
+  const storage = {
+    getItem: (k: string) => shim.get(k) ?? null,
+    setItem: (k: string, v: string) => { shim.set(k, v) },
+    removeItem: (k: string) => { shim.delete(k) },
+  } as Storage
+  const hadOwn = 'localStorage' in glob
+  const prev = glob.localStorage
+  glob.localStorage = storage
+  try {
+    assert.equal(followHostTheme(), false, 'defaults OFF — the stock upstream palette is untouched')
+    let notified = 0
+    const off = subscribeFollowHostTheme(() => { notified++ })
+    setFollowHostTheme(true)
+    assert.equal(followHostTheme(), true)
+    assert.equal(notified, 1, 'the toggle notifies the panel root subscriber')
+    assert.equal(shim.get('dsh-plugin-lookatstudy:follow-host-theme'), 'on', 'the preference persists browser-locally')
+    setFollowHostTheme(true)
+    assert.equal(notified, 1, 'a no-op write does not re-notify')
+    setFollowHostTheme(false)
+    assert.equal(notified, 2, 'a real change (true → false) notifies while subscribed')
+    assert.equal(followHostTheme(), false)
+    assert.equal(shim.has('dsh-plugin-lookatstudy:follow-host-theme'), false, 'off clears the key')
+    off()
+    setFollowHostTheme(true)
+    assert.equal(notified, 2, 'an unsubscribed listener hears nothing')
+    setFollowHostTheme(false)
+  } finally {
+    if (hadOwn) glob.localStorage = prev
+    else delete glob.localStorage
+  }
 })

@@ -889,6 +889,30 @@ export const UPSTREAM_CSS = `
 .lks-ui[data-lks-theme='light'] .lks14-importprog-elapsed{color:var(--ink-muted)}
 .lks-ui[data-lks-theme='light'] .lks14-threadmenu{background:rgb(255 255 255/0.98);border-color:var(--border-faint);box-shadow:0 12px 32px -8px rgb(0 0 0/0.18)}
 .lks-ui[data-lks-theme='light'] .lks14-ctxpanel{background:rgb(255 255 255/0.98);box-shadow:0 8px 24px rgb(0 0 0/0.12)}
+/* ══════════ issue #16: the ecosystem-theme bridge (opt-in) ══════════
+   data-lks-follow-host='on' comes from the settings toggle (跟随宿主主题色,
+   theme.ts); the FLAT neutral ladder then resolves through the host
+   --dsw-alias-* tokens that theme plugins (dsh-markdown-xyy &c.) override,
+   falling back to the upstream verbatim values where a host doesn't define
+   them. Deliberately NOT bridged: the -rgb channel companions (CSS can't
+   decompose a resolved color into a channel triplet — translucent overlays
+   keep the upstream tints, a subtle neutral-vs-neutral delta) and the
+   brand/semantic hues (the panel's own identity). Placed AFTER the light
+   block at equal specificity so the bridge wins in both lks themes — the
+   aliases themselves flip with the host theme, one block serves both. */
+.lks-ui[data-lks-follow-host='on']{
+  --surface-rail:var(--dsw-alias-bg-base,#08090B);
+  --surface-0:var(--dsw-alias-bg-layer-2,#0C0D0F);
+  --surface-1:var(--dsw-alias-bg-layer-1,#111114);
+  --surface-2:var(--dsw-alias-bg-overlay,#1A1A1D);
+  --surface-3:var(--dsw-alias-bg-overlay,#2A2B2E);
+  --ink:var(--dsw-alias-label-primary,#F1F2F4);
+  --ink-strong:var(--dsw-alias-label-primary,#FAFAFA);
+  --ink-muted:var(--dsw-alias-label-secondary,#9D9EA2);
+  --ink-faint:var(--dsw-alias-label-secondary,#88898C);
+  --border:var(--dsw-alias-border-l1,#252629);
+  --border-faint:var(--dsw-alias-border-l2,#1A1A1D);
+}
 /* ambient glyph motion sleeps under reduced-motion (A7 never had a guard) */
 /* v0.29 pane-resize: the grip line lights the upstream accent under the skin
    (base sheet's host-token color is the no-skin fallback; the handle itself

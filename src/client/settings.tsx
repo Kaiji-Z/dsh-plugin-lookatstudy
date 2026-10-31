@@ -11,6 +11,7 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useStudy, TTS_VOICES, storedTtsVoice, storeTtsVoice } from './data.ts'
+import { followHostTheme, setFollowHostTheme } from './theme.ts'
 import { MBTI_TYPES, expandMbtiToStyle, MOTIVE_DISPLAY, MOTIVE_STAGES, parseInterestsInput, type MbtiType, type MotiveStage } from '../learner-profile.ts'
 import { tr } from './locale.ts'
 import { ActionError } from './views.tsx'
@@ -153,6 +154,7 @@ export function StudySettingsSection(): ReactNode {
   const { data, setMode, activate, setHistoryBudget, saveProfile, resolveProfileProposal } = useStudy()
   const [error, setError] = useState<string | null>(null)
   const [voice, setVoice] = useState(storedTtsVoice)
+  const [followHost, setFollowHost] = useState(followHostTheme)
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
   }
@@ -201,6 +203,27 @@ export function StudySettingsSection(): ReactNode {
           value: voice,
           onChange: (e: { target: { value: string } }) => { storeTtsVoice(e.target.value); setVoice(e.target.value) },
         }, ...TTS_VOICES.map(v => createElement('option', { key: v.id, value: v.id }, tr(v.labelKey)))),
+      ),
+    ),
+    // issue #16: the opt-in ecosystem-theme bridge — dsh-markdown-xyy &c.
+    // override the host --dsw-alias-* tokens; when on, the panel's neutral
+    // ladder follows them (brand/semantic hues stay native). Default off:
+    // the stock host defines the aliases too, so an always-on bridge would
+    // replace the upstream-verbatim palette on every install.
+    createElement('section', { className: 'lks-set-row' },
+      createElement('h3', null, tr('settings.followHost')),
+      createElement('p', { className: 'lks-set-hint' }, tr('settings.followHost.hint')),
+      createElement('div', null,
+        createElement('button', {
+          className: `lks-btn ${followHost ? 'ghost' : 'primary'}`,
+          'data-testid': 'follow-host-toggle',
+          onClick: () => {
+            const next = !followHostTheme()
+            setFollowHostTheme(next)
+            setFollowHost(next)
+          },
+        }, followHost ? tr('settings.followHost.off') : tr('settings.followHost.on')),
+        createElement('span', { className: 'lks-set-state' }, followHost ? tr('settings.on') : tr('settings.off')),
       ),
     ),
     progress === undefined ? null : createElement('section', { className: 'lks-set-row' },

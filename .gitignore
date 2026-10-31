@@ -22,3 +22,4 @@ livetest-state.json.bak
 
 # zcode video-agent-kit plugin path marker (editor-side residue, recurs)
 .video_agent/
+.v2c/

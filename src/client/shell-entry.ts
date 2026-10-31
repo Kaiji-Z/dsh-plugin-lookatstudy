@@ -42,6 +42,12 @@ const CENTER_COLUMN_SELECTOR = '[data-pane="conversation"], [class*="centerCol"]
 interface SidebarMountDeps {
   createRoot(container: HTMLElement): { render(node: ReactNode): void; unmount(): void }
   doc?: Document
+  /** issue #17: the self-heal machinery's DOM faces, injectable so the
+   * regression test can drive mutation batches headlessly (Node has no
+   * MutationObserver/rAF). */
+  MutationObserver?: new (callback: () => void) => { observe(t: Node, o: unknown): void; disconnect(): void }
+  requestAnimationFrame?: (cb: () => void) => number
+  cancelAnimationFrame?: (id: number) => void
 }
 
 /** The host session list: main-selection changes are the hand-back trigger.
@@ -70,11 +76,16 @@ class ShellOpenState {
   }
 }
 
-function sidebarRoot(doc: Document): HTMLElement | undefined {
-  const column = doc.querySelector<HTMLElement>(SIDEBAR_COLUMN_SELECTOR)
-  if (column === null) return undefined
+function sidebarRoot(doc: Document, knownColumn?: HTMLElement): { root: HTMLElement; column: HTMLElement } | undefined {
+  // issue #17: a connected remembered column skips the document-wide
+  // [class*=] query entirely — the heal path only pays the scoped lookups.
+  const column = knownColumn !== undefined && knownColumn.isConnected
+    ? knownColumn
+    : doc.querySelector<HTMLElement>(SIDEBAR_COLUMN_SELECTOR)
+  if (column === null || column === undefined) return undefined
   const logoOwner = column.querySelector<HTMLElement>('[class*="logoRow"]')?.parentElement
-  return logoOwner ?? (column.firstElementChild as HTMLElement | undefined)
+  const root = logoOwner ?? (column.firstElementChild as HTMLElement | undefined)
+  return root === undefined ? undefined : { root, column }
 }
 
 function newSessionButton(root: HTMLElement): HTMLButtonElement | undefined {
@@ -113,7 +124,9 @@ export function mountStudyShell(
   dom?: SidebarMountDeps,
   sessions?: SessionListFace,
 ): StudyShellHandle {
-  if (typeof document === 'undefined') {
+  // no DOM at all (SSR / headless) → inert handle; an injected test doc counts
+  // as a DOM (issue #17's regression test drives the real mount headlessly)
+  if (typeof document === 'undefined' && dom?.doc === undefined) {
     return { dispose: () => {}, close: () => {}, suppressHandBack: (fn) => { fn() } }
   }
   const doc = dom?.doc ?? document
@@ -141,16 +154,21 @@ export function mountStudyShell(
   paintRow()
   row.addEventListener('click', () => state.setOpen(!state.isOpen()))
 
+  let knownColumn: HTMLElement | undefined
   const placeRow = (): boolean => {
-    const root = sidebarRoot(doc)
-    if (root === undefined) return false
+    const found = sidebarRoot(doc, knownColumn)
+    if (found === undefined) return false
+    knownColumn = found.column
+    const root = found.root
     const button = newSessionButton(root)
     if (button === undefined) return false
     if (row.parentElement !== root) {
       const logoRow = button.closest('[class*="logoRow"]')
       const base = (logoRow !== null && logoRow.parentElement === root) ? logoRow : button
       const family = Array.from(root.children).filter(
-        el => el instanceof HTMLElement && (el as HTMLElement).matches(FAMILY_SELECTORS.join(', ')),
+        // element-only duck check (text nodes lack .matches) — no DOM globals,
+        // so the injected-doc path stays headless-runnable (issue #17 tests)
+        el => typeof (el as HTMLElement).matches === 'function' && (el as HTMLElement).matches(FAMILY_SELECTORS.join(', ')),
       )
       const anchor = family.length > 0 ? family[family.length - 1]!.nextElementSibling : base.nextElementSibling
       root.insertBefore(row, anchor)
@@ -201,8 +219,42 @@ export function mountStudyShell(
     if (target.closest(SIDEBAR_ROW_SELECTOR) !== null) state.setOpen(false)
   }
 
-  const bodyObserver = new MutationObserver(() => { placeRow(); ensureView() })
-  bodyObserver.observe(doc.body, { childList: true, subtree: true })
+  // --- Self-healing mount (issue #17) -------------------------------------
+  // The body observer keeps the row and the view alive across host
+  // re-renders — but a big-session render (a 1000-event history wire renders
+  // thousands of nodes) mutates the DOM in a continuous storm, and the old
+  // unconditional `placeRow(); ensureView()` ran FULL-DOCUMENT [class*=]
+  // queries per batch: substring selectors can't ride the class index, so
+  // each batch was O(document) while the document was at its largest — the
+  // main thread saturated and the host froze permanently (1016-event session,
+  // A/B-verified against plugin removal). The gate below makes the hot path
+  // two property reads (row attached + view mounted → return), healing work
+  // coalesces to one rAF per frame, and the known-column memo keeps even the
+  // heal path off document-wide queries when the sidebar column survived.
+  const ObserverCtor = dom?.MutationObserver ?? (typeof MutationObserver === 'function' ? MutationObserver : undefined)
+  const raf = dom?.requestAnimationFrame ?? ((cb: () => void) => requestAnimationFrame(cb))
+  const caf = dom?.cancelAnimationFrame ?? ((id: number) => cancelAnimationFrame(id))
+  let disposed = false
+  let healScheduled = false
+  let healRaf = 0
+  const heal = (): void => {
+    healScheduled = false
+    healRaf = 0
+    if (disposed) return
+    if (!needsHeal(row.isConnected, container !== undefined)) return
+    placeRow()
+    ensureView()
+  }
+  let bodyObserver: { observe(t: Node, o: unknown): void; disconnect(): void } | undefined
+  if (ObserverCtor !== undefined) {
+    bodyObserver = new ObserverCtor(() => {
+      if (!needsHeal(row.isConnected, container !== undefined)) return
+      if (healScheduled) return
+      healScheduled = true
+      healRaf = raf(heal)
+    })
+    bodyObserver.observe(doc.body, { childList: true, subtree: true })
+  }
   doc.addEventListener('click', onClickSidebarRow, true)
   doc.addEventListener(ACTIVATE_EVENT, onOtherActivate)
   // USER session navigation hands the center column back to the conversation
@@ -247,7 +299,12 @@ export function mountStudyShell(
       try { fn() } finally { suppressed = false }
     },
     dispose: () => {
-      bodyObserver.disconnect()
+      // cancel a heal scheduled before dispose — otherwise its rAF would
+      // fire after row.remove() and re-insert the zombie row into the host.
+      disposed = true
+      if (healScheduled && healRaf !== 0) caf(healRaf)
+      healScheduled = false
+      bodyObserver?.disconnect()
       doc.removeEventListener('click', onClickSidebarRow, true)
       doc.removeEventListener(ACTIVATE_EVENT, onOtherActivate)
       unsubscribeSessions?.()
@@ -263,4 +320,12 @@ export function mountStudyShell(
 /** Whether a session change should hand the center column back (suppressible). */
 export function shouldHandBack(suppressed: boolean, wasHydration: boolean): boolean {
   return !suppressed && !wasHydration
+}
+
+/** Pure heal policy (issue #17): a mutation batch only needs healing work when
+ * the row lost its attachment or the view never mounted. Everything else —
+ * e.g. the conversation rendering a 1000-event history — must return without
+ * touching querySelector. */
+export function needsHeal(rowConnected: boolean, viewMounted: boolean): boolean {
+  return !rowConnected || !viewMounted
 }

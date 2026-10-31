@@ -38,6 +38,50 @@ export function subscribePanelTheme(listener: () => void): () => void {
   return () => { listeners.delete(listener) }
 }
 
+/* ── issue #16: the opt-in ecosystem-theme hook ──
+ * When on, the panel root carries data-lks-follow-host='on' and the upstream
+ * skin's neutral ladder (surfaces/ink/borders) resolves through the host
+ * --dsw-alias-* platform tokens — the tokens theme plugins such as
+ * dsh-markdown-xyy override — so those themes recolor the study panel too.
+ * Default OFF: the stock host defines the aliases itself, so wiring them
+ * unconditionally would replace the upstream-verbatim palette with the host
+ * chrome palette on every install. Brand and semantic hues never bridge (the
+ * panel keeps its own identity). Browser-local preference, like the TTS
+ * voice. */
+const FOLLOW_HOST_KEY = 'dsh-plugin-lookatstudy:follow-host-theme'
+
+function readStoredFollowHost(): boolean {
+  try {
+    return (typeof localStorage === 'undefined' ? null : localStorage.getItem(FOLLOW_HOST_KEY)) === 'on'
+  } catch {
+    return false
+  }
+}
+
+let followHost = readStoredFollowHost()
+const followListeners = new Set<() => void>()
+
+export function followHostTheme(): boolean {
+  return followHost
+}
+
+export function setFollowHostTheme(on: boolean): void {
+  if (on === followHost) return
+  followHost = on
+  try {
+    if (typeof localStorage !== 'undefined') {
+      if (on) localStorage.setItem(FOLLOW_HOST_KEY, 'on')
+      else localStorage.removeItem(FOLLOW_HOST_KEY)
+    }
+  } catch { /* private mode &c. — the session value still applies */ }
+  for (const l of followListeners) l()
+}
+
+export function subscribeFollowHostTheme(listener: () => void): () => void {
+  followListeners.add(listener)
+  return () => { followListeners.delete(listener) }
+}
+
 /**
  * Wire the follow machinery (idempotent): the theme service when present,
  * otherwise the DOM-signal observer. Returns a disposer.

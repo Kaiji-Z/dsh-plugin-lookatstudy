@@ -40,7 +40,7 @@ import { speakMathInSentence } from '../vendor/math-speech.ts'
 import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog, importProgressOf, importJobDead, TURN_STALL_MS, turnStalled } from './session-feed.ts'
 import { ErrorBoundary, ContentBoundary } from './error-boundary.tsx'
 import { wireCodeBlockCopy } from './codeblock.ts'
-import { panelTheme, subscribePanelTheme } from './theme.ts'
+import { panelTheme, subscribePanelTheme, followHostTheme, subscribeFollowHostTheme } from './theme.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { ArtifactCard, FoldableArtifactCard, FoldableQuizCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
@@ -155,7 +155,11 @@ interface RowAudio {
 
 function chatRow(row: ChatRow, interactive?: { send: PanelSend, answerAsk?: (label: string) => void }, audio?: RowAudio): ReactNode {
   if (row.role === 'user') {
-    return createElement('div', { key: row.key, className: 'lks14-msg lks14-msg-user' }, row.text)
+    // issue #16: the _markdown_lks suffix opts the message containers into
+    // the ecosystem markdown convention ([class*="_markdown_"]) — theme
+    // plugins (dsh-markdown-xyy &c.) scope their typography layer to that
+    // substring; inert wherever no such plugin is installed.
+    return createElement('div', { key: row.key, className: 'lks14-msg lks14-msg-user _markdown_lks' }, row.text)
   }
   if (row.role === 'reasoning') {
     // 0.24.0: the host-style thinking disclosure (ReasoningRow port) — live
@@ -208,7 +212,7 @@ function chatRow(row: ChatRow, interactive?: { send: PanelSend, answerAsk?: (lab
         q.options.length === 0 ? createElement('div', { className: 'lks14-askfree' }, tr('ask.free')) : null)),
       answered ? createElement('div', { className: 'lks14-askdone' }, tr('ask.answered')) : null)
   }
-  const cls = row.role === 'streaming' ? 'lks14-msg lks14-msg-assistant streaming' : 'lks14-msg lks14-msg-assistant'
+  const cls = row.role === 'streaming' ? 'lks14-msg lks14-msg-assistant streaming _markdown_lks' : 'lks14-msg lks14-msg-assistant _markdown_lks'
   // D8: every markdown surface renders through a boundary — a poisoned row
   // degrades to the inline warning + retry, never unmounts the pane.
   // Math folds to $..$ before render (upstream ChatStream's normalizeMathNotation
@@ -291,6 +295,15 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     const sync = (): void => { setTheme(panelTheme()) }
     sync()
     return subscribePanelTheme(sync)
+  }, [])
+  // issue #16: the opt-in ecosystem-theme bridge (settings toggle) — the
+  // panel root carries data-lks-follow-host and the skin's neutral ladder
+  // resolves through the host --dsw-alias-* tokens (theme.ts).
+  const [followHost, setFollowHost] = useState(followHostTheme)
+  useEffect(() => {
+    const sync = (): void => { setFollowHost(followHostTheme()) }
+    sync()
+    return subscribeFollowHostTheme(sync)
   }, [])
   // E7: the panel font scale — three tiers persisted locally (zoom scales the
   // px-fixed panel layout in Chromium without rewriting every font rule).
@@ -1081,7 +1094,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       ),
     ),
   )
-  return createElement('div', { className: 'lks14 lks-ui', 'data-lks-panel': '', 'data-lks-theme': theme, style: { zoom: String(zoomTier) } },
+  return createElement('div', { className: 'lks14 lks-ui', 'data-lks-panel': '', 'data-lks-theme': theme, ...(followHost ? { 'data-lks-follow-host': 'on' } : {}), style: { zoom: String(zoomTier) } },
     createElement(GlobalTooltip),
     paletteOpen
       ? createElement(CommandPalette, {
@@ -3204,7 +3217,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
             createElement(ContentBoundary, {
               content: lesson.markdown ?? '',
               boundaryKey: `prose-${lesson.lessonId}`,
-            }, createElement('div', { className: 'lks14-prose', ref: proseRef, dangerouslySetInnerHTML: { __html: teachHtml } })),
+            }, createElement('div', { className: 'lks14-prose _markdown_lks', ref: proseRef, dangerouslySetInnerHTML: { __html: teachHtml } })),
             quoteBtn !== null
               ? createElement('div', {
                   className: 'lks-quote-btn',
@@ -3359,7 +3372,7 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                         content: n.text,
                         boundaryKey: `note-${n.id}`,
                       }, createElement('div', {
-                        className: 'lks-note-text',
+                        className: 'lks-note-text _markdown_lks',
                         // issue #6: notes render through the same pipeline as
                         // the feed (normalize → markdown → enhance pass); the
                         // ref fires on mount — zone opens, tab switches, and

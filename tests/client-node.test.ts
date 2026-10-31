@@ -674,3 +674,31 @@ test('modelCatalogGroups folds both catalog shapes into chip groups (issue #15)'
   assert.deepEqual(modelCatalogGroups({ groups: [] }), [])
   assert.deepEqual(modelCatalogGroups(null), [])
 })
+
+test('issue #16: the ecosystem-theme bridge and the _markdown_ scope hook', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  // the opt-in bridge (settings 跟随宿主主题色 → data-lks-follow-host='on'):
+  // the FLAT neutral ladder resolves through the host --dsw-alias-* tokens
+  // that theme plugins (dsh-markdown-xyy &c.) override, falling back to the
+  // upstream verbatim values. The -rgb channel companions stay upstream (CSS
+  // can't decompose a resolved color into a channel triplet).
+  assert.match(UPSTREAM_CSS, /\.lks-ui\[data-lks-follow-host='on'\]\{[^}]*--surface-1:var\(--dsw-alias-bg-layer-1,#111114\)/,
+    'surface-1 bridges to the host card-layer alias with the verbatim fallback')
+  assert.match(UPSTREAM_CSS, /--ink:var\(--dsw-alias-label-primary,#F1F2F4\)/, 'the ink ladder bridges to the label aliases')
+  assert.match(UPSTREAM_CSS, /--border:var\(--dsw-alias-border-l1,#252629\)/, 'borders bridge to the border aliases')
+  assert.doesNotMatch(UPSTREAM_CSS, /--brand:var\(--dsw-alias/, 'brand never bridges — the green identity is the panel\'s own')
+  // the bridge sits AFTER the light block at equal specificity, so it wins in
+  // both lks themes (the aliases themselves flip with the host theme)
+  const lightAt = UPSTREAM_CSS.indexOf(".lks-ui[data-lks-theme='light']{")
+  const bridgeAt = UPSTREAM_CSS.indexOf(".lks-ui[data-lks-follow-host='on']{")
+  assert.ok(lightAt >= 0 && bridgeAt > lightAt, 'the bridge block follows the light block in the cascade')
+  // every markdown-bearing container opts into the ecosystem markdown
+  // convention ([class*="_markdown_"]) — inert without a theme plugin
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/client/panel.tsx', import.meta.url), 'utf8')
+  assert.match(src, /'lks14-msg lks14-msg-user _markdown_lks'/, 'user messages carry the markdown scope')
+  assert.match(src, /'lks14-msg lks14-msg-assistant _markdown_lks'/, 'assistant messages carry the markdown scope')
+  assert.match(src, /'lks14-prose _markdown_lks'/, 'teach prose carries the markdown scope')
+  assert.match(src, /'lks-note-text _markdown_lks'/, 'notes carry the markdown scope')
+  assert.match(src, /data-lks-follow-host/, 'the panel root carries the bridge attribute')
+})
