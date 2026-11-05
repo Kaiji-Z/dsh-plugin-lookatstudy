@@ -404,6 +404,17 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-notebody-fill .lks14-board{flex:1 1 0}
 .lks-ui .lks14-viewtabs{background:var(--surface-2);border-radius:10px;padding:3px;align-self:flex-start}
 .lks-ui .lks14-readbar{position:sticky;top:0;z-index:20;background:var(--surface-2);border-radius:10px}
+/* critique 2026-11-05: the read-aloud toggle wore the 3D ghost (the heaviest
+   treatment in the header — heavier than the mode toggle and the tabs it
+   serves). It now rides the viewtab weight class: a quiet pill, speaker icon
+   + short label; stop is a small icon-only ×-weight button that only exists
+   while a reading is active. */
+.lks-ui .lks-readtoggle{display:inline-flex;align-items:center;gap:5px;flex:none;border:none;border-radius:8px;background:rgb(var(--ink-rgb)/0.05);color:var(--ink-muted);font:inherit;font-size:12px;font-weight:600;padding:3px 9px;cursor:pointer;transition:color .15s,background .15s}
+.lks-ui .lks-readtoggle:hover{color:var(--ink);background:rgb(var(--ink-rgb)/0.08)}
+.lks-ui .lks-readtoggle:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
+.lks-ui .lks-readstop{display:inline-flex;align-items:center;justify-content:center;flex:none;width:22px;height:22px;border:none;border-radius:6px;background:none;color:var(--ink-faint);cursor:pointer;transition:color .15s,background .15s}
+.lks-ui .lks-readstop:hover{color:var(--warning-light);background:rgb(var(--warning-rgb)/0.08)}
+.lks-ui .lks-readstop:focus-visible{box-shadow:0 0 0 2px var(--business-primary);outline:none}
 
 /* ══════════ C-track (P11a): interaction chrome ══════════ */
 /* C1: the scroll-to-bottom FAB (red pulse while streaming) */

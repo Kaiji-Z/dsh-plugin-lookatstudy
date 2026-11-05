@@ -285,6 +285,23 @@ export function IconBoxOutline16({ size = 16, className }: IconProps) {
     createElement('path', { d: 'M8 1.5 14 4.5v7L8 14.5 2 11.5v-7L8 1.5ZM2 4.5 8 7.5l6-3M8 7.5v7', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
 }
 
+/** IconPauseOutline16 — plugin-original pause glyph (two rounded bars) */
+export function IconPauseOutline16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M5.6 2.5C6.097 2.5 6.5 2.903 6.5 3.4V12.6C6.5 13.097 6.097 13.5 5.6 13.5C5.103 13.5 4.7 13.097 4.7 12.6V3.4C4.7 2.903 5.103 2.5 5.6 2.5ZM10.4 2.5C10.897 2.5 11.3 2.903 11.3 3.4V12.6C11.3 13.097 10.897 13.5 10.4 13.5C9.903 13.5 9.5 13.097 9.5 12.6V3.4C9.5 2.903 9.903 2.5 10.4 2.5Z', fill: 'currentColor' }))
+}
+
+/** IconStopFill16 — plugin-original stop glyph (rounded square, filled: it is
+ *  a terminal action and reads at 12px where an outline square would vanish) */
+export function IconStopFill16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M4.1 3H11.9C12.504 3 13 3.496 13 4.1V11.9C13 12.504 12.504 13 11.9 13H4.1C3.496 13 3 12.504 3 11.9V4.1C3 3.496 3.496 3 4.1 3Z', fill: 'currentColor' }))
+}
+
 /** IconSoundOutline16 — plugin-original read-aloud glyph (speaker cone + two waves) */
 export function IconSoundOutline16({ size = 16, className }: IconProps) {
   return createElement('svg', {

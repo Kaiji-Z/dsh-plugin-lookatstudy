@@ -812,6 +812,29 @@ test('stripDuplicateAsk removes only a recognizable trailing ask block (critique
   assert.equal(stripDuplicateAsk('🔬 深入这点\n💡 举个例子', labels), '🔬 深入这点\n💡 举个例子')
   // no labels → no-op
   assert.equal(stripDuplicateAsk(full, []), full)
+  // live-caught shape: a short parenthetical tail AFTER the ask block strips together
+  // (the tutor appends 「（课文正在右侧黑板栏，随时可对照。）」-style notes)
+  assert.equal(stripDuplicateAsk(`${body}
+🔬 深入这点
+💡 举个例子
+📝 考考我
+🤔 我没太懂
+
+（课文正在右侧黑板栏，随时可对照。）`, labels), body)
+  // real content after the block (2 lines) also strips — but 3+ lines means real prose: untouched
+  const tail2 = stripDuplicateAsk(`${body}
+🔬 深入这点
+💡 举个例子
+（先看黑板）
+（有问题随时问）`, labels)
+  assert.equal(tail2, body)
+  const withLongTail = `${body}
+🔬 深入这点
+💡 举个例子
+另外还要注意提升的报错行为。
+这一点在面试里经常出现。
+最后补充一个历史背景。`
+  assert.equal(stripDuplicateAsk(withLongTail, labels), withLongTail, '3+ tail lines = real prose, keep everything')
 })
 
 test('critique fixes: contrast sweep, notes empty state, review hierarchy, AT exposure', async () => {
@@ -834,4 +857,20 @@ test('critique fixes: contrast sweep, notes empty state, review hierarchy, AT ex
   assert.match(panel, /'data-tooltip': tr\('rail\.delete'\),\n[^}]*'aria-label': tr\('rail\.delete'\)/, 'the delete icon button has a reachable name')
   assert.match(panel, /data-testid': 'notes-empty'/, 'the notes empty state is the teaching card')
   assert.ok(!panel.includes("tab !== 'notes'\n        ? createElement('div', { className: 'lks14-lessonhead' }"), 'the lesson head no longer hides on the notes tab')
+})
+
+test('the read-aloud toggle rides the quiet weight class (critique minor, owner-fired)', async () => {
+  // the 朗读本课 button wore the 3D ghost shadow — the heaviest header treatment,
+  // outweighing the mode toggle and tabs it serves; pause/stop were twin text
+  // buttons. Now: one quiet icon toggle (lks-readtoggle, viewtab weight) and a
+  // small icon-only stop that only exists while a reading is active.
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-readtoggle\{[^}]*font-size:12px/, 'quiet pill, not the 3D ghost')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-readstop\{[^}]*width:22px/, 'stop demoted to a small icon button')
+  const { readFileSync } = await import('node:fs')
+  const panel = readFileSync(new URL('../src/client/panel.tsx', import.meta.url), 'utf8')
+  assert.ok(!panel.includes("className: 'lks-btn ghost',\n              style: { padding: '3px 8px', fontSize: '12.5px', flex: 'none' }"), 'the old twin ghost buttons are gone')
+  assert.match(panel, /IconPauseOutline16/, 'the toggle swaps to the pause glyph while speaking')
+  assert.match(panel, /IconStopFill16/, 'stop is the small filled square icon')
+  assert.match(panel, /'data-testid': 'read-toggle'/, 'probe hook on the new toggle')
 })

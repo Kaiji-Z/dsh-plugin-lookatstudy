@@ -384,33 +384,42 @@ export function modelCatalogGroups(res: unknown): ModelFaceGroup[] {
  * critique 2026-11-05 (P1): the tutor's closing ask rendered TWICE per turn —
  * emoji bullets inside the message body AND the identical starter chips below
  * the stream. The in-body copy is dead text (the chips are the tappable ones),
- * so when the trailing block of an assistant message is recognizably the same
- * ask list, strip it from the RENDER (the system already holds both halves).
- * Conservative: only the very end is examined, ≥2 label lines must match, and
- * a message that would lose everything is left intact.
- * Pure. Emoji/leading-symbol differences between the tutor's spelling and the
- * starter label are normalized away before comparing.
+ * so when a recognizable ask block sits in the message's back third, strip it
+ * AND its short parenthetical tail (live-caught: the tutor appends one line
+ * like 「（课文正在右侧黑板栏，随时可对照。）」 after the bullets).
+ * Conservative: the block needs ≥2 label lines, may carry blank lines inside,
+ * at most 2 content lines may follow it, and the message can never be emptied.
+ * Pure. Emoji/leading-symbol differences normalize away before comparing.
  */
 export function stripDuplicateAsk(text: string, starterLabels: readonly string[]): string {
   const normalize = (s: string): string => s.replace(/^[\p{P}\p{S}\p{Zs}\s]+/gu, '').replace(/[\p{P}\p{S}\s]+$/gu, '')
   const labels = starterLabels.map(l => normalize(l)).filter(l => l.length >= 2)
   if (labels.length === 0 || text.length === 0) return text
   const lines = text.split('\n')
-  let matched = 0
-  let cut = lines.length
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const bare = normalize(lines[i] ?? '')
-    if (bare === '') {
-      // a blank line inside the trailing block is fine once matching started
-      if (matched > 0) { cut = i; continue }
-      break
+  const isLabel = (i: number): boolean => labels.includes(normalize(lines[i] ?? ''))
+  // find the LAST run of label lines (blank lines allowed inside a run)
+  let best: { start: number; end: number } | null = null
+  let i = 0
+  while (i < lines.length) {
+    if (!isLabel(i)) { i += 1; continue }
+    const start = i
+    let end = i
+    let blanks = 0
+    let j = i + 1
+    while (j < lines.length) {
+      if (isLabel(j)) { end = j; blanks = 0; j += 1 }
+      else if ((lines[j] ?? '').trim() === '' && j + 1 < lines.length && isLabel(j + 1)) { blanks += 1; j += 1 }
+      else break
     }
-    if (labels.includes(bare)) { matched += 1; cut = i; continue }
-    break
+    best = { start, end }
+    i = Math.max(j, start + 1)
   }
+  if (best === null) return text
+  const matched = best.end - best.start + 1
   if (matched < 2) return text
-  let end = cut
-  while (end > 0 && (lines[end - 1] ?? '').trim() === '') end -= 1
-  if (end === 0) return text
-  return lines.slice(0, end).join('\n').trimEnd()
+  const tail = lines.slice(best.end + 1).filter(l => (l ?? '').trim() !== '')
+  if (tail.length > 2) return text // real content follows — not an ask block
+  if (best.start === 0 && best.end === lines.length - 1) return text // never empty
+  if (best.start < lines.length / 3) return text // only strip from the back third
+  return lines.slice(0, best.start).join('\n').trimEnd()
 }

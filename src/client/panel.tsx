@@ -19,7 +19,7 @@ import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
   IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16, IconWrenchOutline16,
-  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16, IconBookOutline16, IconPenOutline16 } from './icons.tsx'
+  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16, IconBookOutline16, IconPenOutline16, IconPauseOutline16, IconStopFill16 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { acquireStageReference, stageSession, stagingMode } from './stage-session.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
@@ -3363,23 +3363,33 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                   },
                 }, tr(`langview.${v}`))))
               : null,
+            // critique 2026-11-05: the read-aloud toggle was the HEAVIEST
+            // control in the header (3D ghost shadow outweighing the mode
+            // toggle and the tabs above) and pause/stop were identical twin
+            // text buttons. Now: one quiet icon toggle in the viewtab weight
+            // class; stop demotes to a small icon-only button beside it.
             createElement('button', {
-              className: 'lks-btn ghost',
-              style: { padding: '3px 8px', fontSize: '12.5px', flex: 'none' },
+              className: 'lks-readtoggle',
+              'data-testid': 'read-toggle',
               title: read !== null && read.state === 'speaking' ? tr('read.pause') : tr('read.play'),
+              'aria-label': read !== null && read.state === 'speaking' ? tr('read.pause') : tr('read.play'),
               onClick: () => {
                 if (read !== null && read.state === 'speaking') { readCtl.current?.pause(); return }
                 if (read !== null && read.state === 'paused') { readCtl.current?.resume(); return }
                 startReading()
               },
-            }, read !== null && read.state === 'speaking' ? tr('read.pause') : tr('read.play')),
+            },
+              read !== null && read.state === 'speaking'
+                ? createElement(IconPauseOutline16, { size: 13 })
+                : createElement(IconSoundOutline16, { size: 13 }),
+              createElement('span', null, read !== null && read.state === 'paused' ? tr('read.resume') : read !== null && read.state === 'speaking' ? tr('read.pause') : tr('read.play'))),
             read !== null
               ? createElement('button', {
-                className: 'lks-btn ghost',
-                style: { padding: '3px 8px', fontSize: '12.5px', flex: 'none' },
+                className: 'lks-readstop',
                 'data-tooltip': tr('read.stop'),
+                'aria-label': tr('read.stop'),
                 onClick: stopReading,
-              }, tr('read.stop'))
+              }, createElement(IconStopFill16, { size: 11 }))
               : null,
             read !== null && read.state !== 'idle' && lesson !== null
               ? createElement('span', { className: 'lks-readbar-cur' },
