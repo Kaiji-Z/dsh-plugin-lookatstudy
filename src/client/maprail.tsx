@@ -129,6 +129,9 @@ export function ListSectionView({ section, examAllowed, open, onToggle, onJump, 
             className: `lks-lessorow st-${state}${lesson.focus ? ' selected' : ''}${hintId !== undefined && hintId !== null && hintId === lesson.id ? ' next-hint' : ''}`,
             'data-node-id': lesson.id,
             'aria-disabled': locked || undefined,
+            // critique 2026-11-05: the selected row was border-color-only —
+            // AT never announced which lesson is focused
+            'aria-current': lesson.focus ? 'true' : undefined,
             'data-tooltip': `${lesson.title} — ${stateWord}`,
             onClick: () => { if (!locked) onJump(lesson.id) },
           },
@@ -147,7 +150,9 @@ export function ListSectionView({ section, examAllowed, open, onToggle, onJump, 
           createElement('span', { className: 'lks-lessorow-main' },
             createElement('span', { className: 'lks-lessorow-title' }, lesson.title),
             pct !== null
-              ? createElement('span', { className: 'lks-lessorow-bar' },
+              // critique 2026-11-05: the mastery hairline was an unlabeled bare
+              // <i> — the percentage reached AT only via the custom tooltip
+              ? createElement('span', { className: 'lks-lessorow-bar', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': pct, 'aria-label': tr('map.mastery.meter', { pct: String(pct) }) },
                 createElement('i', { style: { transform: `scaleX(${String(pct / 100)})` } } as CSSProperties))
               : null),
           lesson.due && !locked && lesson.kind !== 'exam'

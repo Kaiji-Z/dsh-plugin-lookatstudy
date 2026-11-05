@@ -379,3 +379,38 @@ export function modelCatalogGroups(res: unknown): ModelFaceGroup[] {
     models: (g.models ?? []).map(m => ({ id: m.id ?? '?', name: m.name ?? m.id ?? '?', effort: m.reasoning?.defaultEffort ?? m.reasoning?.efforts?.[0]?.id })),
   }))
 }
+
+/**
+ * critique 2026-11-05 (P1): the tutor's closing ask rendered TWICE per turn —
+ * emoji bullets inside the message body AND the identical starter chips below
+ * the stream. The in-body copy is dead text (the chips are the tappable ones),
+ * so when the trailing block of an assistant message is recognizably the same
+ * ask list, strip it from the RENDER (the system already holds both halves).
+ * Conservative: only the very end is examined, ≥2 label lines must match, and
+ * a message that would lose everything is left intact.
+ * Pure. Emoji/leading-symbol differences between the tutor's spelling and the
+ * starter label are normalized away before comparing.
+ */
+export function stripDuplicateAsk(text: string, starterLabels: readonly string[]): string {
+  const normalize = (s: string): string => s.replace(/^[\p{P}\p{S}\p{Zs}\s]+/gu, '').replace(/[\p{P}\p{S}\s]+$/gu, '')
+  const labels = starterLabels.map(l => normalize(l)).filter(l => l.length >= 2)
+  if (labels.length === 0 || text.length === 0) return text
+  const lines = text.split('\n')
+  let matched = 0
+  let cut = lines.length
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const bare = normalize(lines[i] ?? '')
+    if (bare === '') {
+      // a blank line inside the trailing block is fine once matching started
+      if (matched > 0) { cut = i; continue }
+      break
+    }
+    if (labels.includes(bare)) { matched += 1; cut = i; continue }
+    break
+  }
+  if (matched < 2) return text
+  let end = cut
+  while (end > 0 && (lines[end - 1] ?? '').trim() === '') end -= 1
+  if (end === 0) return text
+  return lines.slice(0, end).join('\n').trimEnd()
+}

@@ -434,6 +434,12 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-codehead + .lks-shiki pre{border-radius:0 0 10px 10px;margin:0}
 /* C9: the review action row */
 .lks-ui .lks14-reviewrow{display:flex;gap:8px;align-items:center}
+/* critique 2026-11-05: ONE primary review entry; the random/quick pair sits
+   in a muted full-width secondary line under it */
+.lks-ui .lks14-reviewstack{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.lks-ui .lks14-reviewstack>.lks-btn.primary{align-self:flex-start}
+.lks-ui .lks14-reviewrow-sub .lks-btn{font-size:12px;padding:4px 10px}
+.lks-ui[data-lks-theme='light'] .lks14-reviewrow-sub .lks-btn{color:var(--ink-muted)}
 
 /* ══════════ P11b (C-track closure): chat parts, notes closure, tooltip, confirm ══════════ */
 /* C14: the collapsible reasoning block */
@@ -889,6 +895,28 @@ export const UPSTREAM_CSS = `
 .lks-ui[data-lks-theme='light'] .lks14-importprog-elapsed{color:var(--ink-muted)}
 .lks-ui[data-lks-theme='light'] .lks14-threadmenu{background:rgb(255 255 255/0.98);border-color:var(--border-faint);box-shadow:0 12px 32px -8px rgb(0 0 0/0.18)}
 .lks-ui[data-lks-theme='light'] .lks14-ctxpanel{background:rgb(255 255 255/0.98);box-shadow:0 8px 24px rgb(0 0 0/0.12)}
+/* ── the critique contrast sweep (2026-11-05, detector-evidenced): nine
+   light-theme pairs measured below AA 4.5:1 — functional text reading gray
+   on gray. Every fix is a token upgrade inside the light block; dark values
+   already pass (dark accent-light on dark ≈ 8:1). ── */
+/* rail section number chip: brand on brand-tint was 3.7:1 → brand-dark ≈ 8:1 */
+.lks-ui[data-lks-theme='light'] .lks-railsec-num{color:var(--brand-dark)}
+/* section counts: 10.5px faint gray → 11.5px muted (7.6:1) */
+.lks-ui[data-lks-theme='light'] .lks-railsec-count{font-size:11.5px;color:var(--ink-muted)}
+/* chat lesson row: the .75 opacity over muted produced #7e7e7e (3.8:1) —
+   kill the opacity, let ink-muted (#555, 7:1) carry it */
+.lks-ui[data-lks-theme='light'] .lks14-lessonrow{opacity:1;color:var(--ink-muted)}
+/* thread chip: same gray-on-gray (3.5:1) → ink-muted directly */
+.lks-ui[data-lks-theme='light'] .lks14-threadchip{color:var(--ink-muted)}
+/* soul label over the composer gradient: faint (4.2:1) → muted */
+.lks-ui[data-lks-theme='light'] .lks14-soullabel{color:var(--ink-muted)}
+/* selected mode pill: accent-light on accent-tint was 3.0:1 → accent-dark ≈ 6:1 */
+.lks-ui[data-lks-theme='light'] .lks14-pill.on{color:var(--accent-dark)}
+/* composer placeholder: ink at 35% was 4.2:1; faint still measured 4.17 over
+   the composer gradient (lighter than bare surface-1) → muted (#555, 6.4:1) */
+.lks-ui[data-lks-theme='light'] .lks14-composertext::placeholder{color:var(--ink-muted)}
+/* inline code in prose: accent-light (3.8:1) → accent-dark (≈7:1) */
+.lks-ui[data-lks-theme='light'] .lks14-prose code,.lks-ui[data-lks-theme='light'] .lks-note-text code{color:var(--accent-dark)}
 /* ══════════ issue #16: the ecosystem-theme bridge (opt-in) ══════════
    data-lks-follow-host='on' comes from the settings toggle (跟随宿主主题色,
    theme.ts); the FLAT neutral ladder then resolves through the host

@@ -791,3 +791,47 @@ test('the profile pill strips unanchor inside the grid (live-screenshot regressi
   assert.match(STUDY_CSS, /\.lks-profile-grid \.lks-pills\{display:flex;flex-wrap:wrap;height:auto;gap:6px\}/, 'the strips wrap and lose the height lock')
   assert.match(STUDY_CSS, /\.lks-profile-grid \.lks-pill\{height:auto;padding:4px 11px;white-space:nowrap;flex:none\}/, 'pills hug text, never break mid-word')
 })
+
+test('stripDuplicateAsk removes only a recognizable trailing ask block (critique P1)', async () => {
+  const { stripDuplicateAsk } = await import('../src/client/views.tsx')
+  const labels = ['🔬 深入这点', '💡 举个例子', '📝 考考我', '🤔 我没太懂']
+  const body = '变量提升是引擎在执行前先登记声明的过程。\n\n核心在于「登记」而非「赋值」。\n\n你可以：'
+  const full = `${body}\n🔬 深入这点\n💡 举个例子\n📝 考考我\n🤔 我没太懂`
+  // the full duplicated ask block strips clean, trailing blank lines included
+  assert.equal(stripDuplicateAsk(full, labels), body)
+  // emoji-less tutor spelling still matches (normalization)
+  assert.equal(stripDuplicateAsk(`${body}\n深入这点\n举个例子\n考考我\n我没太懂`, labels), body)
+  // a blank line between prose and the ask block also goes
+  assert.equal(stripDuplicateAsk(`${body}\n\n🔬 深入这点\n💡 举个例子`, labels), body)
+  // <2 matching lines: untouched (could be legitimate prose)
+  assert.equal(stripDuplicateAsk(`${body}\n🔬 深入这点`, labels), `${body}\n🔬 深入这点`)
+  assert.equal(stripDuplicateAsk(`${body}\n深挖一下这个概念`, labels), `${body}\n深挖一下这个概念`)
+  // mid-message mentions never strip (only the very end)
+  assert.equal(stripDuplicateAsk('先 🔬 深入这点，然后我们继续', labels), '先 🔬 深入这点，然后我们继续')
+  // would-be-empty message stays intact
+  assert.equal(stripDuplicateAsk('🔬 深入这点\n💡 举个例子', labels), '🔬 深入这点\n💡 举个例子')
+  // no labels → no-op
+  assert.equal(stripDuplicateAsk(full, []), full)
+})
+
+test('critique fixes: contrast sweep, notes empty state, review hierarchy, AT exposure', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  // P1 contrast sweep pins (light block overrides, detector-evidenced pairs)
+  assert.match(UPSTREAM_CSS, /\.lks-ui\[data-lks-theme='light'\] \.lks-railsec-num\{color:var\(--brand-dark\)\}/, 'railsec num → brand-dark (3.7:1 → ≈8:1)')
+  assert.match(UPSTREAM_CSS, /\.lks-ui\[data-lks-theme='light'\] \.lks-railsec-count\{font-size:11\.5px;color:var\(--ink-muted\)\}/, 'counts 10.5px faint → 11.5px muted')
+  assert.match(UPSTREAM_CSS, /\.lks-ui\[data-lks-theme='light'\] \.lks14-lessonrow\{opacity:1;color:var\(--ink-muted\)\}/, 'lesson row drops the .75 opacity gray')
+  assert.match(UPSTREAM_CSS, /\.lks-ui\[data-lks-theme='light'\] \.lks14-pill\.on\{color:var\(--accent-dark\)\}/, 'selected pill 3.0:1 → accent-dark')
+  assert.match(UPSTREAM_CSS, /\.lks-ui\[data-lks-theme='light'\] \.lks14-composertext::placeholder\{color:var\(--ink-muted\)\}/, 'placeholder 4.17:1 over the gradient → muted (faint was not enough)')
+  assert.match(UPSTREAM_CSS, /\.lks-ui\[data-lks-theme='light'\] \.lks14-prose code,\.lks-ui\[data-lks-theme='light'\] \.lks-note-text code\{color:var\(--accent-dark\)\}/, 'inline code 3.8:1 → accent-dark')
+  // review hierarchy
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-reviewstack\{display:flex;flex-direction:column/, 'one primary entry + muted secondary line')
+  // P2 AT exposure pins (source level)
+  const { readFileSync } = await import('node:fs')
+  const rail = readFileSync(new URL('../src/client/maprail.tsx', import.meta.url), 'utf8')
+  assert.match(rail, /'aria-current': lesson\.focus \? 'true' : undefined/, 'the selected lesson row announces itself')
+  assert.match(rail, /role: 'meter'[^}]*'aria-valuenow': pct/, 'the mastery hairline is a labeled meter')
+  const panel = readFileSync(new URL('../src/client/panel.tsx', import.meta.url), 'utf8')
+  assert.match(panel, /'data-tooltip': tr\('rail\.delete'\),\n[^}]*'aria-label': tr\('rail\.delete'\)/, 'the delete icon button has a reachable name')
+  assert.match(panel, /data-testid': 'notes-empty'/, 'the notes empty state is the teaching card')
+  assert.ok(!panel.includes("tab !== 'notes'\n        ? createElement('div', { className: 'lks14-lessonhead' }"), 'the lesson head no longer hides on the notes tab')
+})

@@ -46,7 +46,7 @@ import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { ArtifactCard, FoldableArtifactCard, FoldableQuizCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, unwrapRemoteValue, modelCatalogGroups, type ChatRow } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, unwrapRemoteValue, modelCatalogGroups, stripDuplicateAsk, type ChatRow } from './views.tsx'
 import { ListSectionView, nextStudyAfterView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
@@ -1602,6 +1602,8 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
           createElement('button', {
             className: 'lks-btn ghost',
             'data-tooltip': tr('rail.delete'),
+            // critique 2026-11-05: tooltip-only icon buttons had no reachable name
+            'aria-label': tr('rail.delete'),
             onClick: (e: { currentTarget: HTMLButtonElement; stopPropagation: () => void }) => {
               e.stopPropagation()
               const r = e.currentTarget.getBoundingClientRect()
@@ -1614,6 +1616,7 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
           createElement('button', {
             className: 'lks-btn ghost',
             'data-tooltip': tr('rail.export.pack'),
+            'aria-label': tr('rail.export.pack'),
             'data-testid': 'course-export',
             onClick: () => {
               if (courseId === null) return
@@ -1818,22 +1821,16 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
         createElement('span', null, d.lessonTitle),
         d.overdueDays > 0 ? createElement('span', { className: 'lks14-over' }, tr('rail.due.over', { days: d.overdueDays })) : null)),
       data.dueCount > 0
-        ? createElement('div', { className: 'lks14-reviewrow' },
-          createElement('button', {
-            className: 'lks-btn ghost',
-            'data-tooltip': tr('review.random.hint'),
-            onClick: () => {
-              const pick = pickRandomDue(data.due)
-              setReviewOpen(false)
-              if (pick !== null) void setFocus(pick.lessonId).catch(reportError)
-            },
-          }, createElement(IconRefreshOutline16, { size: 13 }), tr('review.random')),
+        // critique 2026-11-05 (P2): three competing review philosophies side
+        // by side inverted 「一次一个决定」. ONE primary conversational entry;
+        // the random pick and the legacy quick self-rate collapse into one
+        // muted secondary line below it.
+        ? createElement('div', { className: 'lks14-reviewstack' },
           createElement('button', {
             className: 'lks-btn primary',
             onClick: () => {
               // v0.39: 开始复习 opens the CONVERSATIONAL review session (the
-              // due lesson's review thread + 复习导师 kickoff) — the quick
-              // self-rate stays on the teach tab's ratecard.
+              // due lesson's review thread + 复习导师 kickoff).
               const first = data.due[0]
               setReviewOpen(false)
               if (first !== undefined) {
@@ -1843,20 +1840,30 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
               }
             },
           }, tr('rail.due.start')),
-          createElement('button', {
-            className: 'lks-btn ghost',
-            'data-tooltip': tr('review.session.quick.hint'),
-            onClick: () => {
-              // legacy quick path: plain prompt on the group's chat thread
-              const first = data.due[0]
-              setReviewOpen(false)
-              if (first !== undefined) {
-                send(tr('prompt.review'), tr('review.threadTitle', { lesson: first.lessonTitle }), first.lessonId)
-              } else {
-                send(tr('prompt.review'))
-              }
-            },
-          }, tr('review.session.quick')))
+          createElement('div', { className: 'lks14-reviewrow lks14-reviewrow-sub' },
+            createElement('button', {
+              className: 'lks-btn ghost',
+              'data-tooltip': tr('review.random.hint'),
+              onClick: () => {
+                const pick = pickRandomDue(data.due)
+                setReviewOpen(false)
+                if (pick !== null) void setFocus(pick.lessonId).catch(reportError)
+              },
+            }, createElement(IconRefreshOutline16, { size: 13 }), tr('review.random')),
+            createElement('button', {
+              className: 'lks-btn ghost',
+              'data-tooltip': tr('review.session.quick.hint'),
+              onClick: () => {
+                // legacy quick path: plain prompt on the group's chat thread
+                const first = data.due[0]
+                setReviewOpen(false)
+                if (first !== undefined) {
+                  send(tr('prompt.review'), tr('review.threadTitle', { lesson: first.lessonTitle }), first.lessonId)
+                } else {
+                  send(tr('prompt.review'))
+                }
+              },
+            }, tr('review.session.quick'))))
         : createElement('div', { className: 'lks14-empty' }, tr('rail.due.none')))
     : null
 
@@ -2400,7 +2407,27 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   // when the window rows or the state feed's artifacts change, so the state
   // poll landing after the journal still hydrates). The backlog stack under
   // the stream keeps what this window hasn't rendered, unseen first.
+  const starters = lesson?.starters ?? []
   const rowsView = useMemo(() => hydrateArtifactRows(rows, lesson?.artifacts), [rows, lesson?.artifacts])
+  // critique 2026-11-05 (P1): the tutor's closing ask duplicates the starter
+  // chips (in-body bullets + tappable chips). Strip the trailing ask block
+  // from the LAST settled assistant row's render — chips remain the one copy.
+  const rowsForRender = useMemo(() => {
+    const labels = starters.map(s => s.label)
+    if (labels.length === 0) return rowsView
+    for (let i = rowsView.length - 1; i >= 0; i--) {
+      const row = rowsView[i]!
+      if (row.role === 'assistant') {
+        const stripped = stripDuplicateAsk(row.text, labels)
+        if (stripped === row.text) return rowsView
+        const next = rowsView.slice()
+        next[i] = { ...row, text: stripped }
+        return next
+      }
+      if (row.role === 'user') break // the ask belongs to THIS turn only
+    }
+    return rowsView
+  }, [rowsView, starters])
   const inlineIds = useMemo(() => {
     const ids = new Set<string>()
     for (const row of rowsView) if (row.role === 'artifact' && row.artifactId !== undefined) ids.add(row.artifactId)
@@ -2449,7 +2476,6 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(friendlyError(err, 'action')) })
   }
-  const starters = lesson?.starters ?? []
   // E3: the attachment intake — one file at a time lands verbatim in the study
   // workspace (dashboard route), then the outgoing message carries the path
   // the tutor reads. Chunked base64 keeps big files off the arg-size cliff.
@@ -2717,7 +2743,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             'data-tooltip': tr('chat.start.hint'),
             onClick: () => { send(starters[0]?.message ?? tr('prompt.start')) },
           }, tr('chat.start')))
-        : rowsView.map((row, i) => row.role === 'artifact'
+        : rowsForRender.map((row, i) => row.role === 'artifact'
           ? inlineArtifactCard(row, rowsView.slice(i + 1).some(r => r.role === 'assistant'))
           : chatRow(row,
             !dormant && (i === lastAssistant || (row.role === 'ask' && row.ask !== undefined && !row.ask.answered))
@@ -2733,7 +2759,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             row.role === 'assistant'
               ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, onPlay: playMessage, onStop: stopMessage }
               : undefined)),
-      rowsView.length > 0 && rowsView[rowsView.length - 1]!.role === 'user' && busy
+      rowsForRender.length > 0 && rowsForRender[rowsForRender.length - 1]!.role === 'user' && busy
         ? createElement('div', { className: 'lks14-thinking' }, createElement('i', null), createElement('i', null), createElement('i', null))
         : null,
       // issue #18: the chat quote popover — same surface as the prose one
@@ -3278,14 +3304,13 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
           onClick: () => { setTab('board') },
         }, createElement(IconMaximizeOutline16, { size: 13 }), tr('viewtab.board')),
       ),
-      // B5: the lesson head sits under the tab capsule (upstream ContentTab kicker)
-      tab !== 'notes'
-        ? createElement('div', { className: 'lks14-lessonhead' },
-          createElement('h2', null, lesson.title),
-          createElement('div', { className: 'lks14-meta' },
-            `${lesson.courseTitle} · ${statusTitle('study', lesson.status)}`),
-        )
-        : null,
+      // B5: the lesson head sits under the tab capsule (upstream ContentTab kicker).
+      // critique 2026-11-05: the notes tab hid it entirely — the learner lost
+      // whose-notes context. All three tabs now keep the slim head.
+      createElement('div', { className: 'lks14-lessonhead' },
+        createElement('h2', null, lesson.title),
+        createElement('div', { className: 'lks14-meta' },
+          `${lesson.courseTitle} · ${statusTitle('study', lesson.status)}`)),
       tab === 'teach'
         ? createElement('div', null,
           lesson.due ? createElement('div', { className: 'lks-ratecard', 'data-lks-rate': lesson.lessonId },
@@ -3444,7 +3469,17 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
                 ...understand.map(a => createElement(ArtifactCard, { key: a.id, artifact: a, send: () => {} })))
             })(),
             lesson.notes.length === 0
-              ? createElement('div', { className: 'lks14-empty', style: { padding: '16px 0' } as CSSProperties }, tr('bb.notes.empty'))
+              // critique 2026-11-05: a bare gray line was a dead end — the only
+              // note-creation gesture (selecting text in 讲解) was undiscoverable
+              // from this exact screen. The empty state now teaches the gesture
+              // and routes to the teach tab.
+              ? createElement('div', { className: 'lks14-emptycard', 'data-testid': 'notes-empty' },
+                createElement('div', { className: 'lks14-emptycard-title' }, tr('bb.notes.empty.title')),
+                createElement('div', { className: 'lks14-emptycard-hint' }, tr('bb.notes.empty.hint')),
+                createElement('button', {
+                  className: 'lks-btn primary',
+                  onClick: () => { setTab('teach') },
+                }, tr('bb.notes.empty.go')))
               : ZONES.filter(([zone]) => lesson.notes.some(n => n.zone === zone)).map(([zone, labelKey]) => {
                 const zoneNotes = lesson.notes.filter(n => n.zone === zone)
                   .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
