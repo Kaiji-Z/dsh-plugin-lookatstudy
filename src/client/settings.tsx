@@ -11,7 +11,7 @@
 import { createElement, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useStudy, TTS_VOICES, storedTtsVoice, storeTtsVoice } from './data.ts'
-import { followHostTheme, setFollowHostTheme } from './theme.ts'
+import { followHostTheme, setFollowHostTheme, readingWidthPref, setReadingWidthPref } from './theme.ts'
 import { MBTI_TYPES, expandMbtiToStyle, MOTIVE_DISPLAY, MOTIVE_STAGES, parseInterestsInput, type MbtiType, type MotiveStage } from '../learner-profile.ts'
 import { tr } from './locale.ts'
 import { ActionError } from './views.tsx'
@@ -182,6 +182,7 @@ export function StudySettingsSection(): ReactNode {
   const [error, setError] = useState<string | null>(null)
   const [voice, setVoice] = useState(storedTtsVoice)
   const [followHost, setFollowHost] = useState(followHostTheme)
+  const [readWidth, setReadWidth] = useState(readingWidthPref)
   // issue #18: the external TTS endpoint — the input starts from the feed's
   // persisted truth; the probe line reports the last 测试 answer
   const [endpoint, setEndpoint] = useState('')
@@ -286,6 +287,19 @@ export function StudySettingsSection(): ReactNode {
           setFollowHost(next)
         },
       }),
+    }),
+    // C13: the reading-column width — tiers (default, the researched ladder)
+    // or free (no cap, for readers who want long lines)
+    createElement(SetRow, {
+      title: tr('settings.readWidth'),
+      hint: tr('settings.readWidth.hint'),
+      ctrl: createElement('span', { className: 'lks-pills', 'data-testid': 'read-width-pills' },
+        ...([['tiers', 'settings.readWidth.tiers'], ['free', 'settings.readWidth.free']] as const).map(([value, labelKey]) =>
+          createElement('button', {
+            key: value,
+            className: `lks-pill${readWidth === value ? ' on' : ''}`,
+            onClick: () => { setReadingWidthPref(value); setReadWidth(value) },
+          }, tr(labelKey)))),
     }),
     progress === undefined ? null : createElement(SetRow, {
       title: tr('settings.stats'), hint: null, wide: true,

@@ -61,7 +61,12 @@ export function reasoningSummaryLine(text: string, running: boolean): string {
   const visible = running
     ? ((): string => { const v = text.trimEnd(); const nl = v.lastIndexOf('\n'); return nl === -1 ? v : v.slice(nl + 1) })()
     : ((): string => { const nl = text.indexOf('\n'); return nl === -1 ? text : text.slice(0, nl) })()
-  return visible.replaceAll('**', '')
+  // critique 2026-11-05: CSS ellipsis cut English summaries mid-word
+  // ("…usi…") — pre-truncate at the last word boundary so the cut is clean
+  const capped = visible.length > 90
+    ? `${visible.slice(0, 90).replace(/\s+\S*$/, '')}…`
+    : visible
+  return capped.replaceAll('**', '')
 }
 
 /**
@@ -109,12 +114,63 @@ export function quizOptions(text: string): ReadonlyArray<{ letter: string; text:
     // directive (live 0.14.0 catch: the quiz rendered as plain text and the
     // options stayed unclickable).
     const plain = /^([A-D])[.、:)]\s*(.+)$/.exec(line.trim())
+    // critique 2026-11-05 (Jordan red flag): the tutor jams options on ONE
+    // line (「A. 模型容量不够，欠拟合 B. 模型记住了训练集噪声」) — the old
+    // line parser matched a run of 1 and rendered nothing tappable. Split the
+    // inline B/C/D markers so the group parses like separate lines.
+    let multi: ReadonlyArray<readonly [string, string]> | null = null
+    if (plain !== null) {
+      const segRe = /\s+([B-D])[.、:)]\s*/
+      const letters: string[] = [plain[1]!]
+      const parts: string[] = []
+      let rest = plain[2]!
+      for (;;) {
+        const mm = segRe.exec(rest)
+        if (mm === null || mm[1] !== String.fromCharCode(letters[letters.length - 1]!.charCodeAt(0) + 1)) break
+        parts.push(rest.slice(0, mm.index))
+        rest = rest.slice(mm.index + mm[0].length)
+        letters.push(mm[1]!)
+      }
+      if (parts.length > 0) {
+        parts.push(rest)
+        multi = letters.map((letter, i) => [letter, parts[i]!.trim().replaceAll('**', '').replaceAll('`', '')] as const)
+      }
+    } else {
+      // same jam, prose-prefixed (「为什么会过拟合？A. … B. … C. …」): find an
+      // A marker (not preceded by a letter/digit, so USA. never fires) whose
+      // B/C/D chain follows consecutively — the prefix prose is discarded and
+      // the options start at their markers
+      for (const am of line.matchAll(/(^|[^\p{L}\p{N}])A[.、:)]\s*/gu)) {
+        const letters: string[] = ['A']
+        const parts: string[] = []
+        let rest = line.slice((am.index ?? 0) + am[0]!.length)
+        for (let expect = 66; expect <= 68; expect++) {
+          const nm = new RegExp(`(?:^|[^\\p{L}\\p{N}])${String.fromCharCode(expect)}[.、:)]`, 'u').exec(rest)
+          if (nm === null) break
+          parts.push(rest.slice(0, nm.index))
+          rest = rest.slice(nm.index + nm[0]!.length)
+          letters.push(String.fromCharCode(expect))
+        }
+        if (parts.length > 0) {
+          parts.push(rest)
+          multi = letters.map((letter, i) => [letter, parts[i]!.trim().replaceAll('**', '').replaceAll('`', '')] as const)
+          break
+        }
+      }
+    }
     const table = /^\|\s*\*{0,2}([A-D])\*{0,2}\s*\|\s*(.+?)\s*\|$/.exec(line.trim())
-    const match: readonly [letter: string, text: string] | null = plain !== null
-      ? [plain[1]!, plain[2]!]
-      : table !== null
-        ? [table[1]!, table[2]!.replaceAll('**', '').replaceAll('`', '')]
-        : null
+    const match: readonly [letter: string, text: string] | null = multi !== null
+      ? null // the inline group is handled below as a unit
+      : plain !== null
+        ? [plain[1]!, plain[2]!]
+        : table !== null
+          ? [table[1]!, table[2]!.replaceAll('**', '').replaceAll('`', '')]
+          : null
+    if (multi !== null) {
+      flush()
+      runs.push(multi.map(([letter, t]) => ({ letter, text: t })))
+      continue
+    }
     if (match === null) {
       flush()
       continue
@@ -194,8 +250,27 @@ export function pickNarrowPane(stored: string | null): 'rail' | 'chat' | 'note' 
  * truncates via CSS, storage keeps a sane whole title. Pure.
  */
 export function threadAutoTitle(text: string, max = 80): string {
-  const oneLine = text.trim().replace(/\s+/g, ' ')
+  // critique 2026-11-05: raw prompt text leaked machinery names into the
+  // switcher menu (「导入课程：用 study_import_url 导…」) — mechanical tool
+  // tokens collapse to a plain word before the length cap
+  const oneLine = text.trim().replace(/\bstudy_[a-z0-9_]+\b/gi, '工具调用').replace(/\s+/g, ' ')
   return oneLine.length > max ? `${oneLine.slice(0, max - 1)}…` : oneLine
+}
+
+/**
+ * critique 2026-11-05: the failed-tool retry resends the prompt that started
+ * the failing turn — walk backwards to the NEAREST user row and stop there.
+ * Assistant/tool rows in between belong to the same turn (the tutor's prose
+ * and tool traffic precede the error), so they never terminate the walk.
+ * Returns null when no such user row exists. Pure.
+ */
+export function retryPromptOf(rows: ReadonlyArray<{ role: string; text: string }>, fromIndex: number): string | null {
+  for (let j = fromIndex - 1; j >= 0; j--) {
+    const r = rows[j]
+    if (r === undefined) break
+    if (r.role === 'user') return r.text
+  }
+  return null
 }
 
 export interface ThreadPillRow { id: string; title: string; current: boolean, touchedLessons?: string[], kind?: 'chat' | 'review' }

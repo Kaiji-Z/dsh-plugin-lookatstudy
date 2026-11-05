@@ -37,6 +37,15 @@ dsh plugin add ./dsh-plugin-lookatstudy-0.2.1.tgz
 
 任意 profile 可用。在 `web` profile 里，插件还会挂载学习页的 HTTP API 并加载浏览器侧；headless profile 只获得纯工具面。
 
+## 升级
+
+```sh
+dsh plugin remove dsh-plugin-lookatstudy
+dsh plugin add dsh-plugin-lookatstudy        # 解析最新版本
+```
+
+同版本重复执行 `dsh plugin add` 会静默保留旧拷贝——先 remove 再 add 才真正完成切换。之后重启宿主，新包才会加载。你的学习数据（课程、笔记、复习记录）存放在 profile 的 `state.json` 里，在包体之外——升级不会碰它。
+
 ## 两个使用面
 
 **1. 导师（对话）。** 直接和智能体说："导入 https://github.com/microsoft/AI-For-Beginners 教我第 1 课"、"今天有什么要复习的"。导师人格（稳定内核 + 三选一灵魂——`guide` 引导 / `direct` 直讲 / `practice` 实战）驱动完整的 LookatStudy 循环：

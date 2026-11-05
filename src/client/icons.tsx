@@ -285,6 +285,15 @@ export function IconBoxOutline16({ size = 16, className }: IconProps) {
     createElement('path', { d: 'M8 1.5 14 4.5v7L8 14.5 2 11.5v-7L8 1.5ZM2 4.5 8 7.5l6-3M8 7.5v7', stroke: 'currentColor', 'stroke-width': 1.3, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }))
 }
 
+/** IconPaperclipOutline16 — plugin-original attachment glyph (the attach
+ *  button used to wear the pin glyph, which reads as 定位/location) */
+export function IconPaperclipOutline16({ size = 16, className }: IconProps) {
+  return createElement('svg', {
+    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
+  },
+    createElement('path', { d: 'M13.06 4.19 8.28 8.97a2.1 2.1 0 0 0 0 2.97 2.1 2.1 0 0 0 2.97 0l4.4-4.4a.55.55 0 0 1 .78.78l-4.4 4.4a3.2 3.2 0 1 1-4.52-4.53l4.78-4.78a2.55 2.55 0 0 1 3.6 0 2.55 2.55 0 0 1 0 3.6l-4.78 4.79a1.9 1.9 0 0 1-1.35.56h-.01a1.9 1.9 0 0 1-1.34-.56.55.55 0 0 1 .78-.78.9.9 0 0 0 .62.24.8.8 0 0 0 .57-.24l4.78-4.78a1.45 1.45 0 0 0 0-2.05 1.45 1.45 0 0 0-2.04 0l-4.79 4.78a3.2 3.2 0 0 0 4.53 4.53l4.4-4.4a1.65 1.65 0 1 0-2.34-2.34Z', fill: 'currentColor', transform: 'translate(-2.2 -1.5)' }))
+}
+
 /** IconPauseOutline16 — plugin-original pause glyph (two rounded bars) */
 export function IconPauseOutline16({ size = 16, className }: IconProps) {
   return createElement('svg', {

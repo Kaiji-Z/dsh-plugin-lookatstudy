@@ -761,6 +761,15 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-ctxring-wrap{position:relative;display:inline-flex;align-items:center}
 .lks-ui .lks14-ctxring{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:none;border-radius:50%;background:transparent;cursor:pointer;color:var(--ink-faint);transition:color .15s}
 .lks-ui .lks14-ctxring:hover{color:var(--ink-muted)}
+/* critique 2026-11-05: at low fill the ring was nearly invisible — hover
+   brightens the track so the affordance reveals itself */
+.lks-ui .lks14-ctxring:hover .track,.lks-ui .lks14-ctxring:focus-visible .track{stroke:rgb(var(--ink-rgb)/0.38)}
+/* failed tool rows: the one-click retry sits beside the chip */
+.lks-ui .lks14-toolretry{border:none;background:none;color:var(--warning-light);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;padding:1px 6px;border-radius:6px;text-decoration:underline;text-underline-offset:2px}
+.lks-ui .lks14-toolretry:hover{background:rgb(var(--warning-rgb)/0.1)}
+/* exam-gated rows carry the rule INLINE (hover-only knowledge was invisible
+   to touch and screen readers) */
+.lks-ui .lks-lessorow-rule{display:block;font-size:11px;line-height:1.5;color:var(--ink-muted)}
 .lks-ui .lks14-ctxring:focus-visible{outline:none;box-shadow:0 0 0 2px var(--business-primary)}
 .lks-ui .lks14-ctxring .track{fill:none;stroke:rgb(var(--ink-rgb)/0.18);stroke-width:2}
 .lks-ui .lks14-ctxring .fill{fill:none;stroke:var(--brand);stroke-width:2;stroke-linecap:round;transition:stroke-dasharray .3s var(--ease-out-expo)}
@@ -986,6 +995,9 @@ export const UPSTREAM_CSS = `
    1200px and only a probe writing the CSS var directly (bypassing the
    budget clamps) could reach it. Pure container queries — zero JS, the pane
    itself is the query container. */
+/* C13: the reading-width preference — 'free' lifts the cap entirely (the
+   tiers stay the default; this must come AFTER them so it wins) */
+.lks-ui[data-lks-readwidth='free'] .lks14-msg-assistant{max-width:none;margin-inline:0}
 .lks-ui .lks14-chat{container-type:inline-size;container-name:lkschat}
 @container lkschat (min-width:960px){
   .lks-ui .lks14-msg-assistant{max-width:88ch}

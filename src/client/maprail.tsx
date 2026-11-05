@@ -149,6 +149,11 @@ export function ListSectionView({ section, examAllowed, open, onToggle, onJump, 
                       : createElement(IconStarFill16, { size: 14 })),
           createElement('span', { className: 'lks-lessorow-main' },
             createElement('span', { className: 'lks-lessorow-title' }, lesson.title),
+            // critique 2026-11-05: the >=50% gate rule lived only in the
+            // hover tooltip — invisible to touch and screen readers
+            state === 'exam-locked'
+              ? createElement('span', { className: 'lks-lessorow-rule' }, tr('map.exam.rule'))
+              : null,
             pct !== null
               // critique 2026-11-05: the mastery hairline was an unlabeled bare
               // <i> — the percentage reached AT only via the custom tooltip

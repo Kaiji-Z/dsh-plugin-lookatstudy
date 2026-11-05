@@ -37,6 +37,15 @@ dsh plugin add ./dsh-plugin-lookatstudy-0.2.1.tgz
 
 Works with any profile. In the `web` profile the plugin additionally serves the study tab's HTTP API and loads its browser half; headless profiles get the plain tool surface.
 
+## Upgrade
+
+```sh
+dsh plugin remove dsh-plugin-lookatstudy
+dsh plugin add dsh-plugin-lookatstudy        # resolves the latest version
+```
+
+Re-running `dsh plugin add` with the same version silently keeps the old copy — the remove + add pair is what forces the switch. Restart the host afterwards so the new bundle loads. Your learning data (courses, notes, review history) lives in the profile's `state.json`, outside the package — upgrading never touches it.
+
 ## The two surfaces
 
 **1. The tutor (chat).** Talk to the agent: *"import https://github.com/microsoft/AI-For-Beginners and teach me lesson 1"*, *"what reviews are due today?"*. The tutor persona (stable core + one of three souls — `guide` 引导 / `direct` 直讲 / `practice` 实战) drives the full LookatStudy loop:

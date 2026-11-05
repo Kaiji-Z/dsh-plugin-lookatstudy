@@ -19,7 +19,7 @@ import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
   IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
   IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16, IconWrenchOutline16,
-  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16, IconBookOutline16, IconPenOutline16, IconPauseOutline16, IconStopFill16 } from './icons.tsx'
+  IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16, IconBookOutline16, IconPenOutline16, IconPauseOutline16, IconStopFill16, IconPaperclipOutline16 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
 import { acquireStageReference, stageSession, stagingMode } from './stage-session.ts'
 import { useStudy, storedTtsVoice } from './data.ts'
@@ -40,13 +40,13 @@ import { speakMathInSentence } from '../vendor/math-speech.ts'
 import { feedRows, feedLastSeq, feedTurnActive, hydrateArtifactRows, sedimentBacklog, importProgressOf, importJobDead, TURN_STALL_MS, turnStalled } from './session-feed.ts'
 import { ErrorBoundary, ContentBoundary } from './error-boundary.tsx'
 import { wireCodeBlockCopy } from './codeblock.ts'
-import { panelTheme, subscribePanelTheme, followHostTheme, subscribeFollowHostTheme } from './theme.ts'
+import { panelTheme, subscribePanelTheme, followHostTheme, subscribeFollowHostTheme, readingWidthPref, setReadingWidthPref, subscribeReadingWidth } from './theme.ts'
 import { ReadAloudController, type ReadAloudStatus, type SpeechEngine } from './readaloud.ts'
 import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { ArtifactCard, FoldableArtifactCard, FoldableQuizCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, unwrapRemoteValue, modelCatalogGroups, stripDuplicateAsk, type ChatRow } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, unwrapRemoteValue, modelCatalogGroups, retryPromptOf, stripDuplicateAsk, type ChatRow } from './views.tsx'
 import { ListSectionView, nextStudyAfterView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
@@ -207,7 +207,7 @@ function useQuotePopover(evaluate: () => void, hide: () => void): void {
   }, [evaluate, hide])
 }
 
-function chatRow(row: ChatRow, interactive?: { send: PanelSend, answerAsk?: (label: string) => void }, audio?: RowAudio): ReactNode {
+function chatRow(row: ChatRow, interactive?: { send: PanelSend, answerAsk?: (label: string) => void, retry?: () => void }, audio?: RowAudio): ReactNode {
   if (row.role === 'user') {
     // issue #16: the _markdown_lks suffix opts the message containers into
     // the ecosystem markdown convention ([class*="_markdown_"]) — theme
@@ -236,9 +236,15 @@ function chatRow(row: ChatRow, interactive?: { send: PanelSend, answerAsk?: (lab
   }
   if (row.role === 'tool') {
     // C14: the three-state chip (loading dots / done check / error cross).
+    // critique 2026-11-05: a failed row was a dead end — a one-click retry
+    // re-sends the turn's user message (the retry resubmits the whole turn;
+    // the rate limiter and idempotent tools make that safe).
     return createElement('div', { key: row.key, className: 'lks14-toolchip' + ' ' + String(row.toolState ?? 'loading') },
       row.toolState === 'done' ? '✓' : row.toolState === 'error' ? '×' : createElement('i', null),
-      createElement('span', null, row.text))
+      createElement('span', null, row.text),
+      row.toolState === 'error' && interactive?.retry !== undefined
+        ? createElement('button', { className: 'lks14-toolretry', onClick: interactive.retry }, tr('chat.retry'))
+        : null)
   }
   if (row.role === 'ask' && row.ask !== undefined) {
     // 0.23.0: the host's ask_user_question answers IN THE PANEL. The tool
@@ -362,6 +368,13 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     const sync = (): void => { setFollowHost(followHostTheme()) }
     sync()
     return subscribeFollowHostTheme(sync)
+  }, [])
+  // critique C13: the reading-column width preference (tiers | free)
+  const [readWidth, setReadWidth] = useState(readingWidthPref)
+  useEffect(() => {
+    const sync = (): void => { setReadWidth(readingWidthPref()) }
+    sync()
+    return subscribeReadingWidth(sync)
   }, [])
   // E7: the panel font scale — three tiers persisted locally (zoom scales the
   // px-fixed panel layout in Chromium without rewriting every font rule).
@@ -1160,7 +1173,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       ),
     ),
   )
-  return createElement('div', { className: 'lks14 lks-ui', 'data-lks-panel': '', 'data-lks-theme': theme, ...(followHost ? { 'data-lks-follow-host': 'on' } : {}), style: { zoom: String(zoomTier) } },
+  return createElement('div', { className: 'lks14 lks-ui', 'data-lks-panel': '', 'data-lks-theme': theme, ...(followHost ? { 'data-lks-follow-host': 'on' } : {}), ...(readWidth === 'free' ? { 'data-lks-readwidth': 'free' } : {}), style: { zoom: String(zoomTier) } },
     createElement(GlobalTooltip),
     paletteOpen
       ? createElement(CommandPalette, {
@@ -2199,6 +2212,14 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     if (!stuck.current && !lastIsUser) return
     const el = streamEl.current
     if (el !== null) el.scrollTop = el.scrollHeight
+    // critique 2026-11-05: KaTeX/images grow the stream AFTER this effect,
+    // leaving the first screen mid-row nondeterministically — one settled
+    // re-stick while the reader is still at the tail pins the first frame.
+    const settle = setTimeout(() => {
+      const el2 = streamEl.current
+      if (el2 !== null && stuck.current) el2.scrollTop = el2.scrollHeight
+    }, 350)
+    return () => { clearTimeout(settle) }
   }, [rows.length, lastIsUser])
   // Issue #3: the feed renders through the same markdown pipeline as the teach
   // prose but never met the enhancers — KaTeX/code/diagram cards only ran on
@@ -2743,22 +2764,39 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             'data-tooltip': tr('chat.start.hint'),
             onClick: () => { send(starters[0]?.message ?? tr('prompt.start')) },
           }, tr('chat.start')))
-        : rowsForRender.map((row, i) => row.role === 'artifact'
-          ? inlineArtifactCard(row, rowsView.slice(i + 1).some(r => r.role === 'assistant'))
-          : chatRow(row,
-            !dormant && (i === lastAssistant || (row.role === 'ask' && row.ask !== undefined && !row.ask.answered))
-              ? { send, answerAsk: (label: string) => {
-                  // cancel the parked ask first, then answer — see chatRow's
-                  // ask branch for why a bare queue would deadlock
-                  void (async () => {
-                    if (busy) { stop(); await new Promise(r => { setTimeout(r, 1800) }) }
-                    send(label)
-                  })()
-                } }
-              : undefined,
-            row.role === 'assistant'
-              ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, onPlay: playMessage, onStop: stopMessage }
-              : undefined)),
+        : rowsForRender.map((row, i) => {
+          // critique 2026-11-05: failed tool rows get a one-click retry that
+          // resends the turn's user message (the error branch in chatRow)
+          const retry = row.role === 'tool' && row.toolState === 'error' && !dormant && !busy
+            ? (): void => {
+              const prompt = retryPromptOf(rowsForRender, i)
+              if (prompt !== null) send(prompt)
+            }
+            : undefined
+          const askInteractive = !dormant && (i === lastAssistant || (row.role === 'ask' && row.ask !== undefined && !row.ask.answered))
+            ? {
+              send,
+              answerAsk: (label: string): void => {
+                // cancel the parked ask first, then answer — see chatRow's
+                // ask branch for why a bare queue would deadlock
+                void (async () => {
+                  if (busy) { stop(); await new Promise(r => { setTimeout(r, 1800) }) }
+                  send(label)
+                })()
+              },
+            }
+            : undefined
+          const interactive = askInteractive !== undefined
+            ? { ...askInteractive, retry }
+            : retry !== undefined ? { send, retry } : undefined
+          return row.role === 'artifact'
+            ? inlineArtifactCard(row, rowsView.slice(i + 1).some(r => r.role === 'assistant'))
+            : chatRow(row,
+              interactive,
+              row.role === 'assistant'
+                ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, onPlay: playMessage, onStop: stopMessage }
+                : undefined)
+        }),
       rowsForRender.length > 0 && rowsForRender[rowsForRender.length - 1]!.role === 'user' && busy
         ? createElement('div', { className: 'lks14-thinking' }, createElement('i', null), createElement('i', null), createElement('i', null))
         : null,
@@ -2949,7 +2987,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           'data-tooltip': tr('attach.label'),
           disabled: dormant,
           onClick: () => { attachInputRef.current?.click() },
-        }, createElement(IconPinFill16, { size: 14 })),
+        }, createElement(IconPaperclipOutline16, { size: 14 })),
         createElement('input', {
           ref: attachInputRef,
           type: 'file',

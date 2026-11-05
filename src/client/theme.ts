@@ -82,6 +82,47 @@ export function subscribeFollowHostTheme(listener: () => void): () => void {
   return () => { followListeners.delete(listener) }
 }
 
+/* ── the reading-column width preference (critique C13) ──
+ * 'tiers' (default): the researched 80/88/96ch ladder keyed to the pane width.
+ * 'free': no cap — the prose fills the pane (the user-agency exit for readers
+ * who want long lines; the tiers stay the default because >48 汉字/line
+ * measurably hurts return-sweep tracking). Browser-local, same pattern as
+ * the follow-host preference. */
+const READWIDTH_KEY = 'dsh-plugin-lookatstudy:reading-width'
+export type ReadingWidth = 'tiers' | 'free'
+
+function readStoredReadingWidth(): ReadingWidth {
+  try {
+    return (typeof localStorage === 'undefined' ? null : localStorage.getItem(READWIDTH_KEY)) === 'free' ? 'free' : 'tiers'
+  } catch {
+    return 'tiers'
+  }
+}
+
+let readingWidth = readStoredReadingWidth()
+const readWidthListeners = new Set<() => void>()
+
+export function readingWidthPref(): ReadingWidth {
+  return readingWidth
+}
+
+export function setReadingWidthPref(next: ReadingWidth): void {
+  if (next === readingWidth) return
+  readingWidth = next
+  try {
+    if (typeof localStorage !== 'undefined') {
+      if (next === 'free') localStorage.setItem(READWIDTH_KEY, 'free')
+      else localStorage.removeItem(READWIDTH_KEY)
+    }
+  } catch { /* session value still applies */ }
+  for (const l of readWidthListeners) l()
+}
+
+export function subscribeReadingWidth(listener: () => void): () => void {
+  readWidthListeners.add(listener)
+  return () => { readWidthListeners.delete(listener) }
+}
+
 /**
  * Wire the follow machinery (idempotent): the theme service when present,
  * otherwise the DOM-signal observer. Returns a disposer.

@@ -874,3 +874,119 @@ test('the read-aloud toggle rides the quiet weight class (critique minor, owner-
   assert.match(panel, /IconStopFill16/, 'stop is the small filled square icon')
   assert.match(panel, /'data-testid': 'read-toggle'/, 'probe hook on the new toggle')
 })
+
+test('quizOptions splits a one-line option run (critique round)', async () => {
+  const { quizOptions } = await import('../src/client/views.tsx')
+  // the tutor jams options on one line — old parser matched a run of 1, nothing tappable
+  const oneLine = quizOptions('为什么会过拟合？A. 模型容量不够，欠拟合 B. 模型记住了训练集噪声 C. 学习率太大')
+  assert.deepEqual(oneLine.map(o => o.letter), ['A', 'B', 'C'])
+  assert.equal(oneLine[0]!.text, '模型容量不够，欠拟合', 'the prose prefix is discarded, options start at their markers')
+  assert.equal(oneLine[1]!.text, '模型记住了训练集噪声')
+  assert.equal(oneLine[2]!.text, '学习率太大')
+  assert.ok(oneLine[1]!.text.includes('噪声'))
+  // non-consecutive letters are NOT a quiz run — stays unparsed
+  assert.deepEqual(quizOptions('A. 选项一 C. 选项三'), [])
+  // D-continuation works too
+  const four = quizOptions('A. 甲 B. 乙 C. 丙 D. 丁')
+  assert.deepEqual(four.map(o => o.letter), ['A', 'B', 'C', 'D'])
+  // legacy multi-line parsing untouched
+  const multi = quizOptions('选出正确答案：\nA. 第一项\nB. 第二项')
+  assert.deepEqual(multi.map(o => o.letter), ['A', 'B'])
+  assert.equal(multi[0]!.text, '第一项')
+})
+
+test('threadAutoTitle collapses study_* machinery tokens (critique round)', async () => {
+  const { threadAutoTitle } = await import('../src/client/views.tsx')
+  const titled = threadAutoTitle('导入课程：用 study_import_url 抓取这篇文章')
+  assert.ok(!titled.includes('study_import_url'), 'machinery name must not surface in the switcher')
+  assert.ok(titled.includes('工具调用'))
+  // no tokens → text unchanged apart from flattening; cap still applies
+  assert.equal(threadAutoTitle('讲讲递归'), '讲讲递归')
+  assert.ok(threadAutoTitle('长'.repeat(120)).length <= 81)
+})
+
+test('reasoningSummaryLine pre-truncates at a word boundary (critique round)', async () => {
+  const { reasoningSummaryLine } = await import('../src/client/views.tsx')
+  const long = 'I am analyzing the underlying structure of the recursive algorithm carefully using. '.repeat(3)
+  const out = reasoningSummaryLine(long, false)
+  assert.ok(out.length <= 91, `capped, got ${String(out.length)}`)
+  assert.ok(out.endsWith('…'))
+  // the cut lands on a complete word (the trailing partial word is stripped,
+  // leaving "I am" whole) — deterministic exact output
+  assert.equal(out, 'I am analyzing the underlying structure of the recursive algorithm carefully using. I am…')
+  // CJK has no spaces — the clamp still caps the length (cutting any CJK char is normal)
+  const cjk = reasoningSummaryLine('析'.repeat(200), false)
+  assert.ok(cjk.length <= 91 && cjk.endsWith('…'))
+  // short text untouched, ** markers still stripped
+  assert.equal(reasoningSummaryLine('**分析中**', true), '分析中')
+})
+
+test('retryPromptOf walks back to the turn\'s user row (critique round)', async () => {
+  const { retryPromptOf } = await import('../src/client/views.tsx')
+  const rows = [
+    { role: 'user', text: '讲一下贝叶斯' },
+    { role: 'tool', text: 'study_lesson' },
+    { role: 'tool', text: '出错了' },
+  ]
+  assert.equal(retryPromptOf(rows, 2), '讲一下贝叶斯')
+  // assistant prose of the FAILING turn (user → assistant → tool error) must
+  // not terminate the walk — the nearest user row is still this turn's prompt
+  const twoTurns = [
+    { role: 'user', text: '第一轮' },
+    { role: 'assistant', text: '回答' },
+    { role: 'user', text: '第二轮' },
+    { role: 'assistant', text: '回答' },
+    { role: 'tool', text: '出错了' },
+  ]
+  assert.equal(retryPromptOf(twoTurns, 4), '第二轮')
+  assert.equal(retryPromptOf([{ role: 'tool', text: '错' }], 0), null)
+})
+
+test('reading-width preference: store default, set, subscribe (critique round C13)', async () => {
+  const glob = globalThis as { localStorage?: Storage }
+  const hadOwn = 'localStorage' in glob
+  const prev = glob.localStorage
+  const backing = new Map<string, string>()
+  glob.localStorage = {
+    getItem: (k: string) => backing.get(k) ?? null,
+    setItem: (k: string, v: string) => { backing.set(k, v) },
+    removeItem: (k: string) => { backing.delete(k) },
+    clear: () => backing.clear(),
+    key: () => null, length: 0,
+  } as Storage
+  try {
+    const { readingWidthPref, setReadingWidthPref, subscribeReadingWidth } = await import('../src/client/theme.ts')
+    assert.equal(readingWidthPref(), 'tiers', 'default = the researched ladder')
+    let fired = 0
+    const off = subscribeReadingWidth(() => { fired++ })
+    setReadingWidthPref('free')
+    assert.equal(readingWidthPref(), 'free')
+    assert.equal(fired, 1, 'subscribers notify on change')
+    off()
+    setReadingWidthPref('tiers')
+    assert.equal(readingWidthPref(), 'tiers')
+    assert.equal(fired, 1, 'unsubscribed listener stays quiet')
+    assert.ok(!backing.has('dsh-plugin-lookatstudy:reading-width'), 'tiers removes the key (default needs no sediment)')
+  } finally {
+    if (hadOwn) glob.localStorage = prev
+    else delete glob.localStorage
+  }
+})
+
+test('critique round: paperclip attach, toolretry, exam rule line, readwidth CSS, ctx hover', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  assert.match(UPSTREAM_CSS, /\.lks14-toolretry\{/, 'the error chip retry is styled')
+  assert.match(UPSTREAM_CSS, /\.lks-lessorow-rule\{/, 'the exam gate rule renders inline, not tooltip-only')
+  assert.match(UPSTREAM_CSS, /\.lks-ui\[data-lks-readwidth='free'\] \.lks14-msg-assistant\{max-width:none/, 'full-width reading mode drops the 80ch cap')
+  assert.match(UPSTREAM_CSS, /\.lks14-ctxring:hover \.track,\.lks-ui \.lks14-ctxring:focus-visible \.track\{stroke:rgb\(var\(--ink-rgb\)\/0\.38\)\}/, 'the context ring brightens on hover/focus')
+  const { readFileSync } = await import('node:fs')
+  const panel = readFileSync(new URL('../src/client/panel.tsx', import.meta.url), 'utf8')
+  assert.match(panel, /IconPaperclipOutline16, \{ size: 14 \}/, 'the attach affordance is a paperclip, not a pin')
+  assert.match(panel, /'data-lks-readwidth': 'free'/, 'the panel root carries the reading-width attribute')
+  assert.match(panel, /retryPromptOf\(rowsForRender, i\)/, 'retry resends the turn\'s own user row')
+  assert.match(panel, /lks14-toolretry.*tr\('chat\.retry'\)/s, 'the retry button uses the locale key')
+  const rail = readFileSync(new URL('../src/client/maprail.tsx', import.meta.url), 'utf8')
+  assert.match(rail, /lks-lessorow-rule/, 'the exam-locked row carries the inline rule')
+  const settings = readFileSync(new URL('../src/client/settings.tsx', import.meta.url), 'utf8')
+  assert.match(settings, /read-width-pills/, 'the settings row exposes the probe/testid hook')
+})
