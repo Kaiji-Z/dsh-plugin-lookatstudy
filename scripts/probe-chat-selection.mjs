@@ -135,6 +135,101 @@ if (msgId === null) {
   await page.fill('.lks14-composertext', '')
 }
 
+// 3b — 提问这段 SENDS the quote as a message (same as the prose popover)
+if (msgId !== null) {
+  const reselected = await page.evaluate(id => {
+    const row = document.querySelector(`[data-msg-id="${id}"]`)
+    if (row === null) return false
+    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT)
+    const texts = []
+    for (let n = walker.nextNode(); n !== null; n = walker.nextNode()) if ((n.textContent ?? '').trim().length >= 6) texts.push(n)
+    if (texts.length === 0) return false
+    const first = texts[0]
+    const len = Math.min(8, (first.textContent ?? '').length)
+    const range = document.createRange()
+    range.setStart(first, 0); range.setEnd(first, len)
+    const sel = window.getSelection()
+    sel?.removeAllRanges(); sel?.addRange(range)
+    return true
+  }, msgId)
+  await page.waitForTimeout(1200)
+  const asked = await clickInPanel('[data-testid="chat-quote-btn"] button:first-child')
+  // the ask SENDS (it never parks in the draft) — a new user row carries the quote
+  let sentQuote = false
+  for (let i = 0; i < 10 && !sentQuote; i++) {
+    await page.waitForTimeout(700)
+    sentQuote = await page.evaluate(() => [...document.querySelectorAll('.lks14-msg-user')].some(el => (el.textContent ?? '').length > 10))
+  }
+  probe('提问这段 sends the selected quote as a message', reselected && asked && sentQuote)
+  // settle that turn BEFORE the height test (a busy composer ignores submits)
+  const deadline2 = Date.now() + 300000
+  for (;;) {
+    try { await page.waitForFunction(turnOver, undefined, { timeout: 20000 }); break } catch {}
+    if (await dismissHostNotice()) await page.waitForTimeout(1000)
+    if (Date.now() > deadline2) break
+  }
+  await page.waitForTimeout(1200)
+  // the popover send must ALSO have reset a grown composer (probe-caught gap)
+  const grown = await page.evaluate(() => document.querySelector('.lks14-composertext')?.offsetHeight ?? 0)
+  await page.fill('.lks14-composertext', Array.from({ length: 16 }, (_, i) => `${i + 1}. 追加的长文本行，撑高后发送验证重置。`).join('\n'))
+  await page.evaluate(() => document.querySelector('.lks14-composertext')?.dispatchEvent(new Event('input', { bubbles: true })))
+  await page.waitForTimeout(300)
+  const tall = await page.evaluate(() => document.querySelector('.lks14-composertext')?.offsetHeight ?? 0)
+  await clickInPanel('.lks14-composer .lks-btn-send')
+  await page.waitForTimeout(900)
+  const reset = await page.evaluate(() => document.querySelector('.lks14-composertext')?.offsetHeight ?? 0)
+  probe('sending (button or popover) resets the composer to default height', tall > grown + 30 && reset < tall - 60, `${tall}px → ${reset}px`)
+  // settle before the reload check
+  const deadline3 = Date.now() + 300000
+  for (;;) {
+    try { await page.waitForFunction(turnOver, undefined, { timeout: 20000 }); break } catch {}
+    if (await dismissHostNotice()) await page.waitForTimeout(1000)
+    if (Date.now() > deadline3) break
+  }
+  await page.waitForTimeout(1500)
+}
+
+// 3c — reload: the anchored chat note's persistent mark redraws
+{
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await dismissHostNotice().catch(() => {})
+  await page.evaluate(() => {
+    if (!document.documentElement.hasAttribute('data-dsh-lookatstudy-active'))
+      document.querySelector('[data-dsh-lookatstudy-entry]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  })
+  await page.waitForSelector('.lks-ui[data-lks-panel]', { timeout: 20000 })
+  await page.waitForSelector('.lks14-msg-assistant', { timeout: 30000 })
+  await page.waitForTimeout(1200)
+  const redrawn = await page.evaluate(() => {
+    // the Highlight-API registry is document-level: a live range for the
+    // chat note means the per-row redraw ran on the fresh mount
+    const hl = (window.CSS).highlights?.get('lks-note-hl')
+    return hl === undefined ? 0 : hl.size
+  })
+  probe('reload: the anchored chat note redraws its persistent mark', redrawn >= 1, `live ranges=${redrawn}`)
+}
+
+// 3d — the reading-column tier engages when the pane is dragged wide
+{
+  const tier = await page.evaluate(async () => {
+    const el = document.querySelector('.lks14-msg-assistant')
+    if (el === null) return null
+    const base = Math.round(Number.parseFloat(getComputedStyle(el).maxWidth))
+    document.body.style.setProperty('--lks-chat-w', '1300px')
+    await new Promise(r => { setTimeout(r, 400) })
+    const wide = Math.round(Number.parseFloat(getComputedStyle(el).maxWidth))
+    // computed margin-inline resolves to USED px (not 'auto') — a real
+    // symmetric centering shows up as equal non-trivial side margins
+    const ml = Math.round(Number.parseFloat(getComputedStyle(el).marginLeft))
+    const mr = Math.round(Number.parseFloat(getComputedStyle(el).marginRight))
+    document.body.style.removeProperty('--lks-chat-w')
+    return { base, wide, ml, mr }
+  })
+  probe('reading tiers: a 1300px pane widens the column cap (and centers it)',
+    tier !== null && tier.wide > tier.base + 40 && tier.ml > 20 && tier.ml === tier.mr,
+    tier === null ? 'no row' : `${tier.base}px → ${tier.wide}px margins=${tier.ml}/${tier.mr}`)
+}
+
 // 4 — the TTS chain: a dead external endpoint falls back AND says so
 {
   const set = await page.evaluate(async endpoint => {

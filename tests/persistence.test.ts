@@ -117,3 +117,29 @@ test('A3: crash window — primary missing but .bak present restores the backup'
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('issue #18: ttsEndpoint persists and non-string junk loads as empty (the off state)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lks-tts-endpoint-persist-'))
+  try {
+    const path = join(dir, 'state.json')
+    const state = emptyState()
+    saveState(path, state)
+    const round = loadState(path)
+    assert.equal(round.ttsEndpoint ?? '', '', 'a fresh state carries the off state')
+
+    round.ttsEndpoint = 'http://127.0.0.1:8765/tts'
+    saveState(path, round)
+    const back = loadState(path)
+    assert.equal(back.ttsEndpoint, 'http://127.0.0.1:8765/tts', 'the endpoint round-trips')
+
+    // junk (a hand-edited or future-shaped file) must never load as truthy —
+    // the whole channel keys off the empty string
+    const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
+    raw.ttsEndpoint = 123
+    writeFileSync(path, JSON.stringify(raw))
+    const junk = loadState(path)
+    assert.equal(junk.ttsEndpoint ?? '', '', 'non-string junk degrades to off')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

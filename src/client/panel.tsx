@@ -2488,6 +2488,19 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   const resetComposerHeight = (): void => {
     if (composerRef.current !== null) composerRef.current.style.height = ''
   }
+  // every send origin resets the height — not just Enter/the button: the
+  // quote popover's 提问这段 calls send() directly, and a thread switch swaps
+  // the user rows too (both deserve the default height back). probe-caught:
+  // the popover send used to leave a manually-grown composer tall.
+  const lastUserKey = useRef<string | null>(null)
+  useEffect(() => {
+    // the LAST user row (a new send appends; `find` would pin the oldest and
+    // never fire — probe-caught on the second pass)
+    let key: string | null = null
+    for (const r of rows) if (r.role === 'user') key = r.key
+    if (key !== null && key !== lastUserKey.current) resetComposerHeight()
+    lastUserKey.current = key
+  }, [rows])
   const submitComposer = (): void => {
     if (busy) return
     const text = draft.trim()

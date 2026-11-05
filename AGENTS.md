@@ -31,13 +31,20 @@ node scripts/release.mjs <ver|major|minor|patch> ["msg"]  # THE release: verify 
 # resolves to the HOST's live --dsw-alias-bg-layer-1 / restore / zero errors) —
 # it toggles the preference by writing localStorage directly (fresh probe
 # context, so it dies with the browser), no host settings navigation needed.
-# The issue #18 round adds scripts/probe-chat-selection.mjs (8 checks: a real
+# The issue #18 round adds scripts/probe-chat-selection.mjs (12 checks: a real
 # turn's settled row carries data-msg-id / a programmatic selection floats
 # [data-testid=chat-quote-btn] / 加笔记 writes an anchored source:'chat' note /
-# the composer grows with a long draft / a dead external TTS endpoint saves,
-# the synthesis receipt names its engine OR carries the Edge error — on
-# mainland-403 networks Edge itself refuses, which is the issue's premise
-# verified live / the feed carries tts status / zero errors). It runs a REAL
+# the composer grows with a long draft / 提问这段 SENDS the quote (never parks
+# it in the draft) / sending via ANY origin resets the grown composer (the
+# popover send used to bypass the reset — and the reset effect must key on the
+# LAST user row, `find` pins the oldest and never fires; both probe-caught) /
+# reload redraws the anchored mark (asserted via CSS.highlights live ranges) /
+# a 1300px pane steps the reading tier UP and centers it (computed margins are
+# USED px — comparing against the literal 'auto' always fails) / a dead
+# external TTS endpoint saves, the synthesis receipt names its engine OR
+# carries the Edge error — on mainland-403 networks Edge itself refuses, which
+# is the issue's premise verified live / the feed carries tts status / zero
+# errors). It runs a REAL
 # model turn and BINDS a thread on the seeded lesson — NEVER run it before
 # probe-alpha-staging on the same seed (the staging probe asserts a fresh
 # thread title; the chat probe's turn poisons it — caught live this round).

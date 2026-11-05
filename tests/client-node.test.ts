@@ -715,6 +715,11 @@ test('issue #18: reading-column tiers, the composer grip, and the chat-selection
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-composertext\{resize:vertical;max-height:40vh\}/)
   // the chat quote popover anchors inside the scrolling stream
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-stream\{position:relative\}/)
+  // the stacking companion (live-caught): the positioned stream paints above
+  // the thread menu's z:60 inside the container-query context, so the lesson
+  // row must ride higher — dropping this rule re-breaks the ＋新建 row and
+  // ONLY the probes catch it; this pin lets CI catch it too
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-lessonrow\{position:relative;z-index:70\}/)
   // the chat-selection engine: rows carry the stable msg anchor, the popover
   // exists, and the immediate mark rides the shared registry
   const { readFileSync } = await import('node:fs')
