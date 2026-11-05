@@ -265,7 +265,9 @@ export function StudySettingsSection(): ReactNode {
             onClick: () => { void testTts().then(r => { setEngineProbe('error' in r ? `${tr('settings.ttsEngine.fail')}: ${r.error}` : r.engine === 'external' ? tr('settings.ttsEngine.probe.external') : tr('settings.ttsEngine.probe.edge')) }) },
           }, tr('settings.ttsEngine.test'))),
         createElement('span', { key: 'status', className: 'lks-set-status', 'data-testid': 'tts-engine-status' },
-          engineStatusText),
+          engineStatusText,
+          // the moved-out second half of the hint rides the status line, small
+          createElement('span', { style: { display: 'block', marginTop: '2px', opacity: 0.85 } }, tr('settings.ttsEngine.hint.more'))),
       ],
     }),
     // issue #16: the opt-in ecosystem-theme bridge — dsh-markdown-xyy &c.

@@ -765,6 +765,8 @@ test('the 0.30 settings layout: two-column rows, one switch control, every testi
   assert.match(STUDY_CSS, /\.lks-set-row\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/, 'two-column rows (label left, control right)')
   assert.match(STUDY_CSS, /\.lks-set-switch\{[^}]*width:38px/, 'the boolean switch control')
   assert.match(STUDY_CSS, /\.lks-set-switch\.on\{[^}]*--dsw-alias-state-business-primary/, 'the switch rides the host business hue')
+  assert.match(STUDY_CSS, /\.lks-set-switch i\{[^}]*--dsw-alias-switch-thumb/, 'the off thumb rides the host switch-thumb token (a near-black ball read as broken)')
+  assert.match(STUDY_CSS, /\.lks-set-select\{height:32px\}/, 'the select aligns with the sibling input height')
   assert.match(STUDY_CSS, /@media \(max-width:600px\)\{[^}]*\.lks-set-row\{grid-template-columns:minmax\(0,1fr\)\}/, 'narrow panes stack the rows')
   assert.match(STUDY_CSS, /\.lks-profile-grid\{display:grid;grid-template-columns:repeat\(auto-fill,minmax\(250px,1fr\)\)/, 'the profile editor is a responsive grid')
 })

@@ -387,15 +387,20 @@ mark.lks-hl{background:var(--dsw-alias-state-warn-tertiary);color:inherit;border
 .lks-set-ctrl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;min-width:0}
 .lks-set-row.wide .lks-set-ctrl{justify-content:flex-start;margin-top:9px}
 .lks-set-state{margin-left:2px;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
-/* the boolean switch: one visual for 学习模式/历史预算/跟随宿主主题色 */
+/* the boolean switch: one visual for 学习模式/历史预算/跟随宿主主题色 —
+   the thumb rides the host's own switch-thumb token (the off state used to
+   paint a near-black ball that read as broken next to the host's switches) */
 .lks-set-switch{position:relative;flex:none;width:38px;height:21px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-fill-tertiary);cursor:pointer;transition:background .15s ease,border-color .15s ease}
-.lks-set-switch i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:999px;background:var(--dsw-alias-label-primary);box-shadow:0 1px 2px rgb(0 0 0/0.2);transition:transform .15s ease,background .15s ease}
+.lks-set-switch i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:999px;background:var(--dsw-alias-switch-thumb,var(--dsw-alias-bg-layer-1));box-shadow:0 1px 2px rgb(0 0 0/0.2);transition:transform .15s ease,background .15s ease}
 .lks-set-switch:hover{border-color:var(--dsw-alias-label-tertiary)}
 .lks-set-switch:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
 .lks-set-switch.on{background:var(--dsw-alias-state-business-primary);border-color:transparent}
 .lks-set-switch.on i{transform:translateX(17px);background:#fff}
-/* inputs/selects share one shape */
+/* inputs/selects share one shape — the select gets an explicit height so the
+   profile grid's two columns align (a bare select rides its own line-height
+   and sat a few px short of the sibling input) */
 .lks-set-input,.lks-set-select{font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px 10px;max-width:100%;box-sizing:border-box}
+.lks-set-select{height:32px}
 .lks-set-input:focus,.lks-set-select:focus{border-color:var(--dsw-alias-state-business-primary);outline:none}
 .lks-set-engine-input{width:100%;font-family:var(--dsw-font-markdown-code);font-size:12.5px}
 .lks-set-status{flex-basis:100%;font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
