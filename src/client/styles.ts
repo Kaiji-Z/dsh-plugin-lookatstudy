@@ -401,9 +401,16 @@ mark.lks-hl{background:var(--dsw-alias-state-warn-tertiary);color:inherit;border
 .lks-set-status{flex-basis:100%;font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
 .lks-set-stats{margin:0;padding-left:18px;font-size:14px;line-height:1.9}
 .lks-set-path{font-family:var(--dsw-font-markdown-code);font-size:12.5px;background:var(--dsw-alias-bg-layer-3);border-radius:6px;padding:3px 8px;word-break:break-all}
-/* the profile editor: one responsive grid instead of bare stacked labels */
-.lks-profile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:11px 18px;margin-top:10px}
-.lks-profile-grid label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+/* the profile editor: one responsive grid instead of bare stacked labels.
+   The pill strips inside get UNANCHORED: the global .lks-pills is a fixed
+   28px single-lane strip built for the panel — in a ~250px grid cell seven
+   CJK pills explode into vertical text and overlap the rows below
+   (live-screenshot catch). Here: no height lock, wrap allowed, pills hug
+   their text, and the row grows with its content. */
+.lks-profile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px 20px;margin-top:10px}
+.lks-profile-grid label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--dsw-alias-label-secondary);min-width:0}
+.lks-profile-grid .lks-pills{display:flex;flex-wrap:wrap;height:auto;gap:6px}
+.lks-profile-grid .lks-pill{height:auto;padding:4px 11px;white-space:nowrap;flex:none}
 @media (max-width:600px){
   .lks-set-row{grid-template-columns:minmax(0,1fr)}
   .lks-set-ctrl{justify-content:flex-start;margin-top:8px}

@@ -766,7 +766,7 @@ test('the 0.30 settings layout: two-column rows, one switch control, every testi
   assert.match(STUDY_CSS, /\.lks-set-switch\{[^}]*width:38px/, 'the boolean switch control')
   assert.match(STUDY_CSS, /\.lks-set-switch\.on\{[^}]*--dsw-alias-state-business-primary/, 'the switch rides the host business hue')
   assert.match(STUDY_CSS, /@media \(max-width:600px\)\{[^}]*\.lks-set-row\{grid-template-columns:minmax\(0,1fr\)\}/, 'narrow panes stack the rows')
-  assert.match(STUDY_CSS, /\.lks-profile-grid\{display:grid;grid-template-columns:repeat\(auto-fill,minmax\(230px,1fr\)\)/, 'the profile editor is a responsive grid')
+  assert.match(STUDY_CSS, /\.lks-profile-grid\{display:grid;grid-template-columns:repeat\(auto-fill,minmax\(250px,1fr\)\)/, 'the profile editor is a responsive grid')
 })
 
 test('the dormant empty card carries its own wake CTA (the copy promises one)', async () => {
@@ -778,4 +778,14 @@ test('the dormant empty card carries its own wake CTA (the copy promises one)', 
   const src = readFileSync(new URL('../src/client/panel.tsx', import.meta.url), 'utf8')
   assert.ok(!/!dormant\s*\?\s*createElement\('button'[\s\S]{0,200}chat\.start/.test(src), 'the 开始学习 CTA no longer keys on !dormant')
   assert.match(src, /data-testid': 'chat-start-cta'/, 'the CTA carries a probe hook')
+})
+
+test('the profile pill strips unanchor inside the grid (live-screenshot regression)', async () => {
+  // caught 2026-11-05 by screenshot: the global .lks-pills is a fixed 28px
+  // single-lane strip; seven CJK motive pills in a ~250px grid cell exploded
+  // into vertical text and overlapped the save button below. The grid-scoped
+  // overrides let strips wrap, pills hug their text, rows grow with content.
+  const { STUDY_CSS } = await import('../src/client/styles.ts')
+  assert.match(STUDY_CSS, /\.lks-profile-grid \.lks-pills\{display:flex;flex-wrap:wrap;height:auto;gap:6px\}/, 'the strips wrap and lose the height lock')
+  assert.match(STUDY_CSS, /\.lks-profile-grid \.lks-pill\{height:auto;padding:4px 11px;white-space:nowrap;flex:none\}/, 'pills hug text, never break mid-word')
 })
