@@ -373,14 +373,41 @@ mark.lks-hl{background:var(--dsw-alias-state-warn-tertiary);color:inherit;border
 .lks-cmap-legend{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--dsw-alias-label-secondary);margin-top:4px}
 .lks-cmap-legend i{width:10px;height:10px;border-radius:3px;background:var(--dsw-alias-state-warn-tertiary,#fef5e7);border:1px solid var(--dsw-alias-state-warn-primary,#dd8629)}
 
-/* settings section (settings.section entry inside the host settings shell) */
-.lks-settings{display:flex;flex-direction:column;gap:18px;font-family:var(--dsw-font-family);color:var(--dsw-alias-label-primary)}
-.lks-set-row h3{margin:0 0 4px;font-size:15px;font-weight:600}
-.lks-set-hint{margin:0 0 10px;font-size:13px;color:var(--dsw-alias-label-secondary)}
-.lks-set-state{margin-left:10px;font-size:13px;color:var(--dsw-alias-label-secondary)}
-.lks-set-select{font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:5px 8px;max-width:100%}
+/* settings section (settings.section entry inside the host settings shell) —
+   the 0.30 layout pass: two-column rows (label/hint left, control right),
+   one switch control for every boolean, the engine row stacked (input →
+   buttons → live status), and the profile editor as a responsive grid. All
+   host-chrome tokens — the settings page never wears the panel skin. */
+.lks-settings{display:flex;flex-direction:column;font-family:var(--dsw-font-family);color:var(--dsw-alias-label-primary);max-width:780px}
+.lks-set-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:20px;padding:11px 0}
+.lks-set-row + .lks-set-row{border-top:1px solid var(--dsw-alias-border-l1)}
+.lks-set-row.wide{grid-template-columns:minmax(0,1fr)}
+.lks-set-main h3{margin:0;font-size:13.5px;font-weight:600}
+.lks-set-hint{margin:2px 0 0;font-size:12.5px;line-height:1.55;color:var(--dsw-alias-label-secondary);max-width:56ch}
+.lks-set-ctrl{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;min-width:0}
+.lks-set-row.wide .lks-set-ctrl{justify-content:flex-start;margin-top:9px}
+.lks-set-state{margin-left:2px;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+/* the boolean switch: one visual for 学习模式/历史预算/跟随宿主主题色 */
+.lks-set-switch{position:relative;flex:none;width:38px;height:21px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-fill-tertiary);cursor:pointer;transition:background .15s ease,border-color .15s ease}
+.lks-set-switch i{position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:999px;background:var(--dsw-alias-label-primary);box-shadow:0 1px 2px rgb(0 0 0/0.2);transition:transform .15s ease,background .15s ease}
+.lks-set-switch:hover{border-color:var(--dsw-alias-label-tertiary)}
+.lks-set-switch:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
+.lks-set-switch.on{background:var(--dsw-alias-state-business-primary);border-color:transparent}
+.lks-set-switch.on i{transform:translateX(17px);background:#fff}
+/* inputs/selects share one shape */
+.lks-set-input,.lks-set-select{font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px 10px;max-width:100%;box-sizing:border-box}
+.lks-set-input:focus,.lks-set-select:focus{border-color:var(--dsw-alias-state-business-primary);outline:none}
+.lks-set-engine-input{width:100%;font-family:var(--dsw-font-markdown-code);font-size:12.5px}
+.lks-set-status{flex-basis:100%;font-size:12.5px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
 .lks-set-stats{margin:0;padding-left:18px;font-size:14px;line-height:1.9}
 .lks-set-path{font-family:var(--dsw-font-markdown-code);font-size:12.5px;background:var(--dsw-alias-bg-layer-3);border-radius:6px;padding:3px 8px;word-break:break-all}
+/* the profile editor: one responsive grid instead of bare stacked labels */
+.lks-profile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:11px 18px;margin-top:10px}
+.lks-profile-grid label{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--dsw-alias-label-secondary)}
+@media (max-width:600px){
+  .lks-set-row{grid-template-columns:minmax(0,1fr)}
+  .lks-set-ctrl{justify-content:flex-start;margin-top:8px}
+}
 
 /* soul pills (settings reuse) */
 .lks-pills{display:inline-flex;align-items:center;height:28px}

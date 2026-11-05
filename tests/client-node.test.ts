@@ -729,3 +729,53 @@ test('issue #18: reading-column tiers, the composer grip, and the chat-selection
   assert.match(src, /data-testid': 'chat-quote-btn'/, 'the chat quote popover renders with a probe hook')
   assert.match(src, /root\.scrollTop/, 'the popover folds scrollTop into its stream coordinates')
 })
+
+test('the 0.30 settings layout: two-column rows, one switch control, every testid survives', async () => {
+  const { renderToString } = await import('react-dom/server')
+  const { createElement } = await import('react')
+  const { StudySettingsSection } = await import('../src/client/settings.tsx')
+  // localStorage shim (the voice + follow-host prefs read the global)
+  const glob = globalThis as { localStorage?: Storage }
+  const shim = new Map<string, string>()
+  const hadOwn = 'localStorage' in glob
+  const prev = glob.localStorage
+  glob.localStorage = {
+    getItem: (k: string) => shim.get(k) ?? null,
+    setItem: (k: string, v: string) => { shim.set(k, v) },
+    removeItem: (k: string) => { shim.delete(k) },
+  } as Storage
+  try {
+    const html = renderToString(createElement(StudySettingsSection))
+    // every control testid survives the layout pass (probes + future tests ride them)
+    for (const id of ['budget-toggle', 'follow-host-toggle', 'tts-endpoint-input', 'tts-endpoint-save', 'tts-engine-test', 'tts-engine-status', 'profile-section', 'profile-save', 'profile-name', 'profile-mbti']) {
+      assert.ok(html.includes(`data-testid="${id}"`), `${id} present`)
+    }
+    // the boolean rows are real switches now (role=switch + aria-checked), one visual for all three
+    assert.equal((html.match(/role="switch"/g) ?? []).length, 3, '学习模式/历史预算/跟随主题色 share the switch control')
+    // section order: 学习 (mode/studyMode/budget) → 朗读 (voice/engine) → 外观 (followHost) → stats → profile → about → stateFile
+    const order = ['settings.mode', 'studyMode', 'budget', 'voice', 'ttsEngine', 'followHost', 'profile', 'stateFile']
+      .map(key => html.indexOf(key === 'settings.mode' ? '教学风格' : key === 'studyMode' ? '学习模式' : key === 'budget' ? '历史预算' : key === 'voice' ? '朗读语音' : key === 'ttsEngine' ? '朗读引擎' : key === 'followHost' ? '跟随宿主主题色' : key === 'profile' ? '学习者画像' : '状态文件'))
+    assert.deepEqual(order, [...order].sort((a, b) => a - b), 'the sections read in the grouped order')
+  } finally {
+    if (hadOwn) glob.localStorage = prev
+    else delete glob.localStorage
+  }
+  // CSS pins: the row grid, the switch, and the responsive collapse
+  const { STUDY_CSS } = await import('../src/client/styles.ts')
+  assert.match(STUDY_CSS, /\.lks-set-row\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/, 'two-column rows (label left, control right)')
+  assert.match(STUDY_CSS, /\.lks-set-switch\{[^}]*width:38px/, 'the boolean switch control')
+  assert.match(STUDY_CSS, /\.lks-set-switch\.on\{[^}]*--dsw-alias-state-business-primary/, 'the switch rides the host business hue')
+  assert.match(STUDY_CSS, /@media \(max-width:600px\)\{[^}]*\.lks-set-row\{grid-template-columns:minmax\(0,1fr\)\}/, 'narrow panes stack the rows')
+  assert.match(STUDY_CSS, /\.lks-profile-grid\{display:grid;grid-template-columns:repeat\(auto-fill,minmax\(230px,1fr\)\)/, 'the profile editor is a responsive grid')
+})
+
+test('the dormant empty card carries its own wake CTA (the copy promises one)', async () => {
+  // caught 2026-11-05: the dormant title said 点「开始学习」唤醒导师 while the
+  // button rendered only `!dormant` AND the dormant composer is disabled —
+  // the panel had NO in-panel wake path. send() activates the dormant
+  // surface itself, so the CTA now renders unconditionally.
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/client/panel.tsx', import.meta.url), 'utf8')
+  assert.ok(!/!dormant\s*\?\s*createElement\('button'[\s\S]{0,200}chat\.start/.test(src), 'the 开始学习 CTA no longer keys on !dormant')
+  assert.match(src, /data-testid': 'chat-start-cta'/, 'the CTA carries a probe hook')
+})

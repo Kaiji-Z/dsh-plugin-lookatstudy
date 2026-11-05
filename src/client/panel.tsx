@@ -2706,13 +2706,17 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
         ? createElement('div', { className: 'lks14-emptycard' },
           createElement('div', { className: 'lks14-emptycard-title' }, dormant ? tr('tutor.dormant') : tr('tutor.empty')),
           createElement('div', { className: 'lks14-emptycard-hint' }, tr('tutor.empty.hint')),
-          !dormant
-            ? createElement('button', {
-              className: 'lks-btn primary',
-              'data-tooltip': tr('chat.start.hint'),
-              onClick: () => { send(starters[0]?.message ?? tr('prompt.start')) },
-            }, tr('chat.start'))
-            : null)
+          // the CTA renders in the DORMANT state too — send() activates the
+          // dormant surface itself, so this button is the wake affordance the
+          // dormant title copy promises. The old `!dormant` guard hid the one
+          // control that worked, while the dormant composer is disabled — the
+          // panel had NO in-panel wake path (caught 2026-11-05).
+          createElement('button', {
+            className: 'lks-btn primary',
+            'data-testid': 'chat-start-cta',
+            'data-tooltip': tr('chat.start.hint'),
+            onClick: () => { send(starters[0]?.message ?? tr('prompt.start')) },
+          }, tr('chat.start')))
         : rowsView.map((row, i) => row.role === 'artifact'
           ? inlineArtifactCard(row, rowsView.slice(i + 1).some(r => r.role === 'assistant'))
           : chatRow(row,

@@ -96,9 +96,10 @@ function ProfileSection({ data, save, resolve, fire }: {
     }
   }
   const suggestions = data?.pendingProfileProposals ?? []
-  return createElement('section', { className: 'lks-set-row', 'data-testid': 'profile-section' },
-    createElement('h3', null, tr('settings.profile')),
-    createElement('p', { className: 'lks-set-hint' }, tr('settings.profile.hint')),
+  return createElement('section', { className: 'lks-set-row wide', 'data-testid': 'profile-section' },
+    createElement('div', { className: 'lks-set-main' },
+      createElement('h3', null, tr('settings.profile')),
+      createElement('p', { className: 'lks-set-hint' }, tr('settings.profile.hint'))),
     createElement('div', { className: 'lks-profile-grid' },
       createElement('label', null, tr('settings.profile.name'),
         createElement('input', { className: 'lks-set-input', value: name, 'data-testid': 'profile-name', onChange: (e: { target: { value: string } }) => { setName(e.target.value) } })),
@@ -131,7 +132,7 @@ function ProfileSection({ data, save, resolve, fire }: {
             onClick: () => { setMotive(stage) },
           }, MOTIVE_DISPLAY[stage as MotiveStage].name)))),
     ),
-    createElement('div', null,
+    createElement('div', { className: 'lks-set-ctrl' },
       createElement('button', { className: 'lks-btn primary', 'data-testid': 'profile-save', onClick: saveAll }, tr('settings.profile.save')),
       createElement('span', { className: 'lks-set-state' }, tr('settings.profile.private'))),
     suggestions.length > 0
@@ -144,6 +145,32 @@ function ProfileSection({ data, save, resolve, fire }: {
             createElement('button', { className: 'lks-btn ghost', onClick: () => { fire(resolve(sg.id, false)) } }, tr('settings.suggest.ignore'))))))
       : null,
   )
+}
+
+/* ── the 0.30 layout pass primitives ──
+ * SetRow: the settings anatomy — label+hint on the left cell, the control on
+ * the right (`wide` stacks the control full-width below). SetSwitch: one
+ * boolean control (a real role=switch toggle) replacing the old per-row
+ * 开启/关闭 buttons. Every data-testid and handler survives the layout. */
+
+function SetRow({ title, hint, wide, ctrl }: { title: string, hint: string | null, wide?: boolean, ctrl?: ReactNode }): ReactNode {
+  return createElement('section', { className: `lks-set-row${wide === true ? ' wide' : ''}` },
+    createElement('div', { className: 'lks-set-main' },
+      createElement('h3', null, title),
+      hint === null ? null : createElement('p', { className: 'lks-set-hint' }, hint)),
+    ctrl === undefined ? null : createElement('div', { className: 'lks-set-ctrl' }, ctrl))
+}
+
+function SetSwitch({ on, onTitle, offTitle, testid, onClick }: { on: boolean, onTitle: string, offTitle: string, testid?: string, onClick: () => void }): ReactNode {
+  return createElement('button', {
+    className: `lks-set-switch${on ? ' on' : ''}`,
+    role: 'switch',
+    'aria-checked': String(on),
+    'data-testid': testid,
+    title: on ? onTitle : offTitle,
+    'aria-label': on ? onTitle : offTitle,
+    onClick,
+  }, createElement('i', null))
 }
 
 /**
@@ -176,104 +203,91 @@ export function StudySettingsSection(): ReactNode {
   }
   const progress = data?.progress
   return createElement('div', { className: 'lks-root lks-settings' },
-    createElement('section', { className: 'lks-set-row' },
-      createElement('h3', null, tr('settings.mode')),
-      createElement('p', { className: 'lks-set-hint' }, tr('settings.mode.hint')),
-      createElement('div', { className: 'lks-pills' },
+    // ── 学习 ──
+    createElement(SetRow, {
+      title: tr('settings.mode'), hint: tr('settings.mode.hint'),
+      ctrl: createElement('span', { className: 'lks-pills' },
         ...MODES.map(mode => createElement('button', {
           key: mode.id,
           className: `lks-pill${data?.mode === mode.id ? ' on' : ''}`,
           title: tr(mode.hintKey),
           onClick: () => { fire(setMode(mode.id)) },
-        }, tr(mode.labelKey))),
-      ),
-    ),
-    createElement('section', { className: 'lks-set-row' },
-      createElement('h3', null, tr('settings.studyMode')),
-      createElement('p', { className: 'lks-set-hint' }, tr('settings.studyMode.hint')),
-      createElement('div', null,
-        createElement('button', {
-          className: `lks-btn ${data?.active === true ? 'ghost' : 'primary'}`,
-          onClick: () => { if (data !== null) fire(activate(!data.active)) },
-        }, data?.active === true ? tr('settings.turnOff') : tr('settings.turnOn')),
-        createElement('span', { className: 'lks-set-state' }, data?.active === true ? tr('settings.on') : tr('settings.off')),
-      ),
-    ),
-    createElement('section', { className: 'lks-set-row' },
-      createElement('h3', null, tr('settings.budget')),
-      createElement('p', { className: 'lks-set-hint' }, tr('settings.budget.hint')),
-      createElement('div', null,
-        createElement('button', {
-          className: `lks-btn ${data?.historyBudget === true ? 'ghost' : 'primary'}`,
-          'data-testid': 'budget-toggle',
-          onClick: () => { if (data !== null) fire(setHistoryBudget(!(data.historyBudget === true))) },
-        }, data?.historyBudget === true ? tr('settings.budget.off') : tr('settings.budget.on')),
-      ),
-    ),
-    createElement('section', { className: 'lks-set-row' },
-      createElement('h3', null, tr('settings.voice')),
-      createElement('p', { className: 'lks-set-hint' }, tr('settings.voice.hint')),
-      createElement('div', null,
-        createElement('select', {
-          className: 'lks-set-select',
-          value: voice,
-          onChange: (e: { target: { value: string } }) => { storeTtsVoice(e.target.value); setVoice(e.target.value) },
-        }, ...TTS_VOICES.map(v => createElement('option', { key: v.id, value: v.id }, tr(v.labelKey)))),
-      ),
-    ),
+        }, tr(mode.labelKey)))),
+    }),
+    createElement(SetRow, {
+      title: tr('settings.studyMode'), hint: tr('settings.studyMode.hint'),
+      ctrl: createElement(SetSwitch, {
+        on: data?.active === true, onTitle: tr('settings.turnOff'), offTitle: tr('settings.turnOn'),
+        onClick: () => { if (data !== null) fire(activate(!data.active)) },
+      }),
+    }),
+    createElement(SetRow, {
+      title: tr('settings.budget'), hint: tr('settings.budget.hint'),
+      ctrl: createElement(SetSwitch, {
+        on: data?.historyBudget === true, onTitle: tr('settings.budget.off'), offTitle: tr('settings.budget.on'),
+        testid: 'budget-toggle',
+        onClick: () => { if (data !== null) fire(setHistoryBudget(!(data.historyBudget === true))) },
+      }),
+    }),
+    // ── 朗读 ──
+    createElement(SetRow, {
+      title: tr('settings.voice'), hint: tr('settings.voice.hint'),
+      ctrl: createElement('select', {
+        className: 'lks-set-select',
+        value: voice,
+        onChange: (e: { target: { value: string } }) => { storeTtsVoice(e.target.value); setVoice(e.target.value) },
+      }, ...TTS_VOICES.map(v => createElement('option', { key: v.id, value: v.id }, tr(v.labelKey)))),
+    }),
     // issue #18: the external read-aloud channel — one endpoint URL the
     // user's own TTS bridge serves (POST {"text"} → 2xx audio). The chain
     // prefers it, falls back to Edge, then the client's speechSynthesis; the
     // status line shows which engine ACTUALLY answered last (config ≠ truth).
-    createElement('section', { className: 'lks-set-row' },
-      createElement('h3', null, tr('settings.ttsEngine')),
-      createElement('p', { className: 'lks-set-hint' }, tr('settings.ttsEngine.hint')),
-      createElement('div', { 'data-testid': 'tts-engine-row' },
+    createElement(SetRow, {
+      title: tr('settings.ttsEngine'), hint: tr('settings.ttsEngine.hint'), wide: true,
+      ctrl: [
         createElement('input', {
-          className: 'lks-set-input',
+          key: 'input',
+          className: 'lks-set-input lks-set-engine-input',
           'data-testid': 'tts-endpoint-input',
           value: endpoint,
           placeholder: 'http://127.0.0.1:8765',
           onChange: (e: { target: { value: string } }) => { setEndpoint(e.target.value) },
         }),
-        createElement('button', {
-          className: 'lks-btn primary',
-          'data-testid': 'tts-endpoint-save',
-          onClick: () => { fire(setTtsEndpoint(endpoint.trim())) },
-        }, tr('settings.ttsEngine.save')),
-        createElement('button', {
-          className: 'lks-btn ghost',
-          'data-testid': 'tts-engine-test',
-          onClick: () => { void testTts().then(r => { setEngineProbe('error' in r ? `${tr('settings.ttsEngine.fail')}: ${r.error}` : r.engine === 'external' ? tr('settings.ttsEngine.probe.external') : tr('settings.ttsEngine.probe.edge')) }) },
-        }, tr('settings.ttsEngine.test')),
-        createElement('span', { className: 'lks-set-state', 'data-testid': 'tts-engine-status' },
+        createElement('span', { key: 'btns', style: { display: 'inline-flex', gap: '8px', flexWrap: 'wrap' } },
+          createElement('button', {
+            className: 'lks-btn primary',
+            'data-testid': 'tts-endpoint-save',
+            onClick: () => { fire(setTtsEndpoint(endpoint.trim())) },
+          }, tr('settings.ttsEngine.save')),
+          createElement('button', {
+            className: 'lks-btn ghost',
+            'data-testid': 'tts-engine-test',
+            onClick: () => { void testTts().then(r => { setEngineProbe('error' in r ? `${tr('settings.ttsEngine.fail')}: ${r.error}` : r.engine === 'external' ? tr('settings.ttsEngine.probe.external') : tr('settings.ttsEngine.probe.edge')) }) },
+          }, tr('settings.ttsEngine.test'))),
+        createElement('span', { key: 'status', className: 'lks-set-status', 'data-testid': 'tts-engine-status' },
           engineStatusText),
-      ),
-    ),
+      ],
+    }),
     // issue #16: the opt-in ecosystem-theme bridge — dsh-markdown-xyy &c.
     // override the host --dsw-alias-* tokens; when on, the panel's neutral
     // ladder follows them (brand/semantic hues stay native). Default off:
     // the stock host defines the aliases too, so an always-on bridge would
     // replace the upstream-verbatim palette on every install.
-    createElement('section', { className: 'lks-set-row' },
-      createElement('h3', null, tr('settings.followHost')),
-      createElement('p', { className: 'lks-set-hint' }, tr('settings.followHost.hint')),
-      createElement('div', null,
-        createElement('button', {
-          className: `lks-btn ${followHost ? 'ghost' : 'primary'}`,
-          'data-testid': 'follow-host-toggle',
-          onClick: () => {
-            const next = !followHostTheme()
-            setFollowHostTheme(next)
-            setFollowHost(next)
-          },
-        }, followHost ? tr('settings.followHost.off') : tr('settings.followHost.on')),
-        createElement('span', { className: 'lks-set-state' }, followHost ? tr('settings.on') : tr('settings.off')),
-      ),
-    ),
-    progress === undefined ? null : createElement('section', { className: 'lks-set-row' },
-      createElement('h3', null, tr('settings.stats')),
-      createElement('ul', { className: 'lks-set-stats' },
+    createElement(SetRow, {
+      title: tr('settings.followHost'), hint: tr('settings.followHost.hint'),
+      ctrl: createElement(SetSwitch, {
+        on: followHost, onTitle: tr('settings.followHost.off'), offTitle: tr('settings.followHost.on'),
+        testid: 'follow-host-toggle',
+        onClick: () => {
+          const next = !followHostTheme()
+          setFollowHostTheme(next)
+          setFollowHost(next)
+        },
+      }),
+    }),
+    progress === undefined ? null : createElement(SetRow, {
+      title: tr('settings.stats'), hint: null, wide: true,
+      ctrl: createElement('ul', { className: 'lks-set-stats' },
         createElement('li', null, tr('settings.stats.courses', { count: data?.courses.length ?? 0 })),
         createElement('li', null, tr('settings.stats.xp', { xp: progress.totalXp, level: progress.level, pct: progress.levelPct })),
         createElement('li', null, tr('settings.stats.today', { xp: progress.todayXp, goal: progress.dailyGoal })),
@@ -282,25 +296,23 @@ export function StudySettingsSection(): ReactNode {
         createElement('li', { 'data-testid': 'recap-mastered' }, tr('settings.stats.mastered', {
           count: (data?.courses ?? []).reduce((n, c) => n + c.mastered, 0),
           due: data?.dueCount ?? 0,
-        })),
-      ),
-    ),
+        }))),
+    }),
     // ── upstream v0.36 learner profile: the declared side (name / MBTI /
     // style dims / interests / motive / free note) + the AI-suggestion
     // consumer. The chat stream is never interrupted — suggestions resolve HERE. ──
     createElement(ProfileSection, { data, save: saveProfile, resolve: resolveProfileProposal, fire }),
-    createElement('section', { className: 'lks-set-row' },
-      createElement('h3', null, tr('settings.about')),
-      createElement('p', { className: 'lks-set-hint' }, tr('settings.about.hint')),
-      data?.version ? createElement('a',
+    // ── 关于 ──
+    createElement(SetRow, {
+      title: tr('settings.about'), hint: tr('settings.about.hint'),
+      ctrl: data?.version === undefined ? null : createElement('a',
         { href: `https://github.com/Kaiji-Z/dsh-plugin-lookatstudy/releases/tag/v${data.version}`, target: '_blank', rel: 'noreferrer' },
-        `v${data.version}`) : null,
-    ),
-    createElement('section', { className: 'lks-set-row' },
-      createElement('h3', null, tr('settings.stateFile')),
-      createElement('p', { className: 'lks-set-hint' }, tr('settings.stateFile.hint')),
-      data === null ? null : createElement('code', { className: 'lks-set-path' }, data.statePath),
-    ),
+        `v${data.version}`),
+    }),
+    createElement(SetRow, {
+      title: tr('settings.stateFile'), hint: tr('settings.stateFile.hint'), wide: true,
+      ctrl: data === null ? null : createElement('code', { className: 'lks-set-path' }, data.statePath),
+    }),
     createElement(ActionError, { error }),
   )
 }
