@@ -939,15 +939,19 @@ export const UPSTREAM_CSS = `
    the CJK comfort ceiling (Chan et al. 2014; W3C) and the upstream-verbatim
    default; a learner who WIDENS the chat pane (pane-resize) is explicitly
    asking for longer lines, so the cap steps up twice — 88ch (≤44 字) at
-   960px, 96ch (≤48 字, the hard ceiling) at 1200px, where the reading
+   960px, 96ch (≤48 字, the hard ceiling) at 1040px, where the reading
    column also centers so the leftover space splits symmetrically instead of
-   pooling on the right (the "一片空白" complaint). Pure container queries —
-   zero JS, the pane itself is the query container. */
+   pooling on the right (the "一片空白" complaint). The 1040 threshold is
+   DELIBERATELY below the drag ceiling (pane-resize CHAT_MAX=1100): a tier
+   the drag can never reach is dead CSS — the first cut keyed tier 3 at
+   1200px and only a probe writing the CSS var directly (bypassing the
+   budget clamps) could reach it. Pure container queries — zero JS, the pane
+   itself is the query container. */
 .lks-ui .lks14-chat{container-type:inline-size;container-name:lkschat}
 @container lkschat (min-width:960px){
   .lks-ui .lks14-msg-assistant{max-width:88ch}
 }
-@container lkschat (min-width:1200px){
+@container lkschat (min-width:1040px){
   .lks-ui .lks14-msg-assistant{max-width:96ch;margin-inline:auto}
 }
 

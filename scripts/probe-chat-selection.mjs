@@ -209,13 +209,15 @@ if (msgId !== null) {
   probe('reload: the anchored chat note redraws its persistent mark', redrawn >= 1, `live ranges=${redrawn}`)
 }
 
-// 3d — the reading-column tier engages when the pane is dragged wide
+// 3d — the reading-column tier engages when the pane is dragged wide.
+// NOTE: the test width must sit INSIDE the drag budget (CHAT_MAX=1100) —
+// writing 1300px bypassed the budget clamps and once certified a dead tier
 {
   const tier = await page.evaluate(async () => {
     const el = document.querySelector('.lks14-msg-assistant')
     if (el === null) return null
     const base = Math.round(Number.parseFloat(getComputedStyle(el).maxWidth))
-    document.body.style.setProperty('--lks-chat-w', '1300px')
+    document.body.style.setProperty('--lks-chat-w', '1100px')
     await new Promise(r => { setTimeout(r, 400) })
     const wide = Math.round(Number.parseFloat(getComputedStyle(el).maxWidth))
     // computed margin-inline resolves to USED px (not 'auto') — a real
@@ -225,7 +227,7 @@ if (msgId !== null) {
     document.body.style.removeProperty('--lks-chat-w')
     return { base, wide, ml, mr }
   })
-  probe('reading tiers: a 1300px pane widens the column cap (and centers it)',
+  probe('reading tiers: the 1100px DRAG CEILING widens the column cap (and centers it)',
     tier !== null && tier.wide > tier.base + 40 && tier.ml > 20 && tier.ml === tier.mr,
     tier === null ? 'no row' : `${tier.base}px → ${tier.wide}px margins=${tier.ml}/${tier.mr}`)
 }

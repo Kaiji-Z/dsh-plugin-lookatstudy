@@ -710,7 +710,7 @@ test('issue #18: reading-column tiers, the composer grip, and the chat-selection
   // only when the learner widened the pane — container queries, zero JS
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-chat\{container-type:inline-size;container-name:lkschat\}/, 'the chat pane is the query container')
   assert.match(UPSTREAM_CSS, /@container lkschat \(min-width:960px\)\{\s*\.lks-ui \.lks14-msg-assistant\{max-width:88ch\}/, 'tier 2 at 960px')
-  assert.match(UPSTREAM_CSS, /@container lkschat \(min-width:1200px\)\{\s*\.lks-ui \.lks14-msg-assistant\{max-width:96ch;margin-inline:auto\}/, 'tier 3 caps at 96ch and centers the reading column')
+  assert.match(UPSTREAM_CSS, /@container lkschat \(min-width:1040px\)\{\s*\.lks-ui \.lks14-msg-assistant\{max-width:96ch;margin-inline:auto\}/, 'tier 3 caps at 96ch and centers — 1040 < CHAT_MAX(1100), the tier must sit INSIDE the drag-reachable range (a 1200px tier was dead CSS, caught while auditing the budget system)')
   // the composer: a manual vertical grip + the shared 40vh cap (grow-only JS)
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-composertext\{resize:vertical;max-height:40vh\}/)
   // the chat quote popover anchors inside the scrolling stream
