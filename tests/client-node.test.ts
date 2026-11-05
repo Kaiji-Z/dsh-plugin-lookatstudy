@@ -81,6 +81,7 @@ function statePayload(mode: StudyState['mode']): StudyState {
   return {
     mode,
     active: true,
+    tts: { endpoint: '', lastEngine: null, lastExternalError: null },
     courses: [],
     focusLessonId: null,
     lesson: null,
@@ -701,4 +702,25 @@ test('issue #16: the ecosystem-theme bridge and the _markdown_ scope hook', asyn
   assert.match(src, /'lks14-prose _markdown_lks'/, 'teach prose carries the markdown scope')
   assert.match(src, /'lks-note-text _markdown_lks'/, 'notes carry the markdown scope')
   assert.match(src, /data-lks-follow-host/, 'the panel root carries the bridge attribute')
+})
+
+test('issue #18: reading-column tiers, the composer grip, and the chat-selection surface', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  // the reading-column ladder: 80ch default (upstream verbatim), stepping up
+  // only when the learner widened the pane — container queries, zero JS
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-chat\{container-type:inline-size;container-name:lkschat\}/, 'the chat pane is the query container')
+  assert.match(UPSTREAM_CSS, /@container lkschat \(min-width:960px\)\{\s*\.lks-ui \.lks14-msg-assistant\{max-width:88ch\}/, 'tier 2 at 960px')
+  assert.match(UPSTREAM_CSS, /@container lkschat \(min-width:1200px\)\{\s*\.lks-ui \.lks14-msg-assistant\{max-width:96ch;margin-inline:auto\}/, 'tier 3 caps at 96ch and centers the reading column')
+  // the composer: a manual vertical grip + the shared 40vh cap (grow-only JS)
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-composertext\{resize:vertical;max-height:40vh\}/)
+  // the chat quote popover anchors inside the scrolling stream
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-stream\{position:relative\}/)
+  // the chat-selection engine: rows carry the stable msg anchor, the popover
+  // exists, and the immediate mark rides the shared registry
+  const { readFileSync } = await import('node:fs')
+  const src = readFileSync(new URL('../src/client/panel.tsx', import.meta.url), 'utf8')
+  assert.match(src, /'data-msg-id': row\.key/, 'message rows carry the feed row key as the anchor')
+  assert.match(src, /\[data-msg-id="\$\{msgId\}"\]/, 'the persistent-mark redraw scopes to one row')
+  assert.match(src, /data-testid': 'chat-quote-btn'/, 'the chat quote popover renders with a probe hook')
+  assert.match(src, /root\.scrollTop/, 'the popover folds scrollTop into its stream coordinates')
 })

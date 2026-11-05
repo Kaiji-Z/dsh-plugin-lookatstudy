@@ -61,3 +61,117 @@ test('cachedTtsMp3 caches by voice+text and replays from disk', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+/* ── issue #18: the external TTS channel, the failure ratchet, the chain ── */
+
+import { externalSynthesize, externalTtsExt, studyTtsAudio, TtsGate } from '../src/tts.ts'
+
+/** Minimal Response double for the injected fetch. */
+class FakeFetchResponse {
+  ok: boolean
+  status: number
+  headers: Map<string, string>
+  private bytes: Buffer
+  constructor(status: number, body: Buffer, mime = 'audio/wav') {
+    this.status = status
+    this.ok = status >= 200 && status < 300
+    this.headers = new Map([['content-type', mime]])
+    this.bytes = body
+  }
+  arrayBuffer(): Promise<ArrayBuffer> { return Promise.resolve(this.bytes.buffer.slice(this.bytes.byteOffset, this.bytes.byteOffset + this.bytes.byteLength) as ArrayBuffer) }
+}
+
+test('externalTtsExt picks the cache extension from the response mime', () => {
+  assert.equal(externalTtsExt('audio/wav'), 'wav')
+  assert.equal(externalTtsExt('audio/wave'), 'wav')
+  assert.equal(externalTtsExt('audio/mpeg'), 'mp3')
+  assert.equal(externalTtsExt(null), 'mp3')
+  assert.equal(externalTtsExt(undefined), 'mp3')
+})
+
+test('externalSynthesize: POSTs {"text"}, fails loud on non-2xx / empty / abort', async () => {
+  const calls: Array<{ url: string, body: string }> = []
+  const fetchImpl = (async (url: string, init: RequestInit) => {
+    calls.push({ url: String(url), body: String(init.body) })
+    return new FakeFetchResponse(200, Buffer.from('WAVDATA'), 'audio/wav') as unknown as Response
+  }) as typeof fetch
+  const ok = await externalSynthesize('你好', 'http://127.0.0.1:8765', { fetchImpl })
+  assert.equal(ok.bytes.toString(), 'WAVDATA')
+  assert.equal(ok.mime, 'audio/wav')
+  assert.deepEqual(calls, [{ url: 'http://127.0.0.1:8765', body: JSON.stringify({ text: '你好' }) }], 'the contract is exactly {"text"} — voice/keys belong to the endpoint')
+
+  await assert.rejects(externalSynthesize('x', 'http://x/', { fetchImpl: (async () => new FakeFetchResponse(500, Buffer.from(''))) as unknown as typeof fetch }), /HTTP 500/)
+  await assert.rejects(externalSynthesize('x', 'http://x/', { fetchImpl: (async () => new FakeFetchResponse(200, Buffer.alloc(0))) as unknown as typeof fetch }), /empty audio/)
+  await assert.rejects(
+    externalSynthesize('x', 'http://x/', {
+      fetchImpl: ((async (_url: string, init: RequestInit) => {
+        return new Promise((_resolve, reject) => { init.signal?.addEventListener('abort', () => { reject(new Error('This operation was aborted')) }) })
+      }) as unknown as typeof fetch),
+      timeoutMs: 30,
+    }),
+    /abort/,
+    'the AbortController deadline fires',
+  )
+})
+
+test('TtsGate: two consecutive failures trip it, one success re-arms', () => {
+  const gate = new TtsGate(2)
+  assert.equal(gate.tripped, false)
+  gate.record(false); assert.equal(gate.tripped, false)
+  gate.record(false); assert.equal(gate.tripped, true, 'read-aloud is per-sentence — a dead endpoint must not bill a timeout per sentence')
+  gate.record(false); assert.equal(gate.tripped, true)
+  gate.reset(); assert.equal(gate.tripped, false, 'a settings change re-arms')
+  gate.record(true); assert.equal(gate.tripped, false)
+  gate.record(false); assert.equal(gate.tripped, false)
+  gate.record(false); assert.equal(gate.tripped, true, 'a success resets the consecutive counter')
+})
+
+test('studyTtsAudio: an EMPTY endpoint reproduces the Edge-only behavior exactly', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lks-tts-'))
+  try {
+    let edgeCalls = 0
+    const edge = async (text: string): Promise<Buffer> => { edgeCalls++; return Buffer.from(`edge:${text}`) }
+    const out = await studyTtsAudio('句子', 'zh-CN-XiaoxiaoNeural', '', dir, { synth: edge })
+    assert.equal(out.engine, 'edge')
+    assert.equal(out.bytes.toString(), 'edge:句子')
+    assert.equal(out.externalError, null)
+    assert.equal(edgeCalls, 1)
+    // cache replay never re-synthesizes
+    const again = await studyTtsAudio('句子', 'zh-CN-XiaoxiaoNeural', '', dir, { synth: edge })
+    assert.equal(again.bytes.toString(), 'edge:句子')
+    assert.equal(edgeCalls, 1)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('studyTtsAudio: the external channel wins, caches by extension, and falls back to Edge', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'lks-tts-'))
+  try {
+    const gate = new TtsGate(2)
+    let extCalls = 0
+    let edgeCalls = 0
+    const externalOk = (async () => { extCalls++; return new FakeFetchResponse(200, Buffer.from('EXTWAV'), 'audio/wav') as unknown as Response }) as typeof fetch
+    const externalDead = (async () => { extCalls++; return new FakeFetchResponse(503, Buffer.alloc(0)) as unknown as Response }) as typeof fetch
+    const edge = async (text: string): Promise<Buffer> => { edgeCalls++; return Buffer.from(`edge:${text}`) }
+
+    // 1: external answers wav → cached under .wav
+    const a = await studyTtsAudio('一句话', 'zh-CN-XiaoxiaoNeural', ' http://127.0.0.1:8765 ', dir, { gate, synth: edge, fetchImpl: externalOk })
+    assert.equal(a.engine, 'external'); assert.equal(a.bytes.toString(), 'EXTWAV'); assert.equal(a.mime, 'audio/wav')
+    assert.equal(readdirSync(dir).filter(f => f.endsWith('.wav')).length, 1)
+    // 2: cache hit replays without the endpoint (extCalls stays)
+    const a2 = await studyTtsAudio('一句话', 'zh-CN-XiaoxiaoNeural', 'http://127.0.0.1:8765', dir, { gate, synth: edge, fetchImpl: externalDead })
+    assert.equal(a2.engine, 'external', 'the wav cache entry satisfies the external arm')
+    assert.equal(extCalls, 1)
+    // 3: two live failures → Edge fallback AND the gate trips
+    const b = await studyTtsAudio('第二句', 'zh-CN-XiaoxiaoNeural', 'http://127.0.0.1:8765', dir, { gate, synth: edge, fetchImpl: externalDead })
+    assert.equal(b.engine, 'edge', 'a failed external request falls through to Edge'); assert.ok(b.externalError !== null)
+    const c = await studyTtsAudio('第三句', 'zh-CN-XiaoxiaoNeural', 'http://127.0.0.1:8765', dir, { gate, synth: edge, fetchImpl: externalDead })
+    assert.equal(c.engine, 'edge')
+    assert.equal(gate.tripped, true)
+    // 4: tripped → the external arm is skipped entirely (no more external calls)
+    const extBefore = extCalls
+    const d = await studyTtsAudio('第四句', 'zh-CN-XiaoxiaoNeural', 'http://127.0.0.1:8765', dir, { gate, synth: edge, fetchImpl: externalDead })
+    assert.equal(d.engine, 'edge'); assert.equal(d.externalError !== null, true, 'the status line explains the trip')
+    assert.equal(extCalls, extBefore, 'a tripped gate never bills the dead endpoint again')
+    assert.equal(edgeCalls, 3)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})

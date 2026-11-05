@@ -176,9 +176,9 @@ export function synthesizeSpeech(text: string, voice: string = DEFAULT_TTS_VOICE
 }
 
 /** Cache key: voice-scoped (different voices never share files). */
-export function ttsCachePath(cacheDir: string, text: string, voice: string): string {
+export function ttsCachePath(cacheDir: string, text: string, voice: string, ext: 'mp3' | 'wav' = 'mp3'): string {
   const hash = createHash('sha256').update(`${voice}\n${text}`).digest('hex')
-  return join(cacheDir, `${hash}.mp3`)
+  return join(cacheDir, `${hash}.${ext}`)
 }
 
 /**
@@ -200,4 +200,128 @@ export async function cachedTtsMp3(
   if (mp3.length === 0) throw new Error('edge tts: synthesis returned empty audio (not cached)')
   writeFileSync(file, mp3)
   return mp3
+}
+
+/* ── issue #18: the optional external TTS channel ──
+ * The built-in Edge read-aloud endpoint is unreachable from some networks
+ * (mainland-China egress is risk-controlled with a stable 403 across Edge
+ * versions — live-verified in the issue, cache dir stayed empty). The escape
+ * hatch is a user-configured external endpoint (settings page → state.json):
+ * the plugin POSTs {"text"} and expects 2xx audio bytes back; voice, keys and
+ * billing belong to the endpoint. Every failure falls through to Edge (the
+ * existing chain), then the client's speechSynthesis as before. */
+
+export interface ExternalTtsDeps {
+  /** fetch implementation (injectable for tests). */
+  fetchImpl?: typeof fetch
+  timeoutMs?: number
+}
+
+/** Pick the cache extension from the response content type (default mp3). */
+export function externalTtsExt(mime: string | undefined | null): 'mp3' | 'wav' {
+  return /wav/i.test(mime ?? '') ? 'wav' : 'mp3'
+}
+
+/**
+ * One external-channel request. Fails loud on non-2xx / empty body / timeout
+ * — the caller decides the fallback.
+ * @returns the audio bytes plus the mime (drives the cache extension).
+ */
+export async function externalSynthesize(
+  text: string,
+  endpoint: string,
+  deps: ExternalTtsDeps = {},
+): Promise<{ bytes: Buffer; mime: string }> {
+  const fetchImpl = deps.fetchImpl ?? fetch
+  const controller = new AbortController()
+  const timer = setTimeout(() => { controller.abort() }, deps.timeoutMs ?? 15_000)
+  try {
+    const res = await fetchImpl(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal: controller.signal,
+    })
+    if (!res.ok) throw new Error(`external tts: HTTP ${String(res.status)}`)
+    const bytes = Buffer.from(await res.arrayBuffer())
+    if (bytes.length === 0) throw new Error('external tts: empty audio')
+    return { bytes, mime: res.headers.get('content-type') ?? 'audio/mpeg' }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * The failure ratchet (issue #18): read-aloud synthesizes PER SENTENCE, so a
+ * dead external endpoint would bill a 15 s timeout against every sentence of
+ * a lesson before falling back. After `maxConsecutive` consecutive failures
+ * the gate trips and the external channel is skipped for the rest of the
+ * process; a single success (or a settings change → reset) re-arms it.
+ */
+export class TtsGate {
+  private consecutive = 0
+  constructor(private readonly maxConsecutive = 2) {}
+  get tripped(): boolean { return this.consecutive >= this.maxConsecutive }
+  record(ok: boolean): void { this.consecutive = ok ? 0 : this.consecutive + 1 }
+  reset(): void { this.consecutive = 0 }
+}
+
+export interface StudyTtsOutcome {
+  bytes: Buffer
+  mime: string
+  engine: 'external' | 'edge'
+  /** set when the external channel was skipped or failed (settings status) */
+  externalError: string | null
+}
+
+export interface StudyTtsDeps extends ExternalTtsDeps {
+  /** the Edge synthesizer (injectable; real Edge TTS by default). */
+  synth?: (text: string, voice: string) => Promise<Buffer>
+  gate?: TtsGate
+  now?: () => Date
+}
+
+/**
+ * The full synthesis chain behind POST /api/tts: external endpoint (when
+ * configured and not tripped, cache-first per extension) → Edge
+ * (cache-first). An EMPTY endpoint reproduces 0.28.0 exactly — the external
+ * arm is skipped without touching the gate or the Edge path.
+ */
+export async function studyTtsAudio(
+  text: string,
+  voice: string,
+  endpoint: string,
+  cacheDir: string,
+  deps: StudyTtsDeps = {},
+): Promise<StudyTtsOutcome> {
+  const gate = deps.gate ?? new TtsGate()
+  const trimmed = endpoint.trim()
+  if (trimmed !== '' && !gate.tripped) {
+    for (const ext of ['mp3', 'wav'] as const) {
+      const cached = ttsCachePath(cacheDir, text, voice, ext)
+      if (existsSync(cached)) {
+        return { bytes: readFileSync(cached), mime: ext === 'wav' ? 'audio/wav' : 'audio/mpeg', engine: 'external', externalError: null }
+      }
+    }
+    try {
+      const { bytes, mime } = await externalSynthesize(text, trimmed, deps)
+      gate.record(true)
+      mkdirSync(cacheDir, { recursive: true })
+      writeFileSync(ttsCachePath(cacheDir, text, voice, externalTtsExt(mime)), bytes)
+      return { bytes, mime, engine: 'external', externalError: null }
+    } catch (error) {
+      gate.record(false)
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[lookatstudy] external tts failed, falling back to edge: ${message}`)
+      const bytes = await cachedTtsMp3(cacheDir, text, voice, deps.synth)
+      return { bytes, mime: 'audio/mpeg', engine: 'edge', externalError: message }
+    }
+  }
+  const bytes = await cachedTtsMp3(cacheDir, text, voice, deps.synth)
+  return {
+    bytes,
+    mime: 'audio/mpeg',
+    engine: 'edge',
+    externalError: trimmed === '' ? null : gate.tripped ? 'external channel tripped (consecutive failures)' : null,
+  }
 }

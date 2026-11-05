@@ -16,7 +16,7 @@ import { coursePackOf, coursePackMarkdown, findCourseForPack, packFileName } fro
 import { normalizeMathNotation } from './vendor/math-normalize.ts'
 import { DEFAULT_DAILY_GOAL, levelFromTotalXp } from './vendor/xp.ts'
 import { normalizeSpeechText } from './vendor/speech-text.ts'
-import { cachedTtsMp3, normalizeVoice } from './tts.ts'
+import { TtsGate, normalizeVoice, studyTtsAudio } from './tts.ts'
 import {
   searchLessons,
   conceptViews,
@@ -78,6 +78,17 @@ function pluginVersion(): string {
   } catch { return '' }
 }
 
+/**
+ * The external-channel runtime (issue #18): the failure ratchet plus the
+ * engine log the settings page reads. Process memory by design — the
+ * endpoint itself persists in state.json.
+ */
+const ttsRuntime: { gate: TtsGate; lastEngine: 'external' | 'edge' | null; lastExternalError: string | null } = {
+  gate: new TtsGate(),
+  lastEngine: null,
+  lastExternalError: null,
+}
+
 export interface DashboardDeps {
   store: DashboardStore
   /** Directory the one-click starter adopts as the study workspace (apply ensures it exists). */
@@ -90,6 +101,8 @@ export interface DashboardDeps {
   tts?: {
     /** Overrides synthesis entirely (the cache still short-circuits first). */
     synthesize?: (text: string, voice: string) => Promise<Buffer>
+    /** fetch implementation for the external channel (issue #18; tests fake it). */
+    fetchImpl?: typeof fetch
   }
   /** Host-resolved tutor model facts (the meter's real context capacity). */
   modelInfo: () => Promise<{ id: string; provider: string; contextWindow: number | null } | null>
@@ -155,7 +168,7 @@ export interface WorkbenchLesson {
   strategy: string
   concepts: Array<{ title: string; masteryPct: number; weak: boolean }>
   starters: Array<{ label: string; message: string }>
-  notes: Array<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null; pinned: boolean }>
+  notes: Array<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null; pinned: boolean; anchorMsgId: string | null }>
   /** Recorded artifacts (0.15.0 P1): the panel's interactive cards. */
   artifacts: Array<{ id: string; artifactType: string; title: string; data: Record<string, unknown> }>
   /** Whether this lesson has a review due now (the self-rating card shows). */
@@ -183,6 +196,9 @@ export interface WorkbenchState {
   mode: string
   /** E2: the history-budget directive flag (settings toggle). */
   historyBudget: boolean
+  /** issue #18: the read-aloud chain's live status (endpoint from state,
+   *  engine log from the dashboard's process memory). */
+  tts: { endpoint: string; lastEngine: 'external' | 'edge' | null; lastExternalError: string | null }
   courses: WorkbenchCourse[]
   focusLessonId: string | null
   lesson: WorkbenchLesson | null
@@ -306,6 +322,9 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
           source: n.source,
           quote: n.quote,
           pinned: n.pinned === true,
+          // issue #18 (chat selection port): a source:'chat' note pins to the
+          // message row it came from (the feed row key, stable across reloads)
+          anchorMsgId: n.anchorMsgId ?? null,
         })),
         html: renderMarkdown(normalizeMathNotation(ref.lesson.body)),
         markdown: ref.lesson.body,
@@ -328,6 +347,13 @@ export function workbenchState(state: LearningState, now: Date): WorkbenchState 
     active: state.active,
     mode: state.mode,
     historyBudget,
+    // issue #18: the read-aloud chain's live status — which engine answered
+    // last, and whether the external channel failed over (settings renders it).
+    tts: {
+      endpoint: state.ttsEndpoint ?? '',
+      lastEngine: ttsRuntime.lastEngine,
+      lastExternalError: ttsRuntime.lastExternalError,
+    },
     courses,
     focusLessonId: focusId,
     lesson,
@@ -698,7 +724,11 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         try {
           const quote = body.quote.trim()
           const text = typeof body.text === 'string' && body.text.trim() !== '' ? body.text.trim() : quote
-          const note = addNote(deps.store.get(), body.lessonId, 'record', quote.slice(0, 24), text, 'content', quote, new Date())
+          // issue #18 chat-selection port: a quote from the CHAT carries the
+          // feed row key — the note rides source:'chat' and its persistent
+          // mark is scoped to that one message
+          const anchorMsgId = typeof body.anchorMsgId === 'string' && body.anchorMsgId !== '' ? body.anchorMsgId : undefined
+          const note = addNote(deps.store.get(), body.lessonId, 'record', quote.slice(0, 24), text, anchorMsgId !== undefined ? 'chat' : 'content', quote, new Date(), anchorMsgId)
           deps.store.save()
           sendJson(res, 200, { ok: true, noteId: note.id })
         } catch (error) {
@@ -1113,14 +1143,57 @@ export function registerDashboard(webServer: RouteRegistry, deps: DashboardDeps)
         const voice = normalizeVoice(typeof body.voice === 'string' ? body.voice : undefined)
         const cacheDir = join(deps.studyAreaPath, 'tts-cache')
         try {
-          const mp3 = await cachedTtsMp3(cacheDir, text, voice, deps.tts?.synthesize)
+          // issue #18: the chain — external endpoint (when configured, ratchet
+          // gated) → Edge; `engine` rides the receipt so the settings page can
+          // show which channel actually answered.
+          const outcome = await studyTtsAudio(text, voice, deps.store.get().ttsEndpoint ?? '', cacheDir, {
+            gate: ttsRuntime.gate,
+            synth: deps.tts?.synthesize,
+            fetchImpl: deps.tts?.fetchImpl,
+          })
+          ttsRuntime.lastEngine = outcome.engine
+          ttsRuntime.lastExternalError = outcome.externalError
           // Base64-in-JSON, not raw bytes: the host webserver's res can sit
           // behind middleware (gzip) that drops Buffer chunks; JSON survives
           // every wrapper and sentence-sized chunks make the overhead moot.
-          sendJson(res, 200, { ok: true, mime: 'audio/mpeg', dataBase64: mp3.toString('base64') })
+          sendJson(res, 200, { ok: true, mime: outcome.mime, engine: outcome.engine, dataBase64: outcome.bytes.toString('base64') })
         } catch (error) {
+          // total chain failure (external failed over + Edge refused — e.g.
+          // the mainland-403 networks of issue #18): log the truth so the
+          // settings status can say 所有通道不可用 instead of 未测试
+          ttsRuntime.lastEngine = null
+          ttsRuntime.lastExternalError = error instanceof Error ? error.message : String(error)
           sendJson(res, 502, { ok: false, error: error instanceof Error ? error.message : String(error) })
         }
+        return
+      }
+      if (req.method === 'POST' && pathname === '/lookatstudy/api/tts-endpoint') {
+        const body = await readJsonBodySafe(req, res)
+        if (body === undefined) return
+        const raw = typeof body.endpoint === 'string' ? body.endpoint.trim() : undefined
+        if (raw === undefined) {
+          sendJson(res, 400, { ok: false, error: 'endpoint (string) required' })
+          return
+        }
+        if (raw !== '') {
+          // http(s) only — the channel POSTs lesson text to this URL; anything
+          // else (file:, ftp:…) is a config mistake, not a use case.
+          let url: URL
+          try { url = new URL(raw) } catch { sendJson(res, 400, { ok: false, error: 'endpoint must be a valid http(s) URL' }); return }
+          if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            sendJson(res, 400, { ok: false, error: 'endpoint must be a valid http(s) URL' })
+            return
+          }
+        }
+        const state = deps.store.get()
+        state.ttsEndpoint = raw
+        deps.store.save()
+        // a settings change re-arms the ratchet — the user may have just
+        // started the local bridge
+        ttsRuntime.gate.reset()
+        ttsRuntime.lastEngine = null
+        ttsRuntime.lastExternalError = null
+        sendJson(res, 200, { ok: true, endpoint: raw })
         return
       }
       if (req.method === 'POST' && pathname === '/lookatstudy/api/mode') {

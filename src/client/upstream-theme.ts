@@ -923,4 +923,32 @@ export const UPSTREAM_CSS = `
   .lks-ui .lks-lessorow.st-mastered .lks-lessorow-glyph svg,.lks-ui .lks-hdr-xp .lks-hdr-glyph,.lks-ui .lks-hdr-streak .lks-hdr-glyph{animation:none}
 }
 
+/* ══════════ issue #18 round ══════════ */
+/* the chat quote popover anchors inside the scrolling stream (absolute
+   children ride the content origin; scrollTop is folded in by the engine).
+   Live-caught stacking trap: once the stream is POSITIONED, it paints above
+   the thread menu (z:60 loses inside the container-query context the pane
+   now establishes) — the lesson row rides higher so the chip + menu stay on
+   top (probe-verified: the ＋新建 row was unclickable otherwise). */
+.lks-ui .lks14-stream{position:relative}
+.lks-ui .lks14-lessonrow{position:relative;z-index:70}
+/* the composer grows with content (grow-only JS in panel.tsx) + a manual
+   vertical grip; 40vh is the shared cap for both channels */
+.lks-ui .lks14-composertext{resize:vertical;max-height:40vh}
+/* the reading-column tiers (owner decision, researched): 80ch ≈ 40 汉字 is
+   the CJK comfort ceiling (Chan et al. 2014; W3C) and the upstream-verbatim
+   default; a learner who WIDENS the chat pane (pane-resize) is explicitly
+   asking for longer lines, so the cap steps up twice — 88ch (≤44 字) at
+   960px, 96ch (≤48 字, the hard ceiling) at 1200px, where the reading
+   column also centers so the leftover space splits symmetrically instead of
+   pooling on the right (the "一片空白" complaint). Pure container queries —
+   zero JS, the pane itself is the query container. */
+.lks-ui .lks14-chat{container-type:inline-size;container-name:lkschat}
+@container lkschat (min-width:960px){
+  .lks-ui .lks14-msg-assistant{max-width:88ch}
+}
+@container lkschat (min-width:1200px){
+  .lks-ui .lks14-msg-assistant{max-width:96ch;margin-inline:auto}
+}
+
 `

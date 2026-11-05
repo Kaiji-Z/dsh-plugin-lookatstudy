@@ -15,6 +15,12 @@ export interface StudyState {
   readonly mode: 'direct' | 'guide' | 'practice'
   /** E2: the history-budget directive flag. */
   readonly historyBudget?: boolean
+  /** issue #18: the read-aloud chain's live status (settings renders it). */
+  readonly tts: {
+    readonly endpoint: string
+    readonly lastEngine: 'external' | 'edge' | null
+    readonly lastExternalError: string | null
+  }
   readonly courses: ReadonlyArray<{
     readonly courseId: string
     readonly title: string
@@ -55,7 +61,7 @@ export interface StudyState {
     readonly starters: ReadonlyArray<{ label: string; message: string }>
     readonly artifacts: ReadonlyArray<{ id: string; artifactType: string; title: string; data: Record<string, unknown> }>
     readonly due: boolean
-    readonly notes: ReadonlyArray<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null; pinned: boolean }>
+    readonly notes: ReadonlyArray<{ id: string; zone: string; title: string; text: string; source: string; quote: string | null; pinned: boolean; anchorMsgId: string | null }>
     readonly exam: {
       readonly status: string
       readonly questionCount: number
@@ -373,14 +379,40 @@ class StudyStore {
     this.refresh()
   }
 
-  /** Save a learner selection as a record-zone note (the highlight anchor is the quote). */
-  async addUserNote(lessonId: string, quote: string): Promise<void> {
+  /** Save a learner selection as a record-zone note (the highlight anchor is the quote).
+   *  `anchorMsgId` (issue #18 chat selection) pins the note to one chat row. */
+  async addUserNote(lessonId: string, quote: string, anchorMsgId?: string): Promise<void> {
     await fetchJson('/lookatstudy/api/note/user', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ lessonId, quote }),
+      body: JSON.stringify(anchorMsgId === undefined ? { lessonId, quote } : { lessonId, quote, anchorMsgId }),
     })
     this.refresh()
+  }
+
+  /** issue #18: persist (or clear, '') the external read-aloud endpoint. */
+  async setTtsEndpoint(endpoint: string): Promise<void> {
+    await fetchJson('/lookatstudy/api/tts-endpoint', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+    })
+    this.refresh()
+  }
+
+  /** issue #18: settings' 测试 button — synthesizes one short sentence and
+   *  reports WHICH engine answered (the honest status, not the config). */
+  async testTts(): Promise<{ engine: 'external' | 'edge' } | { error: string }> {
+    try {
+      const res = await fetchJson('/lookatstudy/api/tts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: '朗读通道测试。' }),
+      }) as { engine?: 'external' | 'edge' }
+      return res.engine !== undefined ? { engine: res.engine } : { error: 'unknown' }
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) }
+    }
   }
 
   /** Record one SM-2 self-rating (1 again / 4 remembered / 5 mastered). */
@@ -630,7 +662,9 @@ export function useStudy(): {
   examRecord: (lessonId: string, attemptId: string, questionId: string, answer: string) => Promise<void>
   examSubmit: (lessonId: string, attemptId: string, terminated: boolean) => Promise<ExamSubmitResult>
   examRegenerate: (lessonId: string) => Promise<void>
-  addUserNote: (lessonId: string, quote: string) => Promise<void>
+  addUserNote: (lessonId: string, quote: string, anchorMsgId?: string) => Promise<void>
+  setTtsEndpoint: (endpoint: string) => Promise<void>
+  testTts: () => Promise<{ engine: 'external' | 'edge' } | { error: string }>
   recordReview: (lessonId: string, quality: 1 | 4 | 5) => Promise<void>
   reviewKickoff: (lessonId: string, sessionId: string) => Promise<void>
   endReview: (lessonId: string, quality: number) => Promise<{ lessonTitle: string; intervalDays: number; nextDueLessonId: string | null; nextDueLessonTitle: string | null } | null>
@@ -649,6 +683,8 @@ export function useStudy(): {
     data,
     activate: studyStore.activate.bind(studyStore),
     setMode: studyStore.setMode.bind(studyStore),
+    setTtsEndpoint: studyStore.setTtsEndpoint.bind(studyStore),
+    testTts: studyStore.testTts.bind(studyStore),
     setHistoryBudget: studyStore.setHistoryBudget.bind(studyStore),
     setInterfaceLang: studyStore.setInterfaceLang.bind(studyStore),
     uploadAttachment: studyStore.uploadAttachment.bind(studyStore),

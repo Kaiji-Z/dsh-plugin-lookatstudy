@@ -151,10 +151,26 @@ function ProfileSection({ data, save, resolve, fire }: {
  * unused — every control stays on the page.
  */
 export function StudySettingsSection(): ReactNode {
-  const { data, setMode, activate, setHistoryBudget, saveProfile, resolveProfileProposal } = useStudy()
+  const { data, setMode, activate, setHistoryBudget, saveProfile, resolveProfileProposal, setTtsEndpoint, testTts } = useStudy()
   const [error, setError] = useState<string | null>(null)
   const [voice, setVoice] = useState(storedTtsVoice)
   const [followHost, setFollowHost] = useState(followHostTheme)
+  // issue #18: the external TTS endpoint — the input starts from the feed's
+  // persisted truth; the probe line reports the last 测试 answer
+  const [endpoint, setEndpoint] = useState('')
+  const [engineProbe, setEngineProbe] = useState<string | null>(null)
+  const endpointLoaded = data?.tts?.endpoint ?? ''
+  useEffect(() => { setEndpoint(cur => (cur === '' ? endpointLoaded : cur)) }, [endpointLoaded])
+  const engineStatusText = engineProbe
+    ?? (data?.tts == null ? '' : data.tts.endpoint === ''
+      ? tr('settings.ttsEngine.status.edge')
+      : data.tts.lastEngine === 'external'
+        ? tr('settings.ttsEngine.status.external')
+        : data.tts.lastEngine === 'edge'
+          ? tr('settings.ttsEngine.status.fallback')
+          : data.tts.lastExternalError !== null
+            ? tr('settings.ttsEngine.status.dead')
+            : tr('settings.ttsEngine.status.untested'))
   const fire = (action: Promise<void>): void => {
     action.then(() => { setError(null) }, (err: unknown) => { setError(err instanceof Error ? err.message : String(err)) })
   }
@@ -203,6 +219,35 @@ export function StudySettingsSection(): ReactNode {
           value: voice,
           onChange: (e: { target: { value: string } }) => { storeTtsVoice(e.target.value); setVoice(e.target.value) },
         }, ...TTS_VOICES.map(v => createElement('option', { key: v.id, value: v.id }, tr(v.labelKey)))),
+      ),
+    ),
+    // issue #18: the external read-aloud channel — one endpoint URL the
+    // user's own TTS bridge serves (POST {"text"} → 2xx audio). The chain
+    // prefers it, falls back to Edge, then the client's speechSynthesis; the
+    // status line shows which engine ACTUALLY answered last (config ≠ truth).
+    createElement('section', { className: 'lks-set-row' },
+      createElement('h3', null, tr('settings.ttsEngine')),
+      createElement('p', { className: 'lks-set-hint' }, tr('settings.ttsEngine.hint')),
+      createElement('div', { 'data-testid': 'tts-engine-row' },
+        createElement('input', {
+          className: 'lks-set-input',
+          'data-testid': 'tts-endpoint-input',
+          value: endpoint,
+          placeholder: 'http://127.0.0.1:8765',
+          onChange: (e: { target: { value: string } }) => { setEndpoint(e.target.value) },
+        }),
+        createElement('button', {
+          className: 'lks-btn primary',
+          'data-testid': 'tts-endpoint-save',
+          onClick: () => { fire(setTtsEndpoint(endpoint.trim())) },
+        }, tr('settings.ttsEngine.save')),
+        createElement('button', {
+          className: 'lks-btn ghost',
+          'data-testid': 'tts-engine-test',
+          onClick: () => { void testTts().then(r => { setEngineProbe('error' in r ? `${tr('settings.ttsEngine.fail')}: ${r.error}` : r.engine === 'external' ? tr('settings.ttsEngine.probe.external') : tr('settings.ttsEngine.probe.edge')) }) },
+        }, tr('settings.ttsEngine.test')),
+        createElement('span', { className: 'lks-set-state', 'data-testid': 'tts-engine-status' },
+          engineStatusText),
       ),
     ),
     // issue #16: the opt-in ecosystem-theme bridge — dsh-markdown-xyy &c.

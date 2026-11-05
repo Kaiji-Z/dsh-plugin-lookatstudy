@@ -153,13 +153,67 @@ interface RowAudio {
   onStop: () => void
 }
 
+/**
+ * The quote-popover gesture lifecycle (C12 + the 2026-08-22 upstream
+ * user-decided behavior): selectionchange WITH text is a change stream
+ * (desktop drag in progress / mobile handle drag) — hide immediately; only a
+ * stable selection (pointer released, no gesture) evaluates and lands the
+ * popover. Shared by the teach-prose and the chat-stream selection engines
+ * (issue #18 ported the chat one from upstream ChatStream).
+ */
+function useQuotePopover(evaluate: () => void, hide: () => void): void {
+  useEffect(() => {
+    // C12: coarse pointers need a longer quiet window before the popover lands.
+    const SETTLE = settleMs(typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
+    let settleTimer: ReturnType<typeof setTimeout> | null = null
+    let hideTimer: ReturnType<typeof setTimeout> | null = null
+    let gesture = false
+    const selectionHasText = (): boolean => (window.getSelection()?.toString().trim().length ?? 0) >= 2
+    const onChange = (): void => {
+      if (selectionHasText()) {
+        if (hideTimer !== null) { clearTimeout(hideTimer); hideTimer = null }
+        hide()
+        if (settleTimer !== null) clearTimeout(settleTimer)
+        settleTimer = setTimeout(() => {
+          settleTimer = null
+          if (!gesture && selectionHasText()) evaluate()
+        }, SETTLE)
+      } else if (hideTimer === null) {
+        hideTimer = setTimeout(hide, 250)
+      }
+    }
+    const onDown = (e: PointerEvent): void => {
+      const el = e.target as Element | null
+      if (el?.closest?.('[data-lks-quote-btn]') !== null) return
+      gesture = true
+    }
+    const onUp = (): void => {
+      gesture = false
+      if (settleTimer !== null) { clearTimeout(settleTimer); settleTimer = null }
+      if (hideTimer === null && selectionHasText()) evaluate()
+    }
+    document.addEventListener('selectionchange', onChange)
+    window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('pointerup', onUp, true)
+    window.addEventListener('pointercancel', onUp, true)
+    return () => {
+      document.removeEventListener('selectionchange', onChange)
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('pointerup', onUp, true)
+      window.removeEventListener('pointercancel', onUp, true)
+      if (settleTimer !== null) clearTimeout(settleTimer)
+      if (hideTimer !== null) clearTimeout(hideTimer)
+    }
+  }, [evaluate, hide])
+}
+
 function chatRow(row: ChatRow, interactive?: { send: PanelSend, answerAsk?: (label: string) => void }, audio?: RowAudio): ReactNode {
   if (row.role === 'user') {
     // issue #16: the _markdown_lks suffix opts the message containers into
     // the ecosystem markdown convention ([class*="_markdown_"]) — theme
     // plugins (dsh-markdown-xyy &c.) scope their typography layer to that
     // substring; inert wherever no such plugin is installed.
-    return createElement('div', { key: row.key, className: 'lks14-msg lks14-msg-user _markdown_lks' }, row.text)
+    return createElement('div', { key: row.key, className: 'lks14-msg lks14-msg-user _markdown_lks', 'data-msg-id': row.key }, row.text)
   }
   if (row.role === 'reasoning') {
     // 0.24.0: the host-style thinking disclosure (ReasoningRow port) — live
@@ -221,6 +275,10 @@ function chatRow(row: ChatRow, interactive?: { send: PanelSend, answerAsk?: (lab
     createElement('div', {
       className: cls,
       'data-row-key': row.key,
+      // issue #18 (chat-selection port): the stable feed row key (journal
+      // seq) anchors selection notes; the transient streaming row never
+      // carries one (its key is replaced when the message settles)
+      ...(row.role === 'streaming' ? {} : { 'data-msg-id': row.key }),
       dangerouslySetInnerHTML: { __html: renderMarkdown(normalizeMathNotation(row.text)) },
     }))
   if (audio !== undefined && row.role === 'assistant') {
@@ -263,7 +321,7 @@ export function studyPanelView(ctx: ClientContext): () => ReactNode {
 type StudyData = ReturnType<typeof useStudy>['data']
 
 function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
-  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, lessonThreadOp, setCourseScope, uploadAttachment, setInterfaceLang, reviewKickoff, endReview, revokeProposal, revokeProfileProposal } = useStudy()
+  const { data, activate, setMode, setFocus, searchLessons, deleteCourse, deleteNote, bindLessonSession, lessonThreadOp, setCourseScope, uploadAttachment, setInterfaceLang, reviewKickoff, endReview, revokeProposal, revokeProfileProposal, addUserNote } = useStudy()
 
   // 0.24.0/0.24.1: push the host interface language to the plugin state (the
   // host keeps <html lang> in sync with the active locale) — study_apply_design
@@ -1085,6 +1143,14 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
             onRevoke: (id, kind) => {
               void (kind === 'profile' ? revokeProfileProposal(id) : revokeProposal(id))
                 .then(() => { showStudyToast(tr('proposal.undo.done'), { severity: 'info' }) })
+                .catch((err: unknown) => { showStudyToast(friendlyError(err, 'send'), { severity: 'error' }) })
+            },
+            // issue #18: the chat quote popover's 加笔记 — same write path as
+            // the prose engine, plus the row anchor
+            onQuoteNote: (quote, msgId) => {
+              if (lesson === null) return
+              void addUserNote(lesson.lessonId, quote, msgId)
+                .then(() => { showStudyToast(tr('note.saved'), { severity: 'success' }) })
                 .catch((err: unknown) => { showStudyToast(friendlyError(err, 'send'), { severity: 'error' }) })
             } }),
         // v0.29 pane-resize: the chat|notebook boundary handle (target = the
@@ -2045,7 +2111,7 @@ export function epubFolderPath(path: string): string {
 }
 
 /** 中栏:the tutor chat stream with its own composer (upstream ChatStream + ChatComposer). */
-function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, onThreadRename, onThreadArchive, onThreadDelete, courseScope, onScopeToggle, contextMeter, contextBreakdown, uploadAttachment, boundary, onPointNext, onDismissBoundary, review, onEndReview, onReviewNext, onRevoke }: {
+function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, draft, setDraft, send, stop, setMode, narrowPane, onThreadSwitch, onThreadNew, onThreadRename, onThreadArchive, onThreadDelete, courseScope, onScopeToggle, contextMeter, contextBreakdown, uploadAttachment, boundary, onPointNext, onDismissBoundary, review, onEndReview, onReviewNext, onRevoke, onQuoteNote }: {
   data: StudyData
   lesson: NonNullable<StudyData>['lesson']
   rows: ReturnType<typeof feedRows>
@@ -2092,6 +2158,9 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   onReviewNext: (lessonId: string, title: string) => void
   /** v0.41: system-executed revert of an applied proposal (undo strip). */
   onRevoke: (id: string, kind: 'mastery' | 'profile') => void
+  /** issue #18 (chat selection): save the selected quote as a record-zone
+   *  note pinned to the chat row (anchorMsgId = the feed row key). */
+  onQuoteNote: (quote: string, msgId: string) => void
 }): ReactNode {
   // C1 sticky-follow: follow new rows only while the reader sits at the bottom
   // (80px tolerance); scrolling up detaches, the FAB comes back.
@@ -2140,6 +2209,63 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     }
   }, [rows])
   const dormant = data?.active !== true
+  // ── issue #18 (chat-selection port, upstream ChatStream v0.3.3/v0.35.1):
+  // select text inside a message → the popover offers 加笔记 (a record-zone
+  // note pinned to the row, `anchorMsgId` = the stable feed row key) and
+  // 提问这段 (quote → composer, same as the prose engine). Persistent marks
+  // redraw from lesson.notes through the same Highlight-API registry. ──
+  const [chatQuote, setChatQuote] = useState<{ x: number; y: number; text: string; msgId: string } | null>(null)
+  const evaluateChatSelection = useCallback((): void => {
+    const root = streamEl.current
+    const selection = window.getSelection()
+    if (root === null || selection === null || selection.rangeCount === 0) return
+    const text = selection.toString().trim()
+    if (text.length < 2 || text.length > 500) return
+    const range = selection.getRangeAt(0)
+    if (root.contains(range.commonAncestorContainer) !== true) return
+    const node = range.commonAncestorContainer.nodeType === 1
+      ? range.commonAncestorContainer as HTMLElement
+      : range.commonAncestorContainer.parentElement
+    const holder = node?.closest('[data-msg-id]') ?? null
+    if (holder === null) return
+    const rect = range.getBoundingClientRect()
+    const box = root.getBoundingClientRect()
+    setChatQuote({
+      x: Math.min(Math.max(rect.left - box.left + rect.width / 2, 90), Math.max(box.width - 90, 90)),
+      // absolute children of the scroll container anchor to the CONTENT top,
+      // so the visible-top offset rides back up by scrollTop
+      y: Math.max(rect.top - box.top + root.scrollTop - 40, 4),
+      text,
+      msgId: holder.getAttribute('data-msg-id') ?? '',
+    })
+  }, [])
+  useQuotePopover(
+    evaluateChatSelection,
+    useCallback(() => { setChatQuote(cur => (cur === null ? cur : null)) }, []),
+  )
+  // persistent chat marks: redraw whenever rows or the chat-note set change
+  // (never while a streaming row exists — React rewrites its innerHTML per
+  // tick and the ranges would die instantly; applyHighlights is idempotent)
+  const chatNotes = useMemo(() => (lesson?.notes ?? []).filter(n =>
+    n.source === 'chat' && typeof n.anchorMsgId === 'string' && (n.quote ?? '').trim().length >= 2), [lesson])
+  const streaming = rows.some(r => r.role === 'streaming')
+  useEffect(() => {
+    const root = streamEl.current
+    if (root === null || streaming || chatNotes.length === 0) return
+    const t = setTimeout(() => {
+      const byMsg = new Map<string, string[]>()
+      for (const n of chatNotes) {
+        const arr = byMsg.get(n.anchorMsgId!) ?? []
+        arr.push(n.quote!)
+        byMsg.set(n.anchorMsgId!, arr)
+      }
+      for (const [msgId, quotes] of byMsg) {
+        const el = root.querySelector<HTMLElement>(`[data-msg-id="${msgId}"]`)
+        if (el !== null) applyHighlights(el, quotes)
+      }
+    }, 150)
+    return () => clearTimeout(t)
+  }, [rows, chatNotes, streaming])
   // C2: Esc aborts the running turn (upstream's global escape).
   useEffect(() => {
     if (!busy) return
@@ -2348,6 +2474,20 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     })
   }
   /** One send = draft + pending attachment merged into a single message (issue #7). */
+  // issue #18: the composer grows with its content — GROW-ONLY while typing
+  // (a manually resized grip or an expanded box never collapses under the
+  // cursor mid-edit), capped at 40vh (beyond it the box scrolls); sending
+  // resets to the default height (a fresh panel mount resets naturally).
+  const composerRef = useRef<HTMLTextAreaElement | null>(null)
+  const growComposer = (el: HTMLTextAreaElement): void => {
+    const cap = Math.round(window.innerHeight * 0.4)
+    if (el.scrollHeight > el.offsetHeight && el.offsetHeight < cap) {
+      el.style.height = `${Math.min(el.scrollHeight, cap)}px`
+    }
+  }
+  const resetComposerHeight = (): void => {
+    if (composerRef.current !== null) composerRef.current.style.height = ''
+  }
   const submitComposer = (): void => {
     if (busy) return
     const text = draft.trim()
@@ -2355,6 +2495,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
     const attachLine = pendingAttach === null ? '' : tr('attach.sent', { name: pendingAttach.name, path: pendingAttach.path })
     setPendingAttach(null)
     send(attachLine === '' ? text : text === '' ? attachLine : `${text}\n\n${attachLine}`)
+    resetComposerHeight()
   }
   const onComposerKey = (e: ReactKeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -2578,6 +2719,33 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
       rowsView.length > 0 && rowsView[rowsView.length - 1]!.role === 'user' && busy
         ? createElement('div', { className: 'lks14-thinking' }, createElement('i', null), createElement('i', null), createElement('i', null))
         : null,
+      // issue #18: the chat quote popover — same surface as the prose one
+      // (提问这段 → composer, 加笔记 → record zone pinned to this row)
+      chatQuote !== null
+        ? createElement('div', {
+          className: 'lks-quote-btn',
+          'data-lks-quote-btn': '',
+          'data-testid': 'chat-quote-btn',
+          style: { left: `${chatQuote.x}px`, top: `${chatQuote.y}px` },
+        },
+          createElement('button', {
+            onClick: () => {
+              const truncated = chatQuote.text.length > 200 ? `${chatQuote.text.slice(0, 200)}…` : chatQuote.text
+              send(tr('note.quote.template', { text: truncated }))
+              setChatQuote(null)
+              window.getSelection()?.removeAllRanges()
+            },
+          }, tr('note.quote.ask')),
+          createElement('button', {
+            onClick: () => {
+              onQuoteNote(chatQuote.text, chatQuote.msgId)
+              const el = streamEl.current?.querySelector<HTMLElement>(`[data-msg-id="${chatQuote.msgId}"]`)
+              if (el !== null && el !== undefined) applyHighlights(el, [chatQuote.text])
+              setChatQuote(null)
+              window.getSelection()?.removeAllRanges()
+            },
+          }, tr('note.quote.save')))
+        : null,
     ),
     // D4: the sediment backlog — artifacts this window hasn't rendered inline,
     // unseen first (the stream owns the live thread; this is the backlog).
@@ -2717,11 +2885,13 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
           : null,
         createElement('textarea', {
           className: 'lks14-composertext',
+          'data-testid': 'composer-textarea',
           placeholder: busy ? tr('composer.busy') : tr('tutor.empty.hint'),
           value: draft,
           rows: 2,
           disabled: dormant,
-          onChange: (e: { target: { value: string } }) => { setDraft(e.target.value) },
+          ref: composerRef,
+          onChange: (e: { target: HTMLTextAreaElement }) => { setDraft(e.target.value); growComposer(e.target) },
           onKeyDown: onComposerKey,
           // E3: pasted files ride the attachment intake (text pastes pass through).
           onPaste: (e: import('react').ClipboardEvent<HTMLTextAreaElement>) => {
@@ -2922,49 +3092,12 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
     })
   }
 
-  useEffect(() => {
-    // C12: coarse pointers need a longer quiet window before the popover lands.
-    const SETTLE = settleMs(typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches)
-    let settleTimer: ReturnType<typeof setTimeout> | null = null
-    let hideTimer: ReturnType<typeof setTimeout> | null = null
-    let gesture = false
-    const selectionHasText = (): boolean => (window.getSelection()?.toString().trim().length ?? 0) >= 2
-    const onChange = (): void => {
-      if (selectionHasText()) {
-        if (hideTimer !== null) { clearTimeout(hideTimer); hideTimer = null }
-        setQuoteBtn(cur => (cur === null ? cur : null))
-        if (settleTimer !== null) clearTimeout(settleTimer)
-        settleTimer = setTimeout(() => {
-          settleTimer = null
-          if (!gesture && selectionHasText()) evaluateSelection()
-        }, SETTLE)
-      } else if (hideTimer === null) {
-        hideTimer = setTimeout(() => { setQuoteBtn(cur => (cur === null ? cur : null)) }, 250)
-      }
-    }
-    const onDown = (e: PointerEvent): void => {
-      const el = e.target as Element | null
-      if (el?.closest?.('[data-lks-quote-btn]') !== null) return
-      gesture = true
-    }
-    const onUp = (): void => {
-      gesture = false
-      if (settleTimer !== null) { clearTimeout(settleTimer); settleTimer = null }
-      if (hideTimer === null && selectionHasText()) evaluateSelection()
-    }
-    document.addEventListener('selectionchange', onChange)
-    window.addEventListener('pointerdown', onDown, true)
-    window.addEventListener('pointerup', onUp, true)
-    window.addEventListener('pointercancel', onUp, true)
-    return () => {
-      document.removeEventListener('selectionchange', onChange)
-      window.removeEventListener('pointerdown', onDown, true)
-      window.removeEventListener('pointerup', onUp, true)
-      window.removeEventListener('pointercancel', onUp, true)
-      if (settleTimer !== null) clearTimeout(settleTimer)
-      if (hideTimer !== null) clearTimeout(hideTimer)
-    }
-  }, [])
+  // the shared popover gesture lifecycle (see useQuotePopover) — the prose
+  // engine reads only refs and setState, so a pinned closure is safe
+  useQuotePopover(
+    useCallback(evaluateSelection, []),
+    useCallback(() => { setQuoteBtn(cur => (cur === null ? cur : null)) }, []),
+  )
 
   // Persisted highlights: record-zone quotes anchor marks; applied after the
   // enhance pass settles (its DOM mutations change the text model).

@@ -746,3 +746,100 @@ test('workbenchState: translated lessons carry bilingualHtml/translationHtml; pr
   assert.equal(wb.lesson!.translationLang, 'zh-CN')
   assert.ok(wb.lesson!.html.includes('<strong>body</strong>'), 'html is the ORIGINAL body — the switcher, not the server, picks the view')
 })
+
+/* ── issue #18: the external TTS endpoint route + the engine receipt ── */
+
+test('issue #18: tts-endpoint route validates http(s), persists, and the tts route receipts its engine', async () => {
+  const { state, lessonId } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  // both engines faked: Edge answers bytes, the external endpoint answers wav
+  registerDashboard({ register: r => { routes.push(r); return () => {} } }, {
+    store: { get: () => state, save: () => {} },
+    studyAreaPath: mkdtempSync(join(tmpdir(), 'lks-dash-tts-')),
+    statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null,
+    tts: {
+      synthesize: async (text: string) => Buffer.from(`edge:${text}`),
+      fetchImpl: (async () => new Response(Buffer.from('EXTWAV'), { status: 200, headers: { 'content-type': 'audio/wav' } })) as unknown as typeof fetch,
+    },
+  })
+
+  // before any endpoint: the Edge channel answers and says so
+  const first = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '测试一' }), new FakeResponse())
+  assert.equal(first.status, 200)
+  assert.equal((first.json() as { engine: string }).engine, 'edge', 'the receipt names the engine that answered')
+
+  // validation: garbage and non-http schemes refuse loud
+  const bad1 = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts-endpoint', { endpoint: 'not a url' }), new FakeResponse())
+  assert.equal(bad1.status, 400)
+  const bad2 = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts-endpoint', { endpoint: 'ftp://127.0.0.1/x' }), new FakeResponse())
+  assert.equal(bad2.status, 400)
+  assert.equal(state.ttsEndpoint ?? '', '', 'a refused write never touches state')
+
+  // a valid endpoint persists and the next synthesis goes external
+  const saved = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts-endpoint', { endpoint: 'http://127.0.0.1:8765/tts' }), new FakeResponse())
+  assert.equal(saved.status, 200)
+  assert.equal(state.ttsEndpoint, 'http://127.0.0.1:8765/tts')
+  const second = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '测试二' }), new FakeResponse())
+  assert.equal((second.json() as { engine: string }).engine, 'external')
+  assert.equal((second.json() as { mime: string }).mime, 'audio/wav')
+
+  // the state feed carries the live status the settings page renders
+  const feed = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  const tts = (feed.json() as { tts: { endpoint: string, lastEngine: string } }).tts
+  assert.equal(tts.endpoint, 'http://127.0.0.1:8765/tts')
+  assert.equal(tts.lastEngine, 'external')
+
+  // clearing ('') returns to the Edge-only chain
+  const cleared = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts-endpoint', { endpoint: '' }), new FakeResponse())
+  assert.equal(cleared.status, 200)
+  assert.equal(state.ttsEndpoint, '')
+})
+
+test('issue #18: a note written with anchorMsgId rides source chat and the feed projects the anchor', async () => {
+  const { state, lessonId } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: r => { routes.push(r); return () => {} } }, {
+    store: { get: () => state, save: () => {} },
+    studyAreaPath: 'C:/study-area', statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null,
+  })
+  state.focus = { lessonId }
+
+  const wrote = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/note/user', { lessonId, quote: '变量提升是声明先于执行', anchorMsgId: 'a42' }), new FakeResponse())
+  assert.equal(wrote.status, 200)
+  const note = state.courses[0]!.sections[0]!.lessons[0]!.notes.find(n => n.quote === '变量提升是声明先于执行')!
+  assert.equal(note.source, 'chat', 'an anchored quote is a chat note')
+  assert.equal(note.anchorMsgId, 'a42')
+
+  // the prose path is unchanged: no anchor → source content
+  await handle(routes, new FakeRequest('POST', '/lookatstudy/api/note/user', { lessonId, quote: '讲解页的一句原文' }), new FakeResponse())
+  const prose = state.courses[0]!.sections[0]!.lessons[0]!.notes.find(n => n.quote === '讲解页的一句原文')!
+  assert.equal(prose.source, 'content'); assert.equal(prose.anchorMsgId, undefined)
+
+  // the feed projects the anchor for the chat-mark redraw
+  const feed = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  const notes = (feed.json() as { lesson: { notes: Array<{ quote: string, anchorMsgId: string | null }> } }).lesson.notes
+  assert.equal(notes.find(n => n.quote === '变量提升是声明先于执行')?.anchorMsgId, 'a42')
+  assert.equal(notes.find(n => n.quote === '讲解页的一句原文')?.anchorMsgId, null)
+})
+
+test('issue #18: total chain failure logs the truth for the settings status line', async () => {
+  const { state } = fixture()
+  const routes: Array<{ kind: string; path: string; handler: (req: RequestLike, res: ResponseLike) => unknown }> = []
+  registerDashboard({ register: r => { routes.push(r); return () => {} } }, {
+    store: { get: () => state, save: () => {} },
+    studyAreaPath: mkdtempSync(join(tmpdir(), 'lks-dash-tts2-')),
+    statePath: 'C:/state.json', onActiveChange: () => {}, modelInfo: async () => null,
+    tts: {
+      synthesize: async () => { throw new Error('edge tts: endpoint refused the upgrade (HTTP 403)') },
+      fetchImpl: (async () => new Response('no', { status: 503 })) as unknown as typeof fetch,
+    },
+  })
+  state.ttsEndpoint = 'http://127.0.0.1:59999/tts'
+  const dead = await handle(routes, new FakeRequest('POST', '/lookatstudy/api/tts', { text: '全链失败' }), new FakeResponse())
+  assert.equal(dead.status, 502)
+  assert.match((dead.json() as { error: string }).error, /edge tts/, 'the receipt carries the EDGE error — the external arm already failed over')
+  const feed = await handle(routes, new FakeRequest('GET', '/lookatstudy/api/state'), new FakeResponse())
+  const tts = (feed.json() as { tts: { lastEngine: string | null, lastExternalError: string | null } }).tts
+  assert.equal(tts.lastEngine, null, 'nobody answered')
+  assert.match(tts.lastExternalError ?? '', /edge tts/, 'the status line can say 所有通道不可用 instead of 未测试')
+})

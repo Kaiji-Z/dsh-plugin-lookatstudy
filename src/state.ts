@@ -58,6 +58,9 @@ export interface LessonNote {
   /** Quoted source text the note refers to (record zone), verbatim. */
   quote: string | null
   at: string
+  /** issue #18 chat-selection port: feed row key a source:'chat' note pins
+   *  to (scopes the persistent mark to one message). Additive, v2-safe. */
+  anchorMsgId?: string
   /** C11b/C6: pinned notes ride first inside their zone (additive, v2-safe). */
   pinned?: boolean
 }
@@ -331,6 +334,9 @@ export interface LearningState {
   active: boolean
   /** Active tutoring soul. */
   mode: StudyMode
+  /** Optional external TTS endpoint (issue #18): POST {"text"} → 2xx audio.
+   *  Empty = the built-in Edge channel only. Settings-page write. */
+  ttsEndpoint?: string
   /** E2: history-budget trimming directive (the tutor layer executes the trim;
    *  additive in 0.18.0 — v2 files without it load as off). */
   historyBudget?: boolean
@@ -410,7 +416,7 @@ export const AI_MASTERY_CAP = 0.85
 /** Fresh empty state for a first run: dormant until the learner clicks 开始学习. */
 export function emptyState(): LearningState {
   return {
-    version: 2, courses: [], active: false, mode: 'guide', focus: null, memoryGlobal: null, memoryPatterns: {}, frictionGlobal: [], artifacts: {},
+    version: 2, courses: [], active: false, mode: 'guide', ttsEndpoint: '', focus: null, memoryGlobal: null, memoryPatterns: {}, frictionGlobal: [], artifacts: {},
     proposals: [], lessonSessions: {}, lessonThreads: {}, trash: [], lastConsolidatedAt: null,
     xp: { total: 0, todayKey: '', todayXp: 0 },
     streak: { currentStreak: 0, longestStreak: 0, lastActiveDate: null, freezeCount: 2 },
@@ -528,6 +534,9 @@ function parseStateFile(path: string): LearningState {
     // tutor working (default true), while fresh installs start dormant.
     active: raw.active ?? true,
     mode: raw.mode ?? 'guide',
+    // issue #18: optional external TTS endpoint (settings-page write; the
+    // read-aloud chain prefers it, falls back to Edge). Additive, v2-safe.
+    ttsEndpoint: typeof raw.ttsEndpoint === 'string' ? raw.ttsEndpoint : '',
     focus: raw.focus ?? null,
     memoryGlobal: raw.memoryGlobal ?? null,
     memoryPatterns: raw.memoryPatterns ?? {},
@@ -1704,6 +1713,9 @@ export function addNote(
   source: NoteSource,
   quote: string | null,
   now: Date,
+  /** issue #18 chat-selection port: the feed row key the quote came from
+   *  (source:'chat' notes only) — scopes the persistent mark to one message. */
+  anchorMsgId?: string,
 ): LessonNote {
   const ref = findLesson(state, lessonId)
   // Ids survive deletion: length-based ids would collide once a note is
@@ -1720,6 +1732,7 @@ export function addNote(
     source,
     quote,
     at: now.toISOString(),
+    ...(anchorMsgId !== undefined ? { anchorMsgId } : {}),
   }
   ref.lesson.notes.push(note)
   return note
