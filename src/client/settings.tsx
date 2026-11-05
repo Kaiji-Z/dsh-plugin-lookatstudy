@@ -113,7 +113,12 @@ function ProfileSection({ data, save, resolve, fire }: {
       createElement('label', null, tr('settings.profile.interests'),
         createElement('input', { className: 'lks-set-input', value: interests, 'data-testid': 'profile-interests', placeholder: tr('settings.profile.interests.ph'), onChange: (e: { target: { value: string } }) => { setInterests(e.target.value) } })),
       createElement('label', null, tr('settings.profile.note'),
-        createElement('input', { className: 'lks-set-input', value: freeNote, onChange: (e: { target: { value: string } }) => { setFreeNote(e.target.value) } })),
+        createElement('input', { className: 'lks-set-input', value: freeNote, onChange: (e: { target: { value: string } }) => { setFreeNote(e.target.value) } }))),
+    // the pill rows live OUTSIDE the input grid: mixed cell heights (a 55px
+    // input next to a 3-line pill strip) read as clutter — full-width rows
+    // (label above, strip below) give every strip the whole 564px, so the
+    // seven motive pills wrap at most once and the rhythm stays even
+    createElement('div', { className: 'lks-profile-rows' },
       ...STYLE_DIMS.map(dim => createElement('label', { key: dim.key },
         tr(`settings.style.${dim.key}`),
         createElement('span', { className: 'lks-pills' },
@@ -130,8 +135,7 @@ function ProfileSection({ data, save, resolve, fire }: {
             className: `lks-pill${motive === stage ? ' on' : ''}`,
             title: MOTIVE_DISPLAY[stage as MotiveStage].tagline,
             onClick: () => { setMotive(stage) },
-          }, MOTIVE_DISPLAY[stage as MotiveStage].name)))),
-    ),
+          }, MOTIVE_DISPLAY[stage as MotiveStage].name))))),
     createElement('div', { className: 'lks-set-ctrl' },
       createElement('button', { className: 'lks-btn primary', 'data-testid': 'profile-save', onClick: saveAll }, tr('settings.profile.save')),
       createElement('span', { className: 'lks-set-state' }, tr('settings.profile.private'))),

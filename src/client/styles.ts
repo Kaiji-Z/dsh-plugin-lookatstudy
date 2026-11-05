@@ -416,6 +416,14 @@ mark.lks-hl{background:var(--dsw-alias-state-warn-tertiary);color:inherit;border
 .lks-profile-grid label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--dsw-alias-label-secondary);min-width:0}
 .lks-profile-grid .lks-pills{display:flex;flex-wrap:wrap;height:auto;gap:6px}
 .lks-profile-grid .lks-pill{height:auto;padding:4px 11px;white-space:nowrap;flex:none}
+/* the style/motive pill ROWS: full-width stack under the input grid — mixed
+   cell heights (55px inputs beside 3-line pill strips) read as clutter; a
+   label-over-strip row gives every strip the whole content width so the
+   seven motive pills wrap at most once and the rhythm stays even */
+.lks-profile-rows{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.lks-profile-rows > label{display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--dsw-alias-label-secondary);min-width:0}
+.lks-profile-rows .lks-pills{display:flex;flex-wrap:wrap;height:auto;gap:6px}
+.lks-profile-rows .lks-pill{height:auto;padding:4px 11px;white-space:nowrap;flex:none}
 @media (max-width:600px){
   .lks-set-row{grid-template-columns:minmax(0,1fr)}
   .lks-set-ctrl{justify-content:flex-start;margin-top:8px}
