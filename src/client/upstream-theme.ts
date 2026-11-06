@@ -482,9 +482,20 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-toolchip.done{color:var(--ink-faint)}
 .lks-ui .lks14-toolchip.done::first-letter{color:var(--brand)}
 .lks-ui .lks14-toolchip.error{color:var(--warning-light)}
-/* C11: per-message audio row + karaoke mark */
-.lks-ui .lks14-msgaudio{display:flex;align-items:center;gap:8px;margin-top:-12px;padding:0 4px}
-.lks-ui .lks14-msgaudio-n{font-size:11px;color:var(--ink-faint);font-variant-numeric:tabular-nums}
+/* C11 2026-11-06 redesign (owner): the per-message read-aloud rides the
+   HOST's message IconActions anatomy (复制/好的回答/分支 row) — 28px
+   transparent glyph button, hover glow, tail-always-visible while earlier
+   rows reveal on hover; dsw tokens first, lks palette as fallback. */
+.lks-ui .lks14-msgactions{display:flex;align-items:center;gap:8px;height:28px;margin-top:2px;padding:0 2px;opacity:1;transition:opacity 80ms ease}
+.lks-ui .lks14-msgaction{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:6px;border:none;border-radius:var(--dsw-radius-sm,8px);background:transparent;color:var(--dsw-alias-label-tertiary,var(--ink-faint));cursor:pointer}
+.lks-ui .lks14-msgaction svg{width:15px;height:15px}
+.lks-ui .lks14-msgaction:hover{background:var(--dsw-alias-interactive-bg-hover,rgb(var(--ink-rgb)/0.06));color:var(--dsw-alias-label-secondary,var(--ink-muted))}
+.lks-ui .lks14-msgaction:focus-visible{outline:none;box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary,var(--brand-ring))}
+.lks-ui .lks14-msgaction-n{font-size:11px;line-height:24px;color:var(--dsw-alias-label-tertiary,var(--ink-faint));font-variant-numeric:tabular-nums}
+@media (hover:hover){
+  .lks-ui .lks14-msgwrap:not(.lks14-msgtail):not(.lks14-playing) .lks14-msgactions{opacity:0}
+  .lks-ui .lks14-msgwrap:not(.lks14-msgtail):hover .lks14-msgactions,.lks-ui .lks14-msgwrap:not(.lks14-msgtail):focus-within .lks14-msgactions,.lks-ui .lks14-msgwrap.lks14-playing .lks14-msgactions{opacity:1}
+}
 .lks-ui mark.lks-reading{background:rgb(var(--accent-rgb)/0.25);color:inherit;border-radius:3px;padding:0 1px}
 /* C6: note-source flash */
 .lks-ui mark.lks-flash{background:rgb(var(--gold-rgb)/0.35);color:inherit;border-radius:3px;padding:0 1px;animation:lks-flash-fade 2.4s ease-out forwards}
@@ -820,9 +831,6 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-worldswitch{display:flex;flex:1;min-width:0;gap:3px;padding:2px;border-radius:8px;background:rgb(0 0 0/0.3);margin-top:0}
 .lks-ui .lks-worldtab{flex:1;display:flex;align-items:center;justify-content:center;gap:4px;padding:3px 0;border:none;border-radius:6px;background:none;color:rgb(255 255 255/0.5);font:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:color .15s;min-width:0;overflow:hidden}
 /* ── read-aloud toggle rests as an icon; the verb appears on hover/focus ── */
-.lks-ui .lks-audio-toggle{display:inline-flex;align-items:center;gap:4px}
-.lks-ui .lks-audio-toggle .lks-audio-label{display:none}
-.lks-ui .lks14-msgwrap:hover .lks-audio-toggle .lks-audio-label,.lks-ui .lks-audio-toggle:focus-visible .lks-audio-label{display:inline}
 /* ── the thread switcher as one labeled chip + menu (0.19 owner note) ── */
 .lks-ui .lks14-threadswitch{position:relative;margin-left:auto}
 .lks-ui .lks14-threadchip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border:none;border-radius:999px;background:rgb(var(--ink-rgb)/0.06);color:var(--ink-muted);font:inherit;font-size:11px;font-weight:700;cursor:pointer;transition:color .15s,background .15s;max-width:220px}

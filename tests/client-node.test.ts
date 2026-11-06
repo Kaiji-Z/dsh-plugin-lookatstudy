@@ -338,7 +338,7 @@ test('the P11b chrome freezes: reasoning fold, tool chips, karaoke marks, toolti
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-toolchip\.error\{[^}]*color:var\(--warning-light\)/, 'error chips read warning')
   assert.match(UPSTREAM_CSS, /\.lks-ui mark\.lks-reading\{[^}]*rgb\(var\(--accent-rgb\)\/0\.25\)/, 'the karaoke sentence highlight')
   assert.match(UPSTREAM_CSS, /@keyframes lks-flash-fade/, 'the note-locate flash fades out')
-  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-audio-toggle \.lks-audio-label\{display:none\}/, 'the read-aloud toggle rests as an icon (0.19)')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-msgaction\{[^}]*width:28px;height:28px/, 'the message speak action rides the host IconActions anatomy (2026-11-06 redesign)')
   assert.match(UPSTREAM_CSS, /\.lks-tip\{[^}]*position:fixed/, 'GlobalTooltip rides above everything')
   assert.match(UPSTREAM_CSS, /\.lks-confirmcard\.danger/, 'ConfirmCard carries the danger variant')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-note\.pinned\{[^}]*rgb\(var\(--gold-rgb\)\//, 'pinned notes tint gold')
@@ -989,4 +989,22 @@ test('critique round: paperclip attach, toolretry, exam rule line, readwidth CSS
   assert.match(rail, /lks-lessorow-rule/, 'the exam-locked row carries the inline rule')
   const settings = readFileSync(new URL('../src/client/settings.tsx', import.meta.url), 'utf8')
   assert.match(settings, /read-width-pills/, 'the settings row exposes the probe/testid hook')
+})
+
+test('the message speak action rides the host IconActions anatomy (owner redesign 2026-11-06)', async () => {
+  const { readFileSync } = await import('node:fs')
+  const panel = readFileSync(new URL('../src/client/panel.tsx', import.meta.url), 'utf8')
+  // the ghost text button is gone; the host anatomy replaces it
+  assert.ok(!panel.includes("lks-btn ghost lks-audio-toggle"), 'the old ghost text button is dead')
+  assert.match(panel, /lks14-msgactions/, 'an IconActions-style row under each assistant message')
+  assert.match(panel, /'data-testid': 'msg-speak-toggle'/, 'probe hook on the new icon button')
+  assert.match(panel, /tail: i === lastAssistant/, 'the turn tail is marked (its action stays visible)')
+  assert.match(panel, /audio\.playing\s*\n\s*\?\s*createElement\(IconPauseOutline16/, 'playing swaps the glyph to pause')
+  assert.match(panel, /lks14-playing/, 'playing rows carry a wrapper class (never hide)')
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  // host token first, lks fallback — matches the host row visually on every host
+  assert.match(UPSTREAM_CSS, /\.lks14-msgaction\{[^}]*color:var\(--dsw-alias-label-tertiary,var\(--ink-faint\)\)/, 'resting color = the host tertiary tier')
+  assert.match(UPSTREAM_CSS, /\.lks14-msgaction:hover\{background:var\(--dsw-alias-interactive-bg-hover/, 'hover glow = the host interactive bg')
+  assert.match(UPSTREAM_CSS, /@media \(hover:hover\)\{[^}]*\.lks14-msgwrap:not\(\.lks14-msgtail\):not\(\.lks14-playing\) \.lks14-msgactions\{opacity:0\}/, 'earlier rows reveal on hover; tail and playing rows never hide')
+  assert.ok(!UPSTREAM_CSS.includes('.lks14-msgaudio'), 'the old strip CSS is dead')
 })

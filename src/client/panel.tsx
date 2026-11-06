@@ -144,11 +144,14 @@ function textOf(blocks: readonly { type?: string; text?: string }[] | undefined)
 }
 
 /** One rendered chat row (shared shape with the read-aloud era's renderer). */
-/** One assistant row's audio controls (C11): speak/stop + n/total + karaoke. */
+/** One assistant row's audio controls (C11): speak/stop + n/total + karaoke.
+ *  `tail` marks the turn's last assistant row — its action stays always
+ *  visible; earlier rows reveal on hover, the host IconActions way. */
 interface RowAudio {
   playing: boolean
   index: number
   total: number
+  tail?: boolean
   onPlay: (key: string) => void
   onStop: () => void
 }
@@ -288,19 +291,28 @@ function chatRow(row: ChatRow, interactive?: { send: PanelSend, answerAsk?: (lab
       dangerouslySetInnerHTML: { __html: renderMarkdown(normalizeMathNotation(row.text)) },
     }))
   if (audio !== undefined && row.role === 'assistant') {
-    return createElement('div', { key: row.key, className: 'lks14-msgwrap' },
+    // 2026-11-06 redesign (owner): the chat read-aloud rides the HOST's
+    // message IconActions anatomy — the same small icon-only action row the
+    // host puts under every answer (复制 / 好的回答 / 分支): 28px transparent
+    // glyph button, hover glow, reveal-on-hover for earlier rows while the
+    // turn tail stays put. Playing rows never hide (the n/total is live).
+    return createElement('div', {
+      key: row.key,
+      className: `lks14-msgwrap${audio.tail === true ? ' lks14-msgtail' : ''}${audio.playing ? ' lks14-playing' : ''}`,
+    },
       body,
-      createElement('div', { className: 'lks14-msgaudio' },
+      createElement('div', { className: 'lks14-msgactions' },
         createElement('button', {
-          className: 'lks-btn ghost lks-audio-toggle',
-          style: { padding: '2px 8px', fontSize: '11.5px', flex: 'none' },
+          className: 'lks14-msgaction',
+          'data-testid': 'msg-speak-toggle',
           title: audio.playing ? tr('read.stop') : tr('msg.speak'),
           'aria-label': audio.playing ? tr('read.stop') : tr('msg.speak'),
           onClick: () => { if (audio.playing) audio.onStop(); else audio.onPlay(row.key) },
         },
-          createElement(IconSoundOutline16, { size: 13 }),
-          createElement('span', { className: 'lks-audio-label' }, audio.playing ? tr('read.stop') : tr('msg.speak'))),
-        audio.playing ? createElement('span', { className: 'lks14-msgaudio-n' }, String(audio.index + 1) + '/' + String(audio.total)) : null))
+          audio.playing
+            ? createElement(IconPauseOutline16, { size: 15 })
+            : createElement(IconSoundOutline16, { size: 15 })),
+        audio.playing ? createElement('span', { className: 'lks14-msgaction-n' }, `${String(audio.index + 1)}/${String(audio.total)}`) : null))
   }
   const options = interactive === undefined || row.role === 'streaming' ? [] : quizOptions(row.text)
   if (options.length < 2) return body
@@ -2794,7 +2806,7 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
             : chatRow(row,
               interactive,
               row.role === 'assistant'
-                ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, onPlay: playMessage, onStop: stopMessage }
+                ? { playing: msgAudio?.key === row.key, index: msgAudio?.index ?? 0, total: msgAudio?.total ?? 0, tail: i === lastAssistant, onPlay: playMessage, onStop: stopMessage }
                 : undefined)
         }),
       rowsForRender.length > 0 && rowsForRender[rowsForRender.length - 1]!.role === 'user' && busy
