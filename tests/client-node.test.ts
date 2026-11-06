@@ -1008,3 +1008,13 @@ test('the message speak action rides the host IconActions anatomy (owner redesig
   assert.match(UPSTREAM_CSS, /@media \(hover:hover\)\{[^}]*\.lks14-msgwrap:not\(\.lks14-msgtail\):not\(\.lks14-playing\) \.lks14-msgactions\{opacity:0\}/, 'earlier rows reveal on hover; tail and playing rows never hide')
   assert.ok(!UPSTREAM_CSS.includes('.lks14-msgaudio'), 'the old strip CSS is dead')
 })
+
+test('the board tab capsule is scoped to the fill mode (owner: 黑板标签混乱, 2026-11-06)', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  // the capsule rule must NOT leak onto every tab: unscoped it corrupted the
+  // sticky full-bleed bar AND on the board tab itself shrank the row to
+  // content width, compressing the four tabs until 概念图 wrapped to two lines
+  assert.ok(!/\.lks-ui \.lks14-viewtabs\{[^}]*align-self/.test(UPSTREAM_CSS), 'no unscoped capsule rule on the tab bar')
+  assert.match(UPSTREAM_CSS, /\.lks14-notebody-fill \.lks14-viewtabs\{[^}]*align-self:flex-start/, 'the capsule is a fill-mode-only rule')
+  assert.match(UPSTREAM_CSS, /\.lks14-notebody-fill \.lks14-viewtab\{flex:0 0 auto;white-space:nowrap\}/, 'capsule buttons hug their labels and never wrap')
+})

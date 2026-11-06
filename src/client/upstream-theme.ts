@@ -402,7 +402,14 @@ export const UPSTREAM_CSS = `
    reading column. */
 .lks-ui .lks14-notebody.lks14-notebody-fill{display:flex;flex-direction:column;flex:1 1 0;min-height:0;max-width:none;padding-bottom:8px}
 .lks-ui .lks14-notebody-fill .lks14-board{flex:1 1 0}
-.lks-ui .lks14-viewtabs{background:var(--surface-2);border-radius:10px;padding:3px;align-self:flex-start}
+/* 2026-11-06 (owner: 黑板标签混乱): the board capsule was written UNSCOPED —
+   it leaked onto every tab and corrupted the 0.25.3 sticky full-bleed bar,
+   and on the board tab itself align-self shrank the row to content width so
+   the flex:1 1 0 buttons compressed to ~66px and 概念图 wrapped to two lines.
+   Now genuinely scoped to the fill mode: a natural-width nowrap capsule inset
+   from the column edges; teach/cmap/notes keep the sticky full-bleed bar. */
+.lks-ui .lks14-notebody-fill .lks14-viewtabs{background:var(--surface-2);border-radius:10px;padding:3px;align-self:flex-start;margin:0 0 12px}
+.lks-ui .lks14-notebody-fill .lks14-viewtab{flex:0 0 auto;white-space:nowrap}
 .lks-ui .lks14-readbar{position:sticky;top:0;z-index:20;background:var(--surface-2);border-radius:10px}
 /* critique 2026-11-05: the read-aloud toggle wore the 3D ghost (the heaviest
    treatment in the header — heavier than the mode toggle and the tabs it
