@@ -1547,20 +1547,30 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   }
   useEffect(() => {
     if (importJob === null || data === null) return
-    const fresh = data.courses.find(c => !importJob.baselineIds.has(c.courseId))
-    if (fresh !== undefined) {
-      setImportJob(null)
-      endImportSession()
-      setImportResult({ ok: true, msg: tr('import.success') })
-      setSelectedCourse(fresh.courseId)
-      setPanel('map')
-      return
+    const check = (): void => {
+      const fresh = data.courses.find(c => !importJob.baselineIds.has(c.courseId))
+      if (fresh !== undefined) {
+        setImportJob(null)
+        endImportSession()
+        setImportResult({ ok: true, msg: tr('import.success') })
+        setSelectedCourse(fresh.courseId)
+        setPanel('map')
+        return
+      }
+      if (importJobDead(importJob, turnActive, Date.now())) {
+        setImportJob(null)
+        endImportSession()
+        setImportResult({ ok: false, msg: tr('import.error.turn') })
+      }
     }
-    if (importJobDead(importJob, turnActive, Date.now())) {
-      setImportJob(null)
-      endImportSession()
-      setImportResult({ ok: false, msg: tr('import.error.turn') })
-    }
+    check()
+    // The failure deadline needs a TIMER driving it (2026-11-11 audit): the
+    // effect's deps alone never re-fire it — a turn that dies BEFORE the 30s
+    // grace flips turnActive once (inside the grace, no exit) and the 3s state
+    // poll 304s while plugin state is unchanged, so without this heartbeat the
+    // progress screen spun forever and only the manual cancel ended it.
+    const heartbeat = setInterval(check, 1000)
+    return () => { clearInterval(heartbeat) }
   }, [data?.courses, importJob, turnActive])
   const course = data?.courses.find(c => c.courseId === courseId) ?? null
   useEffect(() => {
