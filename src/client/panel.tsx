@@ -973,17 +973,21 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
 
   // P12 exam-v2: ExamView decouples itself from this panel's send() — when a
   // bank is wanted it fires the DOM event and THIS side speaks to the tutor.
-  // (Must live after send's declaration: the deps array reads it at render.)
+  // 2026-11-11 audit: subscribe ONCE through latest-refs — send/sendReviewKickoff
+  // are fresh closures on every render, so keying the effect on them removed
+  // and re-added both listeners on every streaming text delta.
+  const sendRef = useRef(send)
+  const sendReviewKickoffRef = useRef(sendReviewKickoff)
+  useEffect(() => { sendRef.current = send; sendReviewKickoffRef.current = sendReviewKickoff })
   useEffect(() => {
     const onGenerate = (e: Event): void => {
       const detail = (e as CustomEvent<{ lessonId: string; sectionTitle: string }>).detail
       if (detail === undefined || typeof detail.sectionTitle !== 'string') return
-      send(tr('prompt.exam.bank', { section: detail.sectionTitle }))
+      sendRef.current(tr('prompt.exam.bank', { section: detail.sectionTitle }))
     }
     window.addEventListener('lookatstudy-exam-generate', onGenerate)
     return () => { window.removeEventListener('lookatstudy-exam-generate', onGenerate) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [send])
+  }, [])
 
   // v0.39: the blackboard's 复习对话 entry (the due ratecard) rides the same
   // DOM-event decoupling as the exam generator — the panel owns the send path.
@@ -991,12 +995,11 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     const onReviewKickoff = (e: Event): void => {
       const detail = (e as CustomEvent<{ lessonId: string; lessonTitle: string }>).detail
       if (detail === undefined || typeof detail.lessonId !== 'string' || typeof detail.lessonTitle !== 'string') return
-      sendReviewKickoff(detail.lessonId, detail.lessonTitle)
+      sendReviewKickoffRef.current(detail.lessonId, detail.lessonTitle)
     }
     window.addEventListener('lookatstudy-review-kickoff', onReviewKickoff)
     return () => { window.removeEventListener('lookatstudy-review-kickoff', onReviewKickoff) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sendReviewKickoff])
+  }, [])
 
   // issue #11: switch to another thread in the CURRENT lesson's group — the
   // local binding moves, the group's active pointer follows (lastAt bumps),
