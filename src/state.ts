@@ -878,8 +878,9 @@ export function nextLesson(course: CourseState, lessonId: string): LessonState |
  * the agent never participates): same-section successor, else the next
  * section's FIRST study lesson (empty sections skipped), else null (the
  * endpoint card). An unknown completedId (course switch race, cross-course
- * event) returns null — no card. Unlike {@link nextLesson} this never wraps
- * to the course's first lesson.
+ * event) returns null — no card. The difference from {@link nextLesson}: an
+ * UNKNOWN id makes nextLesson silently scan from the course's first lesson
+ * (findIndex -1), while this returns null.
  * @param course - course to walk.
  * @param lessonId - the lesson that just graduated.
  * @returns the next study lesson, or null.
@@ -1367,14 +1368,6 @@ export function recordAnswer(
 }
 
 /**
- * Complete a lesson explicitly (the manual path; mastery graduation is the
- * automatic one). Locked lessons fail loud.
- * @param state - state to mutate.
- * @param lessonId - lesson to complete.
- * @param now - current time.
- * @returns completion result including the unlocked lessons.
- */
-/**
  * Set a course's thread granularity (0.23.0). Switching never touches the
  * sediment: both sides' groups stay put and are resumed when the scope flips
  * back. Unknown ids fail loud.
@@ -1443,7 +1436,7 @@ function repointMirrorsOff(state: LearningState, key: string, threadId: string |
  * with the active pointer so pre-0.22 readers never disagree. Under course
  * scope (0.23.0) the group is the course's, the send-from lesson joins the
  * thread's touchedLessons coverage, and mirrors sync per
- * {@link repointRolledMirrors}.
+ * {@link repointMirrorsOff}.
  */
 export function bindLessonThread(state: LearningState, lessonId: string, sessionId: string | null, title?: string | null, kind?: 'review'): LessonThreadGroup {
   // Audit C26: every other mutator validates existence first — an
@@ -1591,6 +1584,14 @@ export function deleteLessonThread(state: LearningState, lessonId: string, sessi
   return group
 }
 
+/**
+ * Complete a lesson explicitly (the manual path; mastery graduation is the
+ * automatic one). Locked lessons fail loud.
+ * @param state - state to mutate.
+ * @param lessonId - lesson to complete.
+ * @param now - current time.
+ * @returns completion result including the unlocked lessons.
+ */
 export function completeLesson(
   state: LearningState,
   lessonId: string,
@@ -1745,13 +1746,6 @@ export function addNote(
 }
 
 /**
- * Delete one notebook entry from a lesson's Cornell zones.
- * @param state - state to mutate.
- * @param lessonId - lesson the note belongs to.
- * @param noteId - id of the note to remove.
- * @throws when the lesson or the note id is unknown (fail loud, like every id lookup).
- */
-/**
  * Record one artifact on its lesson, idempotently: the key is the content
  * hash (type + stable-stringified data) — re-importing or re-generating the
  * same artifact returns the existing row instead of duplicating it (upstream
@@ -1770,6 +1764,13 @@ export function recordArtifact(state: LearningState, lessonId: string, artifact:
   return { artifact, created: true }
 }
 
+/**
+ * Delete one notebook entry from a lesson's Cornell zones.
+ * @param state - state to mutate.
+ * @param lessonId - lesson the note belongs to.
+ * @param noteId - id of the note to remove.
+ * @throws when the lesson or the note id is unknown (fail loud, like every id lookup).
+ */
 export function deleteNote(state: LearningState, lessonId: string, noteId: string): void {
   const ref = findLesson(state, lessonId)
   const index = ref.lesson.notes.findIndex(n => n.id === noteId)
