@@ -1588,22 +1588,32 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   const reportError = (err: unknown): void => { setError(friendlyError(err, 'action')) }
   // Live search: title hits from the loaded tree + debounced full-text hits
   // merge into the results panel (upstream CourseSearchPanel semantics).
+  // 2026-11-11 audit: only query/selectedCourse may re-arm the debounce —
+  // `data` gets a fresh identity on every store emit and `searchLessons` is a
+  // fresh bound method per render, so keying on them restarted the 250ms
+  // timer on every emit (during a tool-active tutor turn the results never
+  // landed). Both are read from a latest-ref AT FIRE TIME (fresher than any
+  // closure snapshot).
+  const searchCtxRef = useRef({ data, searchLessons })
+  useEffect(() => { searchCtxRef.current = { data, searchLessons } })
   useEffect(() => {
-    if (query.trim().length < 2 || data === null) {
+    if (query.trim().length < 2) {
       setSearchRows([])
       return
     }
     let cancelled = false
     const timer = setTimeout(() => {
-      void searchLessons(query).then(textHits => {
+      const { data: d, searchLessons: sl } = searchCtxRef.current
+      if (d === null) return
+      void sl(query).then(textHits => {
         if (cancelled) return
-        const tree = data.courses.find(c => c.courseId === (data.courses.some(x => x.courseId === selectedCourse) ? selectedCourse : data.courses[0]?.courseId))
+        const tree = d.courses.find(c => c.courseId === (d.courses.some(x => x.courseId === selectedCourse) ? selectedCourse : d.courses[0]?.courseId))
         const lessons = (tree?.sections ?? []).flatMap(s => s.lessons)
         setSearchRows(mergeRailSearch(query, lessons.map(l => ({ id: l.id, title: l.title, status: l.status, kind: l.kind })), textHits))
       }).catch(() => { if (!cancelled) setSearchRows([]) })
     }, 250)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [query, selectedCourse, data, searchLessons])
+  }, [query, selectedCourse])
 
   // The floating topbar: one glass card — the tab row lives INSIDE the head
   // (0.19 re-critique: two stacked cards cost ~10px of reserve and read as
