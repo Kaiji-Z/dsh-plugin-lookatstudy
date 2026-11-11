@@ -57,7 +57,7 @@ export function ConfirmCard({ anchor, message, danger, confirmLabel, onConfirm, 
     createElement('button', { className: 'lks-btn ghost', onClick: onCancel }, tr('confirm.cancel')),
     createElement('button', {
       ref: confirmRef,
-      className: danger === true ? 'lks-btn primary' : 'lks-btn primary',
+      className: danger === true ? 'lks-btn danger' : 'lks-btn primary',
       onClick: onConfirm,
     }, confirmLabel)))
 }

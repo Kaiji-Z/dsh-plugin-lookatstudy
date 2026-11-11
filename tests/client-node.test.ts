@@ -341,6 +341,15 @@ test('the P11b chrome freezes: reasoning fold, tool chips, karaoke marks, toolti
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-msgaction\{[^}]*width:28px;height:28px/, 'the message speak action rides the host IconActions anatomy (2026-11-06 redesign)')
   assert.match(UPSTREAM_CSS, /\.lks-tip\{[^}]*position:fixed/, 'GlobalTooltip rides above everything')
   assert.match(UPSTREAM_CSS, /\.lks-confirmcard\.danger/, 'ConfirmCard carries the danger variant')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-btn\.danger\{/, 'the destructive confirm button has its red skin')
+  {
+    // 2026-11-11 audit: the danger prop must actually SWAP the button class —
+    // both ternary branches used to read 'lks-btn primary' (destructive
+    // confirms rendered green; only the container border changed)
+    const { readFileSync: rfs } = await import('node:fs')
+    const src = rfs(new URL('../src/client/confirmcard.tsx', import.meta.url), 'utf8')
+    assert.match(src, /danger === true \? 'lks-btn danger' : 'lks-btn primary'/, 'the danger variant swaps the confirm button to the red skin')
+  }
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-note\.pinned\{[^}]*rgb\(var\(--gold-rgb\)\//, 'pinned notes tint gold')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks-note-edit textarea/, 'the inline note editor')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-zoneh\{[^}]*cursor:pointer/, 'zone heads are collapsible buttons')
