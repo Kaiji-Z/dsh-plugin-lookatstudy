@@ -297,8 +297,15 @@ export async function studyTtsAudio(
   const gate = deps.gate ?? new TtsGate()
   const trimmed = endpoint.trim()
   if (trimmed !== '' && !gate.tripped) {
+    // Engine-namespaced cache (2026-11-11 audit): the external arm reads ONLY
+    // cacheDir/external/* — the Edge arm's .mp3 files live at the cacheDir
+    // root and used to satisfy this check, stamping engine:'external' on a
+    // file Edge synthesized (the settings 测试 receipt lied about which
+    // channel answered). Edge keeps the root namespace so existing installs
+    // keep their caches.
+    const extDir = join(cacheDir, 'external')
     for (const ext of ['mp3', 'wav'] as const) {
-      const cached = ttsCachePath(cacheDir, text, voice, ext)
+      const cached = ttsCachePath(extDir, text, voice, ext)
       if (existsSync(cached)) {
         return { bytes: readFileSync(cached), mime: ext === 'wav' ? 'audio/wav' : 'audio/mpeg', engine: 'external', externalError: null }
       }
@@ -306,8 +313,8 @@ export async function studyTtsAudio(
     try {
       const { bytes, mime } = await externalSynthesize(text, trimmed, deps)
       gate.record(true)
-      mkdirSync(cacheDir, { recursive: true })
-      writeFileSync(ttsCachePath(cacheDir, text, voice, externalTtsExt(mime)), bytes)
+      mkdirSync(extDir, { recursive: true })
+      writeFileSync(ttsCachePath(extDir, text, voice, externalTtsExt(mime)), bytes)
       return { bytes, mime, engine: 'external', externalError: null }
     } catch (error) {
       gate.record(false)

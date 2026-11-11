@@ -153,10 +153,10 @@ test('studyTtsAudio: the external channel wins, caches by extension, and falls b
     const externalDead = (async () => { extCalls++; return new FakeFetchResponse(503, Buffer.alloc(0)) as unknown as Response }) as typeof fetch
     const edge = async (text: string): Promise<Buffer> => { edgeCalls++; return Buffer.from(`edge:${text}`) }
 
-    // 1: external answers wav → cached under .wav
+    // 1: external answers wav → cached under .wav (in the ENGINE-namespaced subdir)
     const a = await studyTtsAudio('一句话', 'zh-CN-XiaoxiaoNeural', ' http://127.0.0.1:8765 ', dir, { gate, synth: edge, fetchImpl: externalOk })
     assert.equal(a.engine, 'external'); assert.equal(a.bytes.toString(), 'EXTWAV'); assert.equal(a.mime, 'audio/wav')
-    assert.equal(readdirSync(dir).filter(f => f.endsWith('.wav')).length, 1)
+    assert.equal(readdirSync(join(dir, 'external')).filter(f => f.endsWith('.wav')).length, 1)
     // 2: cache hit replays without the endpoint (extCalls stays)
     const a2 = await studyTtsAudio('一句话', 'zh-CN-XiaoxiaoNeural', 'http://127.0.0.1:8765', dir, { gate, synth: edge, fetchImpl: externalDead })
     assert.equal(a2.engine, 'external', 'the wav cache entry satisfies the external arm')
@@ -173,5 +173,32 @@ test('studyTtsAudio: the external channel wins, caches by extension, and falls b
     assert.equal(d.engine, 'edge'); assert.equal(d.externalError !== null, true, 'the status line explains the trip')
     assert.equal(extCalls, extBefore, 'a tripped gate never bills the dead endpoint again')
     assert.equal(edgeCalls, 3)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+test('2026-11-11 audit: an Edge-written cache file never satisfies the external arm (the 测试 receipt must not lie)', async () => {
+  // The 测试-button flow: click with NO endpoint (Edge synthesizes + caches at
+  // the cacheDir root), then configure an external endpoint and click again —
+  // the root .mp3 used to satisfy the external arm, stamping engine:'external'
+  // even when the endpoint was dead.
+  const dir = mkdtempSync(join(tmpdir(), 'lks-tts-'))
+  try {
+    const gate = new TtsGate(2)
+    let extCalls = 0
+    let edgeCalls = 0
+    const edge = async (text: string): Promise<Buffer> => { edgeCalls++; return Buffer.from(`edge:${text}`) }
+    const externalDead = (async () => { extCalls++; return new FakeFetchResponse(503, Buffer.alloc(0)) as unknown as Response }) as typeof fetch
+
+    // Edge run with no endpoint — writes <hash>.mp3 at the cacheDir ROOT
+    await studyTtsAudio('朗读通道测试。', 'zh-CN-XiaoxiaoNeural', '', dir, { synth: edge })
+    assert.equal(edgeCalls, 1)
+    assert.ok(existsSync(ttsCachePath(dir, '朗读通道测试。', 'zh-CN-XiaoxiaoNeural')))
+
+    // Same sentence via the (dead) external endpoint: the root file must NOT
+    // satisfy it — the arm tries the endpoint, fails, falls back to Edge
+    const out = await studyTtsAudio('朗读通道测试。', 'zh-CN-XiaoxiaoNeural', 'http://127.0.0.1:8765', dir, { gate, synth: edge, fetchImpl: externalDead })
+    assert.equal(extCalls, 1, 'the external arm actually contacted the endpoint (no false cache hit)')
+    assert.equal(out.engine, 'edge', 'the receipt names the engine that really answered')
+    assert.ok(out.externalError !== null)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
