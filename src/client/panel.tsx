@@ -2356,6 +2356,10 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
   const { tts } = useStudy()
   const [msgAudio, setMsgAudio] = useState<{ key: string; index: number; total: number } | null>(null)
   const msgReadCtl = useRef<ReadAloudController | null>(null)
+  // 2026-11-11 audit: unmount must STOP playback — ChatPane swaps out for
+  // ExamView on an exam-lesson focus, and an orphaned controller kept fetching
+  // and playing sentences with no UI left to stop them.
+  useEffect(() => () => { msgReadCtl.current?.stop() }, [])
   const rowElement = (key: string): HTMLDivElement | null => {
     const el = streamEl.current?.querySelector(`[data-row-key="${CSS.escape(key)}"]`)
     return el instanceof HTMLDivElement ? el : null
@@ -3126,6 +3130,9 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
   }, [cmapExpanded])
   const [read, setRead] = useState<ReadAloudStatus | null>(null)
   const readCtl = useRef<ReadAloudController | null>(null)
+  // 2026-11-11 audit: same unmount rule as ChatPane's msgReadCtl — the panel
+  // can unmount (hand-back to the host) mid-reading with audio still playing.
+  useEffect(() => () => { readCtl.current?.stop() }, [])
   const [readError, setReadError] = useState<string | null>(null)
   // 0.25.0 owner decision: 原文/译文 only (the bilingual interleave is gone);
   // per-lesson localStorage, default ORIGINAL (upstream: locale null = original)
