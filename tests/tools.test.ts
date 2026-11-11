@@ -160,6 +160,19 @@ test('every presentResult is paired with a presentationMeta (an unpaired one ren
   }
 })
 
+test('study_exam_result meta carries the retained best — the client 历史最佳 label reads it', async () => {
+  const { byName } = setup()
+  const imported = await run(byName, 'study_import_markdown', { markdown: COURSE_MD })
+  const map = await run(byName, 'study_map', { courseId: imported.courseId }) as { tree: Array<{ lessons: Array<{ kind?: string; id?: string }> }> }
+  const examId = map.tree.flatMap(s => s.lessons).find(l => l.kind === 'exam')?.id
+  assert.ok(examId !== undefined, 'fixture course has a section-exam node')
+  const tool = byName.get('study_exam_result')!
+  await run(byName, 'study_exam_result', { lessonId: examId, correct: 5, total: 5 }) // 100% → 3★
+  const worse = await run(byName, 'study_exam_result', { lessonId: examId, correct: 3, total: 5 }) // 60% → 1★, best stays 3★
+  const meta = tool.output.presentationMeta!({} as never, worse as never) as string[]
+  assert.equal(meta[0], '1★ (best 3★)', 'a worse later attempt still shows the historical best')
+})
+
 
 /** Minimal JSON-schema subset the tools actually declare (object/array/scalars/enum/oneOf/required/additionalProperties/items). */
 interface Schema {

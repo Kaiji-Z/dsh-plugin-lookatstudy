@@ -1247,7 +1247,7 @@ ${p.text}`))
       total: { type: 'integer', required: true, description: 'Questions asked in this attempt (must be > 0).' },
     },
     output: {
-  presentationMeta: (_args, value) => [`${value.stars}★`],
+  presentationMeta: (_args, value) => [`${value.stars}★ (best ${value.bestStars}★)`],
       schema: {
         type: 'object',
         additionalProperties: false,
