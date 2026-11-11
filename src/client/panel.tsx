@@ -588,7 +588,6 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     const key = threadKeyOf(lessonId)
     return key !== null ? (data?.lessonThreads[key] ?? null) : null
   }
-  const streamEl = useRef<HTMLDivElement | null>(null)
   const touchStart = useRef<{ x: number; y: number } | null>(null)
   // C2: the live session face (kept by send) so the stop button can cancel the
   // running host turn; a fresh load has nothing to stop.
@@ -862,12 +861,6 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
       offList?.()
     }
   }, [boundId, ctx])
-
-  // Keep the stream pinned to the latest row.
-  useEffect(() => {
-    const el = streamEl.current
-    if (el !== null) el.scrollTop = el.scrollHeight
-  }, [rows])
 
   // issue #9: the stall guard's alarm — the window only pushes updates while
   // events arrive, so a frozen window needs a timer to ever read as stalled
@@ -2242,7 +2235,12 @@ function ChatPane({ data, lesson, rows, feedAttached, bound, busy, sendError, dr
       if (el2 !== null && stuck.current) el2.scrollTop = el2.scrollHeight
     }, 350)
     return () => { clearTimeout(settle) }
-  }, [rows.length, lastIsUser])
+    // Key on `rows` (2026-11-11 audit), not rows.length: during a stream the
+    // streaming row already exists and only its TEXT grows — rows.length never
+    // changes, so the chase used to stop following mid-answer and the scroll
+    // FAB went stale (content growth fires no scroll event). The stuck guard
+    // keeps the per-delta cost trivial.
+  }, [rows, lastIsUser])
   // Issue #3: the feed renders through the same markdown pipeline as the teach
   // prose but never met the enhancers — KaTeX/code/diagram cards only ran on
   // `tab === 'teach'`. Each finalized assistant row gets exactly one pass
