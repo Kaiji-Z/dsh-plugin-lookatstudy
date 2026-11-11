@@ -87,11 +87,14 @@ function statusGlyph(kind: string, status: string): string {
 }
 
 /**
- * Display lines for an import result.
- * @param value - import tool value.
+ * Display lines for an import result. The first lesson is honestly NULLABLE
+ * here: ImportValue keeps the C23-narrow `string` (import tools reject
+ * 0-lesson courses), but study_apply_design can drop every designed lesson —
+ * its value feeds this same renderer with nulls.
+ * @param value - import tool value (first-lesson fields nullable).
  * @returns card lines.
  */
-export function importLines(value: ImportValue): string[] {
+export function importLines(value: Omit<ImportValue, 'firstLessonId' | 'firstLessonTitle'> & { firstLessonId: string | null; firstLessonTitle: string | null }): string[] {
   const lines = [
     `📘 ${value.title}`,
     `${value.sections} sections · ${value.lessons} lessons · id ${value.courseId}`,

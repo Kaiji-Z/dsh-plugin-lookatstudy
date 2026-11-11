@@ -328,7 +328,9 @@ export function studyTools(store: StudyStore, deps: StudyToolsDeps = {}): ToolDe
   } as const satisfies { schema: ObjectValueSchemaSpec }
   // C23: presentationMeta belongs INSIDE output (the top-level slot does not
   // exist on DefineToolOptions — these were dead code the type gate caught).
-  const importPresentationMeta = (_args: unknown, value: cards.ImportValue) => cards.importLines(value)
+  // Param type follows importLines' nullable-first-lesson signature — apply_design's
+  // value (a fully-dropped design has no first lesson) feeds the same meta.
+  const importPresentationMeta = (_args: unknown, value: Parameters<typeof cards.importLines>[0]) => cards.importLines(value)
   const importPresent = {
     presentResult: (_args: unknown, result: { meta?: unknown }) => ({
       card: 'generic' as const,
@@ -713,6 +715,10 @@ ${p.text}`))
       },
     },
     output: {
+      // the presentResult below reads result.meta — without this meta the
+      // conversation card always rendered EMPTY (a presentResult that returns
+      // overrides the generic fallback, it never falls through)
+      presentationMeta: importPresentationMeta,
       schema: {
         type: 'object',
         additionalProperties: false,

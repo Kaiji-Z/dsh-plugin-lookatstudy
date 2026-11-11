@@ -152,6 +152,14 @@ test('presentCall and presentResult are total over representative values', async
   }
 })
 
+test('every presentResult is paired with a presentationMeta (an unpaired one renders the card EMPTY — it overrides the fallback)', async () => {
+  const { byName } = setup()
+  for (const tool of byName.values()) {
+    if (tool.presentResult === undefined) continue
+    assert.equal(typeof tool.output.presentationMeta, 'function', `${tool.name} declares presentResult but no output.presentationMeta`)
+  }
+})
+
 
 /** Minimal JSON-schema subset the tools actually declare (object/array/scalars/enum/oneOf/required/additionalProperties/items). */
 interface Schema {
