@@ -55,7 +55,6 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-rail{background:var(--surface-rail);border-right:none}
 .lks-ui .lks14-chat{background:var(--surface-1);border-right:none}
 .lks-ui .lks14-note{background:var(--surface-2)}
-.lks-ui .lks14-colhead{color:var(--ink-muted);border-bottom:1px solid var(--border-faint);letter-spacing:.02em;text-transform:none;font-size:.825rem}
 
 /* ── the floating app-header over the right half (blur + gradient fade) ── */
 .lks-ui .lks14-appheader{position:relative;z-index:30;flex:none;display:flex;align-items:center;height:46px;padding:0 14px;gap:10px}
@@ -119,15 +118,9 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks-toast .lks-toast-glyph.info{color:var(--accent)}
 .lks-ui .lks-toast-action{color:var(--brand)}
 
-.lks-ui .lks14-node.focus{background:rgb(var(--accent-rgb)/0.1);outline:1px solid rgb(var(--accent-rgb)/0.25)}
-.lks-ui .lks14-node[aria-disabled='true']{color:var(--ink-faint)}
 .lks-ui .lks14-search,.lks-ui .lks-set-select{background:rgb(var(--ink-rgb)/0.05);border:1px solid var(--border-faint);color:var(--ink-strong)}
 .lks-ui .lks14-search:focus{border-color:var(--accent)}
-.lks-ui .lks14-duebox{background:var(--review-tint);border:1px solid rgb(var(--review-rgb)/0.25);color:var(--ink)}
 .lks-ui .lks14-over{color:var(--warning-light)}
-.lks-ui .lks14-tag.weak{color:var(--gold-light)}
-.lks-ui .lks14-bar{background:rgb(var(--ink-rgb)/0.08)}
-.lks-ui .lks14-bar i{background:var(--gold)}
 .lks-ui .lks14-pill{color:var(--ink-muted);border-radius:999px}
 .lks-ui .lks14-pill.on{background:rgb(var(--accent-rgb)/0.12);color:var(--accent-light)}
 
@@ -223,7 +216,6 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-railhead.withtabs .lks-railtabs{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0;margin-bottom:0;border-radius:0}
 .lks-ui .lks14-railhead.withtabs .lks-railtab{padding:2px 0}
 .lks-ui .lks14-railtitle{color:#fff;font-weight:800;font-size:.875rem;text-shadow:0 1px 3px rgba(0,0,0,0.6)}
-.lks-ui .lks14-railsub{color:rgb(var(--ink-rgb)/0.6)}
 .lks-ui .lks14-search{background:rgb(0 0 0/0.25);border:1px solid rgb(255 255 255/0.15);color:var(--ink-strong);border-radius:10px}
 .lks-ui .lks14-search:focus{border-color:var(--brand);outline:none}
 .lks-ui .lks14-search::placeholder{color:rgb(var(--ink-rgb)/0.35)}
@@ -246,7 +238,6 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-optletter{color:var(--brand-light)}
 .lks-ui .lks14-starter{background:transparent;border:1px solid var(--border-faint);color:var(--ink-muted)}
 .lks-ui .lks14-starter:hover{background:rgb(var(--ink-rgb)/0.06);color:var(--ink);border-color:var(--border)}
-.lks-ui .lks14-chatlesson{color:var(--ink-muted)}
 .lks-ui .lks14-meta{color:var(--ink-muted)}
 .lks-ui .lks14-dueitem{color:var(--ink-muted)}
 .lks-ui .lks14-hint{color:var(--ink-faint)}
@@ -332,7 +323,6 @@ export const UPSTREAM_CSS = `
 .lks-ui .lks14-railhead{display:flex;flex-direction:column;gap:3px;margin-top:0}
 .lks-ui .lks14-railcard-row{display:flex;align-items:center;gap:8px}
 .lks-ui .lks14-railpct{flex:none;font-size:12px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,0.6)}
-.lks-ui .lks14-masterybar{flex:1}
 .lks-ui .lks-railpill{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;
   background:rgb(255 255 255/0.05);box-shadow:inset 0 0 0 1px rgb(255 255 255/0.1);color:rgb(var(--ink-rgb)/0.6);font-size:11px;font-weight:700}
 .lks-ui .lks-railpill:hover{background:rgb(255 255 255/0.1)}

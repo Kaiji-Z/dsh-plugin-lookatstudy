@@ -68,20 +68,16 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14-rail{flex:0 0 var(--lks-rail-w,300px);border-right:none;padding:0;overflow:hidden;position:relative;transition:flex-basis 150ms ease}
 .lks14-railhead{display:flex;align-items:center;gap:6px;margin-top:10px}
 .lks14-railtitle{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-.lks14-railsub{font-size:12px;color:var(--dsw-alias-label-secondary);margin:6px 0}
 .lks14-search{width:100%;box-sizing:border-box;font:inherit;font-size:12.5px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:5px 8px;margin:4px 0}
 .lks14-search:focus{outline:none;border-color:var(--dsw-alias-state-business-primary)}
-.lks14-duebox{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:8px 10px;margin:8px 0;font-size:12.5px}
 .lks14-dueitem{display:flex;justify-content:space-between;gap:6px;padding:2px 0;color:var(--dsw-alias-label-secondary)}
 .lks14-over{color:var(--dsw-alias-state-error-primary)}
 .lks14-empty{color:var(--dsw-alias-label-tertiary);font-size:13px;padding:18px 6px;line-height:1.7}
 .lks14-import{margin:8px 0}
-.lks14-inputrow{display:flex;gap:6px}
 .lks14-hint{font-size:11.5px;color:var(--dsw-alias-label-tertiary);margin-top:6px;line-height:1.6}
 
 /* 中 chat: the tutor stream + its own composer (upstream ChatStream/ChatComposer) */
 .lks14-chat{flex:0 0 auto;width:var(--lks-chat-w,clamp(480px,45%,800px));min-width:0;border-right:none;transition:width 150ms ease}
-.lks14-chatlesson{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400;color:var(--dsw-alias-label-tertiary)}
 .lks14-pills{display:inline-flex;gap:2px}
 .lks14-pill{border:none;background:none;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;padding:2px 8px;border-radius:7px;cursor:pointer}
 .lks14-pill:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
@@ -361,9 +357,10 @@ mark.lks-hl{background:var(--dsw-alias-state-warn-tertiary);color:inherit;border
 .lks-btn.ghost:hover{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l3)}
 .lks-propcard-err{color:var(--dsw-alias-state-error-primary);font-size:12px;margin-top:6px;flex:none}
 
-/* read-aloud bar (notebook teach pane) + busy spinner */
+/* read-aloud bar (notebook teach pane) + busy spinner (the keyframes serve
+   .lks-lessorow-spin / .lks14-importprog-*; the bare .lks-spin class rule
+   had no element left after the map-era cleanup) */
 @keyframes lks-spin{to{transform:rotate(360deg)}}
-.lks-spin{animation:lks-spin .8s linear infinite}
 .lks-readbar{display:flex;align-items:center;gap:6px;margin:0 0 8px;min-height:26px}
 .lks-readbar .lks-btn{display:inline-flex;align-items:center;gap:4px}
 .lks-readbar-cur{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;color:var(--dsw-alias-label-secondary);border-left:2px solid var(--dsw-alias-state-info-primary,var(--dsw-alias-business-primary));padding-left:8px}
