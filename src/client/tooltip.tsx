@@ -44,8 +44,13 @@ export function GlobalTooltip(): ReactNode {
       const z = parseFloat(document.querySelector<HTMLElement>('.lks-ui')?.style.zoom ?? '1')
       return Number.isFinite(z) && z > 0 ? z : 1
     }
+    // Coarse pointers track the LATEST point here — the long-press timer reads
+    // it at fire time. Comparing the captured pointerdown event to itself
+    // (its clientX never mutates) always measured zero movement, so a finger
+    // dragging away still popped the tooltip (2026-11-11 audit).
+    let lastPoint: { x: number; y: number } | null = null
     const onMove = (e: PointerEvent): void => {
-      if (coarse) return
+      if (coarse) { lastPoint = { x: e.clientX, y: e.clientY }; return }
       const el = target(e)
       if (el === null) { setTip(null); return }
       const z = panelZoom()
@@ -58,9 +63,11 @@ export function GlobalTooltip(): ReactNode {
       const el = target(e)
       if (el === null) return
       const start = { x: e.clientX, y: e.clientY }
+      lastPoint = start
       if (pressTimer.current !== null) clearTimeout(pressTimer.current)
       pressTimer.current = setTimeout(() => {
-        if (Math.hypot(e.clientX - start.x, e.clientY - start.y) < 10) {
+        const p = lastPoint ?? start
+        if (Math.hypot(p.x - start.x, p.y - start.y) < 10) {
           const r = el.getBoundingClientRect()
           const z = panelZoom()
           show(el, (r.left + r.width / 2 - 80) / z, (r.top - 36) / z)
