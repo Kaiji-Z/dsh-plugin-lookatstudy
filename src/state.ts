@@ -738,7 +738,13 @@ export function deleteCourse(state: LearningState, courseId: string): void {
   const prefix = `${courseId}:`
   const lessonThreads: Array<[string, LessonThreadGroup]> = []
   for (const key of Object.keys(state.lessonThreads)) {
-    if (key.startsWith(prefix) || key === `course:${courseId}`) {
+    // The naive `${courseId}:` prefix is NOT enough when the course slugged to
+    // `course` (every purely-CJK title does): that prefix IS the course-scope
+    // namespace (`course:<slug>`), so it would sweep every OTHER course's
+    // course-scoped group into this course's trash. isCourseOwnerKey excludes
+    // foreign owner keys; this course's own lesson keys (`course:0:0`, three
+    // segments) and its own group (the equality arm) still match.
+    if ((key.startsWith(prefix) && !isCourseOwnerKey(key)) || key === `course:${courseId}`) {
       lessonThreads.push([key, state.lessonThreads[key]!])
       delete state.lessonThreads[key]
     }

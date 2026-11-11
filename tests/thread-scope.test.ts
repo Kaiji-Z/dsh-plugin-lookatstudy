@@ -137,6 +137,29 @@ test('trash round-trip: the course-group key travels with the course and re-ids 
   assert.equal(state.lessonSessions[`${restored.id}:0:0`], 's1', 'the legacy mirror came back for the send-from lesson')
 })
 
+test('deleteCourse: deleting a course slugged to `course` never sweeps OTHER courses\' course-scope groups', () => {
+  // Every purely-CJK title slugs to `course`, and that id makes the naive
+  // `${courseId}:` prefix EQUAL the course-scope key namespace — deleting one
+  // such course used to eat every other course-scoped group in state.
+  const state = emptyState()
+  state.active = true
+  const first = importCourse(state, parseMarkdownToCourse(MD), 'markdown', 'probe-a') // 线程粒度探针 → id `course`
+  const second = importCourse(state, parseMarkdownToCourse('# 复习粒度探针\n\n## 一节\n\n### 丙课\n\n正文。\n'), 'markdown', 'probe-b') // → id `course-2`
+  assert.equal(first.id, 'course')
+  assert.equal(second.id, 'course-2')
+  setCourseThreadScope(state, first.id, 'course')
+  setCourseThreadScope(state, second.id, 'course')
+  bindLessonThread(state, `${first.id}:0:0`, 's1', '一')
+  bindLessonThread(state, `${second.id}:0:0`, 's2', '二')
+
+  deleteCourse(state, first.id)
+
+  assert.ok(state.lessonThreads['course:' + second.id] !== undefined, 'the FOREIGN course-scope group survives the delete')
+  assert.equal(state.lessonThreads['course:' + second.id]?.active, 's2')
+  assert.equal(state.lessonThreads['course:' + first.id], undefined, 'the deleted course\'s own group left with it')
+  assert.deepEqual(state.trash[0]?.lessonThreads.map(([k]) => k), ['course:' + first.id], 'the trash carries ONLY the deleted course\'s own group')
+})
+
 test('course scope snapshot: the live digest, coverage line, and combined-problem directive assemble; lesson scope renders none', () => {
   const { state, course, a, b } = seed()
   state.focus = { lessonId: a }
