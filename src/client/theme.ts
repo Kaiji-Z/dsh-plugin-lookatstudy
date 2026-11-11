@@ -14,11 +14,10 @@ import type { ClientContext } from './faces.ts'
 
 export type PanelTheme = 'light' | 'dark'
 
-/** Pure: resolve the host's preference into the panel's theme. */
-export function hostPanelTheme(preference: string | undefined, prefersLight: boolean): PanelTheme {
-  if (preference === 'light' || preference === 'dark') return preference
-  return prefersLight ? 'light' : 'dark'
-}
+// (The pure preference resolver that used to live here — hostPanelTheme —
+// went DOM-primary with the live P16 catch: wirePanelTheme below reads the
+// DOM signals directly. Its spec survives as a local helper in
+// tests/maprail.test.ts.)
 
 let current: PanelTheme = 'dark'
 const listeners = new Set<() => void>()

@@ -35,8 +35,17 @@ test('D6: sectionWorldOf — purely-practice sections are the practice world', (
 })
 
 // ——— P16: the panel theme resolution (host preference → panel theme) ———
+// The resolver itself went DOM-primary in the live P16 catch (wirePanelTheme
+// reads body[data-ds-dark-theme] + html color-scheme directly — the service-
+// snapshot path misordered against the async settings load), so the pure
+// function lives HERE now as the spec of the resolution the DOM path implements.
 
-import { hostPanelTheme, followHostTheme, setFollowHostTheme, subscribeFollowHostTheme } from '../src/client/theme.ts'
+import { followHostTheme, setFollowHostTheme, subscribeFollowHostTheme } from '../src/client/theme.ts'
+
+function hostPanelTheme(preference: string | undefined, prefersLight: boolean): 'light' | 'dark' {
+  if (preference === 'light' || preference === 'dark') return preference
+  return prefersLight ? 'light' : 'dark'
+}
 
 test('P16: hostPanelTheme resolves the host preference into the panel theme', () => {
   assert.equal(hostPanelTheme('light', false), 'light')
