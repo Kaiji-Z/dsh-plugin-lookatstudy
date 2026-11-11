@@ -71,10 +71,19 @@ export function coursePackMarkdown(course: CourseState): string {
       // dropping the prose before the first phantom ###). The parser's heading
       // match requires the line to open with #, so a leading backslash defuses
       // it; readers un-escape with the documented ^\\(#{1,3}) form.
+      // Fence-blind (2026-11-11 audit): inside a code fence the parser keeps
+      // lines VERBATIM (its fence state machine runs before heading detection),
+      // so escaping there is both unnecessary and corrupting — a bash `# deps`
+      // comment round-tripped as `\# deps`.
+      let inFence = false
       const body = lesson.body
         .replace(/\s+$/, '')
         .split('\n')
-        .map(line => (/^#{1,3}(\s|$)/.test(line) ? `\\${line}` : line))
+        .map((line) => {
+          if (/^(\s*)(```|~~~)/.test(line)) inFence = !inFence
+          if (inFence || /^(\s*)(```|~~~)/.test(line)) return line
+          return /^#{1,3}(\s|$)/.test(line) ? `\\${line}` : line
+        })
         .join('\n')
       if (body !== '') out.push(body, '')
     }

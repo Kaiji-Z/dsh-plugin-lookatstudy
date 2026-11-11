@@ -126,3 +126,33 @@ test('packFileName: an all-special-chars title falls back to the bare suffix', (
   const course = importCourse(state, parseMarkdownToCourse('# ???'), 'markdown', 'f')
   assert.equal(packFileName(course), 'course.lookatstudy-pack.md')
 })
+
+test('2026-11-11 audit: in-fence # comment lines are NOT escaped (the parser keeps fenced bodies verbatim)', () => {
+  // Fence-blind escaping corrupted the exported .md AND its round-trip: a bash
+  // `# install deps` line came back as `\# install deps` because the parser's
+  // fence state machine runs before heading detection — inside fences the
+  // backslash is pure corruption.
+  const state = emptyState()
+  const designed = {
+    title: '围栏注释课',
+    sections: [{
+      title: '章',
+      anchor: 'zhang',
+      lessons: [
+        {
+          title: '安装课',
+          anchor: 'a',
+          body: '前置说明\n```bash\n# install deps\npip install x\n```\n## 收尾\n收尾正文',
+        },
+      ],
+    }],
+  }
+  const course = importCourse(state, designed as Parameters<typeof importCourse>[1], 'github', 'https://github.com/o/r')
+  const md = coursePackMarkdown(course)
+  assert.ok(md.includes('\n# install deps\n'), 'the in-fence comment exports un-escaped')
+  assert.ok(!md.includes('\\# install deps'), 'no fence-blind backslash anywhere')
+  assert.ok(md.includes('\\## 收尾'), 'the OUT-of-fence body heading still escapes (audit B12 intact)')
+  const back = parseMarkdownToCourse(md)
+  const body = back.sections[0]!.lessons[0]!.body.replace(/^\\(#{1,3})/gm, '$1')
+  assert.equal(body, designed.sections[0]!.lessons[0]!.body, 'the fenced body round-trips verbatim')
+})
