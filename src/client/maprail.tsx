@@ -136,17 +136,19 @@ export function ListSectionView({ section, examAllowed, open, onToggle, onJump, 
             onClick: () => { if (!locked) onJump(lesson.id) },
           },
           createElement('span', { className: 'lks-lessorow-glyph', 'aria-hidden': 'true' },
+            // locked = the exam gate, or any non-exam lesson still locked
+            // (the nested `status === 'locked'` arm that used to follow the
+            // exam arm was unreachable — reaching it meant non-exam AND
+            // not-locked, which the first condition already took)
             state === 'exam-locked' || (lesson.kind !== 'exam' && lesson.status === 'locked')
               ? createElement(IconLockFill16, { size: 13, className: 'dim' })
               : lesson.kind === 'exam'
                 ? createElement(IconGoalOutline16, { size: 14 })
-                : lesson.status === 'locked'
-                  ? createElement(IconLockFill16, { size: 13, className: 'dim' })
-                  : lesson.status === 'mastered'
-                    ? createElement(IconCrownFill16, { size: 14 })
-                    : lesson.status === 'in_progress'
-                      ? createElement(IconBookFill16, { size: 14 })
-                      : createElement(IconStarFill16, { size: 14 })),
+                : lesson.status === 'mastered'
+                  ? createElement(IconCrownFill16, { size: 14 })
+                  : lesson.status === 'in_progress'
+                    ? createElement(IconBookFill16, { size: 14 })
+                    : createElement(IconStarFill16, { size: 14 })),
           createElement('span', { className: 'lks-lessorow-main' },
             createElement('span', { className: 'lks-lessorow-title' }, lesson.title),
             // critique 2026-11-05: the >=50% gate rule lived only in the

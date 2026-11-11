@@ -17,7 +17,7 @@ import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import {
   IconBoltFill16, IconBookFill16, IconCrownFill16, IconDownloadOutline16, IconFlameFill16, IconArrowUpFill16, IconCloseFill16, IconPinFill16,
-  IconGoalOutline16, IconGlobeOutline14, IconLoadingOutline16, IconLockFill16,
+  IconGoalOutline16, IconGlobeOutline14,
   IconMaximizeOutline16, IconRefreshOutline16, IconStarFill16, IconTrashOutline16, IconWarningOutline16, IconWrenchOutline16,
   IconPlusOutline16, IconLinkOutline16, IconDocOutline16, IconFolderOutline16, IconBoxOutline16, IconSoundOutline16, IconThinkOutline16, IconBookOutline16, IconPenOutline16, IconPauseOutline16, IconStopFill16, IconPaperclipOutline16 } from './icons.tsx'
 import type { ClientContext, SessionPromptFace } from './faces.ts'
@@ -25,7 +25,7 @@ import { acquireStageReference, stageSession, stagingMode } from './stage-sessio
 import { useStudy, storedTtsVoice } from './data.ts'
 import { renderMarkdown } from '../markdown.ts'
 import { threadOwnerKey } from '../thread-key.ts'
-import { enhanceRendered, setEnhanceDeps } from './enhance.ts'
+import { enhanceRendered } from './enhance.ts'
 import { normalizeMathNotation } from '../vendor/math-normalize.ts'
 import { PaneResizeHandle } from './paneresize.tsx'
 import {
@@ -137,10 +137,6 @@ export function sessionKnown(ctx: ClientContext, id: string): boolean {
   const byId = (ctx.sessions.list?.getSnapshot() as { byId?: Readonly<Record<string, unknown>> } | undefined)?.byId
   if (byId === undefined) return true
   return Object.keys(byId).length === 0 ? true : id in byId
-}
-
-function textOf(blocks: readonly { type?: string; text?: string }[] | undefined): string {
-  return (blocks ?? []).filter(b => (b.type ?? 'text') === 'text').map(b => b.text ?? '').join('\n\n').trim()
 }
 
 /** One rendered chat row (shared shape with the read-aloud era's renderer). */
@@ -1511,7 +1507,6 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
   // 3s poll confirms it (cleared once the feed's focus matches).
   const [optFocus, setOptFocus] = useState<string | null>(null)
   const railEl = useRef<HTMLDivElement | null>(null)
-  const scrollEl = useRef<HTMLDivElement | null>(null)
   // Course resolution lives above every effect that names it in deps (TDZ).
   const courseId = data !== null && data.courses.length > 0
     ? (data.courses.some(c => c.courseId === selectedCourse) ? selectedCourse : data.courses[0]!.courseId)
@@ -1727,7 +1722,6 @@ function CourseRail({ data, activate, setFocus, searchLessons, deleteCourse, sen
       ? null
       : createElement('div', {
         className: 'lks14-railscroll',
-        ref: scrollEl,
       },
         createElement('div', { className: 'lks-raillist' },
           // D6 (upstream world switcher): practice sections are free-explore and
@@ -3221,8 +3215,9 @@ function NotebookPane({ data, deleteNote, send }: { data: StudyData; deleteNote:
   )
 
   // Persisted highlights: record-zone quotes anchor marks; applied after the
-  // enhance pass settles (its DOM mutations change the text model).
-  const [enhanceTick, setEnhanceTick] = useState(0)
+  // enhance pass settles (its DOM mutations change the text model). The tick
+  // value itself is unread — the setter is only a post-enhance re-render kick.
+  const [, setEnhanceTick] = useState(0)
   const [rateBusy, setRateBusy] = useState(false)
 
   // 0.25.3: read-aloud follows the DISPLAYED view — 译文 view reads the

@@ -196,7 +196,10 @@ export function buildPendingDesignFromFolder(path: string, title: string, docs: 
     fullTreeCount: docs.length,
     localContents,
     ...(extra?.translations !== undefined && extra.translations.length > 0 ? { translations: collectTranslations(extra.translations) } : {}),
-    ...(extra?.images !== undefined && extra.images.length > 0 ? { localImages: new Map<string, string>() } : {}),
+    // NOTE: localImages is NOT set here — study_import_folder builds the real
+    // path→data-URL map in tools.ts and overwrites this field only when
+    // non-empty. (The always-empty placeholder Map that used to sit here was
+    // dead weight: inlineLocalImages no-ops on size 0 either way.)
   }
 }
 

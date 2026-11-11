@@ -46,7 +46,6 @@ import { DEFAULT_DAILY_GOAL, levelFromTotalXp } from './vendor/xp.ts'
 import * as cards from './cards.ts'
 import {
   courseToPackMarkdown,
-  NEAR_MASTERED_THRESHOLD,
   AI_MASTERY_CAP,
   addFriction,
   addNote,

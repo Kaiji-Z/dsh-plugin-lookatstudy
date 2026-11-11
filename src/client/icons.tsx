@@ -63,16 +63,6 @@ export function IconDownloadOutline16({ size = 16, className }: IconProps) {
     }))
 }
 
-/** Vendored 2026-09-01 for the critique icon round (same figma source as the three above). */
-/** IconPlayOutline16 */
-export function IconPlayOutline16({ size = 16, className }: IconProps) {
-  return createElement('svg', {
-    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
-  },
-    createElement('path', { d: 'M14.1446 8C14.1446 4.6062 11.3938 1.85539 8 1.85539C4.6062 1.85539 1.85539 4.6062 1.85539 8C1.85539 11.3938 4.6062 14.1446 8 14.1446C11.3938 14.1446 14.1446 11.3938 14.1446 8ZM15.511 8C15.511 12.148 12.148 15.511 8 15.511C3.85202 15.511 0.489014 12.148 0.489014 8C0.489014 3.85202 3.85202 0.489014 8 0.489014C12.148 0.489014 15.511 3.85202 15.511 8Z', fill: 'currentColor' }),
-    createElement('path', { d: 'M10.5617 8.42578C10.852 8.21614 10.852 7.78386 10.5617 7.57422L7.25708 5.18751C6.90974 4.93666 6.42436 5.18484 6.42436 5.61329V10.3867C6.42436 10.8152 6.90974 11.0633 7.25708 10.8125L10.5617 8.42578Z', fill: 'currentColor' }))
-}
-
 /** IconPlusOutline16 */
 export function IconPlusOutline16({ size = 16, className }: IconProps) {
   return createElement('svg', {
@@ -186,15 +176,6 @@ export function IconBoltFill16({ size = 16, className }: IconProps) {
     width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
   },
     createElement('path', { d: 'M9.6 1 3.4 9.3h3.4L6.3 15l6.3-8.5H9.2L9.6 1Z', fill: 'currentColor' }))
-}
-
-/** IconPowerFill16 */
-export function IconPowerFill16({ size = 16, className }: IconProps) {
-  return createElement('svg', {
-    width: size, height: size, className, viewBox: '0 0 16 16', fill: 'none', xmlns: 'http://www.w3.org/2000/svg',
-  },
-    createElement('path', { d: 'M7.2 1h1.6v5.6H7.2V1Z', fill: 'currentColor' }),
-    createElement('path', { 'fill-rule': 'evenodd', 'clip-rule': 'evenodd', d: 'M4.55 3.15A6 6 0 1 0 11.45 3.15L12.5 4.2a7.5 7.5 0 1 1-9 0l1.05-1.05Z', fill: 'currentColor' }))
 }
 
 /** IconPinFill16 */
