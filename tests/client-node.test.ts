@@ -304,6 +304,36 @@ test('quiz optionTone never leaks correctness before the submit (C5)', async () 
   assert.equal(optionTone(1, null, 2, false), '')
 })
 
+test('issue #20: quizWrongSummary names every missed question compactly; all-correct is null', async () => {
+  const { quizWrongSummary, optionLabel } = await import('../src/client/quizcard.tsx')
+  const card = {
+    questions: [
+      { prompt: 'q1', options: ['a', 'b', 'c'], answer: 0, explanation: '' },
+      { prompt: 'q2', options: ['a', 'b', 'c'], answer: 2, explanation: '' },
+      { prompt: 'q3', options: ['a', 'b', 'c', 'd'], answer: 1, explanation: '' },
+      { prompt: 'q4', options: ['a', 'b'], answer: 0, explanation: '' },
+    ],
+  }
+  // 1 and 4 right; 2 and 3 wrong — summary lists ONLY the misses, letters keyed to the card
+  assert.equal(quizWrongSummary(card, [0, 0, 3, 0]), 'Q2: A→C; Q3: D→B')
+  // all correct keeps the legacy hook copy (null branches at the send site)
+  assert.equal(quizWrongSummary(card, [0, 2, 1, 0]), null)
+  // the -1 arm cannot fire through the hook path (allAnswered gates it) but degrades defensively
+  assert.equal(quizWrongSummary(card, [-1, 2, 1, 0]), 'Q1: —→A')
+  assert.equal(optionLabel(-1), '—')
+  assert.equal(optionLabel(0), 'A')
+  assert.equal(optionLabel(25), 'Z', 'a six-option schema never reaches here, but the label is unbounded')
+})
+
+test('issue #20: the wrong-summary hook template exists in BOTH dictionaries and carries the slot', async () => {
+  const { ZH, EN } = await import('../src/client/locale.ts')
+  for (const dict of [ZH, EN]) {
+    assert.ok(dict['quiz.hook.wrong'] !== undefined && dict['quiz.hook.wrong'] !== '', 'quiz.hook.wrong exists')
+    assert.ok(dict['quiz.hook.wrong']!.includes('{wrong}'), 'carries the {wrong} slot')
+    assert.ok(dict['quiz.hook.wrong']!.includes('{correct}') && dict['quiz.hook.wrong']!.includes('{total}'), 'keeps the score slots')
+  }
+})
+
 test('the C-track chrome freezes: FAB, stop button, code header, decided badges (P11a)', async () => {
   const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-scrollfab\{[^}]*position:absolute/, 'the scroll-to-bottom FAB floats over the stream')

@@ -109,6 +109,33 @@ export function quizScore(data: QuizData, answers: readonly number[]): { correct
   return { correct, total }
 }
 
+/** The letter label for one option index (A, B, C… — unbounded, defensive). */
+export function optionLabel(i: number): string {
+  return i >= 0 ? String.fromCharCode(65 + (i % 26)) : '—'
+}
+
+/**
+ * The wrong-question summary for the completion hook (issue #20): the tutor is
+ * told to "address wrong answers" but the hook used to carry only correct/
+ * total — it could not know WHICH question was missed or what was picked. The
+ * summary is deliberately COMPACT and locale-neutral (Q2: B→C): the full
+ * questions and options already ride the study_generate_quiz call in the same
+ * thread, so the tutor correlates letters against its own card; restating
+ * option text would just spend context. Null when nothing was wrong — the
+ * all-correct hook keeps the legacy copy. The -1 (unanswered) arm cannot fire
+ * through the hook path (allAnswered gates it) but renders defensively.
+ * Pure.
+ */
+export function quizWrongSummary(data: QuizData, answers: readonly number[]): string | null {
+  const parts: string[] = []
+  data.questions.forEach((q, i) => {
+    const choice = answers[i] ?? -1
+    if (choice === q.answer) return
+    parts.push(`Q${String(i + 1)}: ${optionLabel(choice)}→${optionLabel(q.answer)}`)
+  })
+  return parts.length > 0 ? parts.join('; ') : null
+}
+
 /**
  * C5 option tone under select-then-submit: before the commit the tone NEVER
  * leaks correctness (only the pick highlight); after it, the judged pair
@@ -186,7 +213,12 @@ export function QuizCard({ lessonId, artifactId, data, masteryPct, send, onFinis
     const next = { answers: [...progress.answers], done: true, hooked: true }
     setProgress(next)
     saveQuizProgress(lessonId, artifactId, next)
-    send(tr('quiz.hook', { correct: score.correct, total: score.total }))
+    // issue #20: the hook carries the wrong-question summary — without it the
+    // tutor knew "1 wrong" but not which one or what was picked, and could
+    // only comment generically while the tool contract told it to address the
+    // wrong answers. All-correct keeps the legacy copy.
+    const wrong = quizWrongSummary(data, progress.answers)
+    send(tr(wrong === null ? 'quiz.hook' : 'quiz.hook.wrong', { correct: score.correct, total: score.total, wrong: wrong ?? '' }))
   }, [showScore, allAnswered, hookSent, lessonId, artifactId, progress.answers, score.correct, score.total, send])
 
   const answer = (choice: number): void => {

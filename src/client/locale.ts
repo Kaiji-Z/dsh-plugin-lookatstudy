@@ -44,6 +44,9 @@ export const ZH: StudyDict = {
   'quiz.wrong': '答错了',
   'quiz.youChose': '你选了',
   'quiz.hook': '练习卡完成：{correct}/{total} 正确。请简短点评，针对错题讲讲思路。',
+  // issue #20: the completion hook must tell the tutor WHICH questions were
+  // missed — {wrong} carries the compact quizWrongSummary (Q2: B→C; …)
+  'quiz.hook.wrong': '练习卡完成：{correct}/{total} 正确。\n错题：{wrong}\n请简短点评，针对错题讲讲思路（题号和选项对应你出题时的卡片）。',
   'quiz.action.explain-wrong': '讲讲错题',
   'quiz.action.retry': '再来一组',
   'quiz.action.go-deeper': '深入原理',
@@ -463,6 +466,7 @@ export const EN: StudyDict = {
   'quiz.wrong': 'Wrong',
   'quiz.youChose': 'You chose',
   'quiz.hook': 'Practice card finished: {correct}/{total} correct. Please comment briefly and walk through the wrong ones.',
+  'quiz.hook.wrong': 'Practice card finished: {correct}/{total} correct.\nMissed: {wrong}\nPlease comment briefly and walk through the missed ones (question numbers and letters map onto the card you generated).',
   'quiz.action.explain-wrong': 'Explain my wrong answers',
   'quiz.action.retry': 'Another set',
   'quiz.action.go-deeper': 'Go deeper',
