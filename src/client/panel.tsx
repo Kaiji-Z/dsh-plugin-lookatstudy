@@ -29,7 +29,7 @@ import { enhanceRendered } from './enhance.ts'
 import { normalizeMathNotation } from '../vendor/math-normalize.ts'
 import { PaneResizeHandle } from './paneresize.tsx'
 import {
-  CHAT_MAX, CHAT_MIN, HANDLES_W, NOTE_MIN, RAIL_DEFAULT, RAIL_MAX, RAIL_MIN,
+  CHAT_HARD_FLOOR, CHAT_MAX, HANDLE_W, HANDLES_W, NOTE_MIN, RAIL_DEFAULT, RAIL_MAX, RAIL_MIN,
   clampChatCandidate, clampRailCandidate, defaultChatWidth, panelZoomOf, parseStoredWidth, solvePaneWidths,
 } from './pane-resize.ts'
 import { ctxSegments, fmtTokens } from './views.tsx'
@@ -46,7 +46,7 @@ import { toastStore, type ToastItem, type ToastSeverity } from './toast.ts'
 import { ArtifactCard, FoldableArtifactCard, FoldableQuizCard, markArtifactsSeen, unseenArtifacts, type ArtifactRow } from './artifact-cards.tsx'
 import { showStudyToast } from './toast.ts'
 import { applyHighlights, getTextModel, locateInModel, planSegments } from './highlights.ts'
-import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, unwrapRemoteValue, modelCatalogGroups, retryPromptOf, stripDuplicateAsk, type ChatRow } from './views.tsx'
+import { statusTitle, quizOptions, sectionDefaultOpen, mergeRailSearch, effectiveOpen, pickNarrowPane, isStuck, swipePane, swipeEligible, settleMs, pickRandomDue, friendlyError, threadAutoTitle, threadGroupPills, threadCoverageLabel, reasoningSummaryLine, importSessionTitle, unwrapRemoteValue, modelCatalogGroups, retryPromptOf, stripDuplicateAsk, type ChatRow } from './views.tsx'
 import { ListSectionView, nextStudyAfterView, sectionWorldOf } from './maprail.tsx'
 import { GlobalTooltip } from './tooltip.tsx'
 import { ConfirmCard } from './confirmcard.tsx'
@@ -404,7 +404,7 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   // inline widths — same value, no flash, no stale inline overriding later
   // re-solves when the host column narrows.
   const [railW, setRailW] = useState<number | null>(() => parseStoredWidth(localStorage.getItem('dsh-plugin-lookatstudy:pane-rail'), RAIL_MIN, RAIL_MAX))
-  const [chatW, setChatW] = useState<number | null>(() => parseStoredWidth(localStorage.getItem('dsh-plugin-lookatstudy:pane-chat'), CHAT_MIN, CHAT_MAX))
+  const [chatW, setChatW] = useState<number | null>(() => parseStoredWidth(localStorage.getItem('dsh-plugin-lookatstudy:pane-chat'), CHAT_HARD_FLOOR, CHAT_MAX))
   const [paneBoxW, setPaneBoxW] = useState(0)
   const bodyEl = useRef<HTMLDivElement | null>(null)
   const rowEl = useRef<HTMLDivElement | null>(null)
@@ -448,13 +448,15 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
   const railClampLive = (px: number): number => {
     const el = bodyEl.current
     const containerW = (el?.getBoundingClientRect().width ?? 1280) / panelZoomOf(el)
-    const rowW = Math.max(0, containerW - RAIL_DEFAULT - HANDLES_W)
+    // the row's width in the solve's terms: container − rail − the RAIL's
+    // handle (the chat's own handle sits inside the row — pane-resize.ts)
+    const rowW = Math.max(0, containerW - RAIL_DEFAULT - HANDLE_W)
     return clampRailCandidate(px, containerW, (solvedPanes.chat ?? defaultChatWidth(rowW)) + NOTE_MIN + HANDLES_W)
   }
   const chatClampLive = (px: number): number => {
     const el = rowEl.current
     const rowW = (el?.getBoundingClientRect().width ?? 900) / panelZoomOf(el)
-    return clampChatCandidate(px, rowW, NOTE_MIN)
+    return clampChatCandidate(px, rowW)
   }
   // E4: the command palette bus — CourseRail registers its map/review/course
   // actions here so the palette (mounted at the panel root) can drive them.
@@ -1065,15 +1067,26 @@ function StudyPanelBody({ ctx }: { ctx: ClientContext }): ReactNode {
     ref: bodyEl,
     'data-pane': narrowPane,
     // C12: horizontal flick switches the narrow pane (upstream T3 swipe).
+    // Phone-form guard (2026-11-26): the flick only counts for ONE finger
+    // starting where a drag is not already text selection or a sideways
+    // scroll (see swipeEligible) — and a cancelled touch (some engines take
+    // the gesture over for scrolling) must not leave a start behind.
     onTouchStart: (e: ReactTouchEvent<HTMLDivElement>) => {
       const t = e.touches[0]
-      touchStart.current = t === undefined ? null : { x: t.clientX, y: t.clientY }
+      const target = e.target
+      touchStart.current = t === undefined || e.touches.length > 1
+        ? null
+        : target instanceof Element && swipeEligible(target, bodyEl.current, el => el.parentElement, paneSwipeBlocked)
+          ? { x: t.clientX, y: t.clientY }
+          : null
     },
+    onTouchCancel: () => { touchStart.current = null },
     onTouchEnd: (e: ReactTouchEvent<HTMLDivElement>) => {
       const s = touchStart.current
       touchStart.current = null
       const t = e.changedTouches[0]
-      if (s === null || t === undefined) return
+      // another finger is still down: not a single-finger flick
+      if (s === null || t === undefined || e.touches.length > 0) return
       const next = swipePane(narrowPane, t.clientX - s.x, t.clientY - s.y)
       if (next !== null) setNarrowPane(next)
     },
@@ -1454,6 +1467,20 @@ function StudyToastStack(): ReactNode {
 const PANEL_SHELL: { current: { suppressHandBack(fn: () => void): void } | null } = { current: null }
 export function setPanelShell(shell: { suppressHandBack(fn: () => void): void } | null): void {
   PANEL_SHELL.current = shell
+}
+
+/**
+ * The phone-form swipe guard's node test (see views.swipeEligible): a drag
+ * that starts in a text field selects text, and one that starts in a box
+ * which can scroll sideways RIGHT NOW scrolls that box — neither is a pane
+ * flick. Deliberately state-aware: a code block that fits its column has
+ * nothing to scroll, so a flick across it still switches panes.
+ */
+function paneSwipeBlocked(el: Element): boolean {
+  const tag = el.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || (el as HTMLElement).isContentEditable === true) return true
+  const overflowX = getComputedStyle(el).overflowX
+  return (overflowX === 'auto' || overflowX === 'scroll') && el.scrollWidth > el.clientWidth + 1
 }
 
 /** 左栏:course picker, tree, review box, import. */

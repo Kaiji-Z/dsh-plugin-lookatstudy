@@ -53,11 +53,18 @@ export const STUDY_CSS = `
 html[data-dsh-lookatstudy-active] .lks14-shell-view{display:flex;flex-direction:column;height:100%;min-height:0}
 html[data-dsh-lookatstudy-active] [data-pane='conversation'] > :not([data-dsh-lookatstudy-view]),
 html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatstudy-view]){display:none !important}
-[data-dsh-lookatstudy-view]{container-type:inline-size}
 /* the root must be a bounded flex item of the shell-view column — without it
    every column below grew content-sized, the stream never overflowed (the C1
-   scroll-FAB + sticky composer were dead), and the host page scrolled instead */
-.lks14{position:relative;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);overflow:hidden;font-family:var(--dsw-font-family);display:flex;flex-direction:column;flex:1 1 auto;min-height:0}
+   scroll-FAB + sticky composer were dead), and the host page scrolled instead.
+   The root is also the query CONTAINER (2026-11-26 — it used to be the
+   host-side view): it carries the E7 font zoom (panel.tsx sets style.zoom on
+   it), and a size container is measured in its own px — inside a zoomed
+   subtree that is LAYOUT px (measured live: a container inside a zoom:2
+   subtree at width:450px does not match (min-width:500px)). On the view, out
+   of the zoom, the same queries read VISUAL px while every column width below
+   is laid out in zoomed px: at zoom 1.1 a 1000px column held 909px of layout
+   and no breakpoint followed. */
+.lks14{position:relative;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);overflow:hidden;font-family:var(--dsw-font-family);display:flex;flex-direction:column;flex:1 1 auto;min-height:0;container-type:inline-size}
 .lks14 button{font-family:var(--dsw-font-family);cursor:pointer}
 .lks14-body{display:flex;flex:1;min-width:0;min-height:0}
 .lks14-righthalf{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
@@ -76,8 +83,19 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 .lks14-import{margin:8px 0}
 .lks14-hint{font-size:11.5px;color:var(--dsw-alias-label-tertiary);margin-top:6px;line-height:1.6}
 
-/* 中 chat: the tutor stream + its own composer (upstream ChatStream/ChatComposer) */
-.lks14-chat{flex:0 0 auto;width:var(--lks-chat-w,clamp(480px,45%,800px));min-width:0;border-right:none;transition:width 150ms ease}
+/* 中 chat: the tutor stream + its own composer (upstream ChatStream/ChatComposer).
+   The clamp column — row-relative %, fixed, never squeezed (B3) — with a
+   BUDGETED floor (2026-11-26): 45% of the row wants 480–800px, but the
+   notebook keeps its 440px first, so the width is the lesser of that clamp
+   and (row − 446 = NOTE_MIN + this pane's own 6px handle); only when that
+   leaves less than the 320px chat floor does the notebook give way. Before
+   this the three defaults were hard floors — 300 rail + 12 handles + 480
+   chat + 440 notebook = 1232px — against a 900px breakpoint, and every
+   container in between pushed the notebook off-screen (146px at a 1366
+   window with the host sidebar expanded; 387px at zoom 1.1). The numbers
+   are pane-resize.ts's RAIL/CHAT/NOTE constants — tests/pane-resize.test.ts
+   pins the two sources together. */
+.lks14-chat{flex:0 0 auto;width:var(--lks-chat-w,clamp(320px,min(clamp(480px,45%,800px),calc(100% - 446px)),800px));min-width:0;border-right:none;transition:width 150ms ease}
 .lks14-pills{display:inline-flex;gap:2px}
 .lks14-pill{border:none;background:none;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;padding:2px 8px;border-radius:7px;cursor:pointer}
 .lks14-pill:focus-visible{box-shadow:0 0 0 2px var(--dsw-alias-state-business-primary);outline:none}
@@ -129,8 +147,13 @@ html[data-dsh-lookatstudy-active] [class*='centerCol'] > :not([data-dsh-lookatst
 body.pane-dragging{cursor:col-resize;user-select:none}
 body.pane-dragging *{cursor:col-resize}
 
-/* 右 notebook: 讲解/概念图/笔记 (upstream NotebookPanel) */
-.lks14-note{flex:1 1 auto;min-width:440px;padding:0;overflow-y:auto}
+/* 右 notebook: 讲解/概念图/笔记 (upstream NotebookPanel).
+   No hard min-width (2026-11-26): a min-width is the one thing flex cannot
+   honor — when the columns' floors outgrew the container this one simply
+   pushed the notebook past the screen edge (flex 兜不住). The 440px is
+   protected upstream of here instead: by the chat column's budgeted default
+   (above) and by pane-resize's clamp for dragged widths. */
+.lks14-note{flex:1 1 auto;min-width:0;padding:0;overflow-y:auto}
 .lks14-lessonhead{margin:10px 0 6px}
 .lks14-lessonhead h2{margin:0 0 4px;font-size:16px}
 .lks14-meta{font-size:12px;color:var(--dsw-alias-label-secondary);margin:2px 0}
@@ -188,12 +211,20 @@ body.pane-dragging *{cursor:col-resize}
 .lks14-switch-btn{border-radius:999px;padding:4px 16px;font-size:13px;color:var(--dsw-alias-label-secondary);background:transparent}
 .lks14-switch-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .lks14-switch-btn.on{background:color-mix(in srgb,var(--dsw-alias-state-business-primary) 86%,#000);color:#fff;font-weight:600}
-@container (max-width: 900px){
+/* The narrow switch. 960px (was 900, 2026-11-26) is the trio's floor in the
+   panel's own LAYOUT px (the container is the zoomed root): rail 300 + both
+   handles 12 + the 320px chat floor + its handle 6 + a notebook that can
+   still hold its four view tabs on one line (~320). Below it the columns
+   could only be shown squeezed — and before the budgeted chat width they
+   were shown CLIPPED. */
+@container (max-width: 960px){
   .lks14-switch{display:flex}
   .lks14-body{flex-direction:column}
   .lks14-rail{flex:none;max-height:32vh;border-right:none;border-bottom:1px solid var(--dsw-alias-border-l1)}
   .lks14-chat{min-width:0;width:auto;flex:1 1 auto}
-  .lks14-note{flex:1 1 auto;min-height:0}
+  /* the pane IS the column here (on a phone viewport of 390–430px any floor
+     would clip every line's right end — phone-form probe, 2026-11-26) */
+  .lks14-note{flex:1 1 auto;min-height:0;min-width:0}
   .lks14-body[data-pane='rail'] .lks14-righthalf{display:none}
   .lks14-body[data-pane='chat'] .lks14-rail,.lks14-body[data-pane='chat'] .lks14-note,
   .lks14-body[data-pane='note'] .lks14-rail,.lks14-body[data-pane='note'] .lks14-chat{display:none}

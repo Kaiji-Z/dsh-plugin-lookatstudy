@@ -12,7 +12,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mountStudyShell, needsHeal } from '../src/client/shell-entry.ts'
+import { mountStudyShell, needsHeal, drawerIsOpen } from '../src/client/shell-entry.ts'
 
 /* ── a minimal faithful fake DOM: only the selector grammar shell-entry
    actually uses (comma arms of [attr], [attr="v"], [class*="v"], and
@@ -37,8 +37,23 @@ class FakeElement {
   setAttribute(k: string, v: string): void { this.attrs.set(k, v) }
   getAttribute(k: string): string | null { return this.attrs.get(k) ?? null }
   removeAttribute(k: string): void { this.attrs.delete(k) }
-  addEventListener(): void { /* not exercised here */ }
-  removeEventListener(): void { /* not exercised here */ }
+  hasAttribute(k: string): boolean { return this.attrs.has(k) }
+
+  /* the phone-form tests dispatch the entry row's click: listeners are kept
+     per type and a dispatched event's type is recorded on the target. */
+  private listeners = new Map<string, Array<(ev: { type: string }) => void>>()
+  dispatched: string[] = []
+  addEventListener(type: string, fn: (ev: { type: string }) => void): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn])
+  }
+  removeEventListener(type: string, fn: (ev: { type: string }) => void): void {
+    this.listeners.set(type, (this.listeners.get(type) ?? []).filter(l => l !== fn))
+  }
+  dispatchEvent(ev: { type: string }): boolean {
+    this.dispatched.push(ev.type)
+    for (const fn of [...(this.listeners.get(ev.type) ?? [])]) fn(ev)
+    return true
+  }
 
   appendChild(el: FakeElement): FakeElement {
     el.parentElement?.removeOwn(el)
@@ -143,6 +158,11 @@ class FakeDoc {
 
   addEventListener(): void { /* not exercised here */ }
   removeEventListener(): void { /* not exercised here */ }
+  dispatched: string[] = []
+  dispatchEvent(ev: { type: string }): boolean {
+    this.dispatched.push(ev.type)
+    return true
+  }
 }
 
 /** A manually-flushed rAF queue — the coalescing proof rides on it. */
@@ -181,19 +201,45 @@ class FakeMutationObserver {
 interface Env {
   doc: FakeDoc
   raf: FakeRaf
+  /** The host frame around the sidebar column — built only for a drawer mode. */
+  frame: FakeElement | null
   row: () => FakeElement
   view: () => FakeElement | null
   mount(): { dispose(): void }
 }
 
-function makeEnv(): Env {
+/** What the phone-form tests add to the shell: the host frame's drawer state
+ * (dsh 0.2.2+ — `data-sidebar-drawer`, slid in unless `data-sidebar-collapsed`),
+ * the drawer mask's own close handler, and an injected closer. */
+interface DrawerEnv {
+  drawer?: 'open' | 'closed'
+  onMaskClick?: () => void
+  closeDrawer?: (frame: FakeElement) => boolean
+}
+
+function makeEnv(drawer: DrawerEnv = {}): Env {
   const doc = new FakeDoc()
   const raf = new FakeRaf()
   // the host shell: sidebar column (logoRow + newSession button + list) and
   // the center conversation column.
+  let frame: FakeElement | null = null
+  let home: FakeElement = doc.body
+  if (drawer.drawer !== undefined) {
+    frame = doc.createElement('div')
+    frame.setAttribute('data-sidebar-drawer', '')
+    if (drawer.drawer === 'closed') frame.setAttribute('data-sidebar-collapsed', '')
+    doc.body.appendChild(frame)
+    if (drawer.onMaskClick !== undefined) {
+      const mask = doc.createElement('div')
+      mask.setAttribute('data-sidebar-mask', '')
+      mask.addEventListener('click', drawer.onMaskClick)
+      frame.appendChild(mask)
+    }
+    home = frame
+  }
   const sidebar = doc.createElement('div')
   sidebar.setAttribute('data-pane', 'sidebar')
-  doc.body.appendChild(sidebar)
+  home.appendChild(sidebar)
   const root = doc.createElement('div')
   sidebar.appendChild(root)
   const logoRow = doc.createElement('div')
@@ -217,9 +263,12 @@ function makeEnv(): Env {
     MutationObserver: FakeMutationObserver as unknown as new (cb: () => void) => { observe(t: Node, o: unknown): void; disconnect(): void },
     requestAnimationFrame: raf.request,
     cancelAnimationFrame: raf.cancel,
+    ...(drawer.closeDrawer === undefined ? {} : {
+      closeDrawer: (f: HTMLElement) => drawer.closeDrawer!(f as unknown as FakeElement),
+    }),
   })
   return {
-    doc, raf, mount,
+    doc, raf, frame, mount,
     row: () => doc.documentElement.querySelector('[data-dsh-lookatstudy-entry]')!,
     view: () => rootsCreated[0] ?? null,
   }
@@ -324,6 +373,88 @@ test('issue #17: a rebuilt sidebar column falls back to the document query and r
   assert.ok(env.doc.queryCount > 0, 'the dead memo falls back to the document-wide query exactly here')
 
   handle.dispose()
+})
+
+/* ── the phone form (dsh 0.2.2+): the entry row lives inside the host's MODAL
+   navigation drawer. While the drawer is slid in the center column — our
+   panel included — is inert behind its mask, so a row tap that opens the
+   panel must also shut the drawer, exactly like a native session row. Live
+   probe before the fix: the drawer stayed open and the learner had to tap
+   the mask before the panel they had just asked for appeared. ── */
+
+/** The panel's open flag as the takeover publishes it on <html>. */
+const panelActive = (env: Env): string | null => env.doc.documentElement.getAttribute('data-dsh-lookatstudy-active')
+
+test('drawerIsOpen: only a drawer-mode frame WITHOUT the collapsed flag is open', () => {
+  const doc = new FakeDoc()
+  const frame = doc.createElement('div')
+  assert.equal(drawerIsOpen(null), false)
+  assert.equal(drawerIsOpen(undefined), false)
+  assert.equal(drawerIsOpen(frame), false, 'a desktop frame carries no drawer attribute')
+  frame.setAttribute('data-sidebar-drawer', '')
+  assert.equal(drawerIsOpen(frame), true, 'the phone drawer, slid in')
+  frame.setAttribute('data-sidebar-collapsed', '')
+  assert.equal(drawerIsOpen(frame), false, 'the phone drawer, slid out')
+})
+
+test('phone form: opening the panel from an open drawer shuts the drawer (native-row parity)', () => {
+  const closed: FakeElement[] = []
+  const env = makeEnv({ drawer: 'open', closeDrawer: frame => { closed.push(frame); return true } })
+  const handle = env.mount()
+  env.row().dispatchEvent({ type: 'click' })
+  assert.equal(panelActive(env), '', 'the panel opened')
+  assert.equal(closed.length, 1, 'the drawer closer ran exactly once')
+  assert.equal(closed[0], env.frame, 'it received the host frame the sidebar column lives in')
+  handle.dispose()
+})
+
+test('phone form: a shut drawer, a desktop frame, or the row CLOSING the panel leaves the drawer alone', () => {
+  const closed: FakeElement[] = []
+  const closer = (frame: FakeElement): boolean => { closed.push(frame); return true }
+
+  // the drawer exists but is slid out — nothing to close
+  const envShut = makeEnv({ drawer: 'closed', closeDrawer: closer })
+  const handleShut = envShut.mount()
+  envShut.row().dispatchEvent({ type: 'click' })
+  assert.equal(panelActive(envShut), '', 'the panel still opens')
+  assert.equal(closed.length, 0, 'a slid-out drawer is not touched')
+  handleShut.dispose()
+
+  // a desktop frame (no drawer attribute) — the pre-phone behavior, untouched
+  const envDesk = makeEnv({ closeDrawer: closer })
+  const handleDesk = envDesk.mount()
+  envDesk.row().dispatchEvent({ type: 'click' })
+  assert.equal(panelActive(envDesk), '')
+  assert.equal(closed.length, 0, 'desktop never reaches the closer')
+  handleDesk.dispose()
+
+  // the row CLOSING the panel from an open drawer: the learner is still
+  // navigating the drawer, so it stays where it is
+  const envBack = makeEnv({ drawer: 'closed', closeDrawer: closer })
+  const handleBack = envBack.mount()
+  envBack.row().dispatchEvent({ type: 'click' })
+  assert.equal(panelActive(envBack), '', 'opened while the drawer was shut')
+  envBack.frame!.removeAttribute('data-sidebar-collapsed') // the learner opens the drawer
+  envBack.row().dispatchEvent({ type: 'click' })
+  assert.equal(panelActive(envBack), null, 'the second tap hands the column back')
+  assert.equal(closed.length, 0, 'closing the panel never shuts the drawer')
+  handleBack.dispose()
+})
+
+test('phone form: without an injected closer the drawer MASK is clicked (the DOM fallback)', () => {
+  const maskClicks: string[] = []
+  const env = makeEnv({ drawer: 'open', onMaskClick: () => { maskClicks.push('mask') } })
+  const handle = env.mount()
+  env.row().dispatchEvent({ type: 'click' })
+  assert.equal(panelActive(env), '', 'the panel opened')
+  assert.deepEqual(maskClicks, ['mask'], "the host mask's own close handler ran once")
+  handle.dispose()
+  // a drawer frame with no mask at all must not throw
+  const bare = makeEnv({ drawer: 'open' })
+  const bareHandle = bare.mount()
+  assert.doesNotThrow(() => { bare.row().dispatchEvent({ type: 'click' }) })
+  assert.equal(panelActive(bare), '')
+  bareHandle.dispose()
 })
 
 function rafPendingCount(env: Env): number {

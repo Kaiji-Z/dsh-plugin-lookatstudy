@@ -38,10 +38,53 @@ const FAMILY_SELECTORS = ['[data-dsh-warroom-entry]', '[data-dsh-ssh-entry]', '[
 const SIDEBAR_COLUMN_SELECTOR = '[data-pane="sidebar"], [class*="sidebarCol"]'
 const CENTER_COLUMN_SELECTOR = '[data-pane="conversation"], [class*="centerCol"]'
 
+/**
+ * Closes the host's phone-form navigation drawer — the modal sidebar the entry
+ * row lives in below the host's 768px drawer breakpoint (dsh 0.2.2+). Returns
+ * whether anything was closed.
+ */
+export type DrawerCloser = (frame: HTMLElement) => boolean
+
+/**
+ * The DOM fallback closer: the drawer mask carries the host's own close
+ * handler, so a dispatched click shuts the drawer without reaching any host
+ * service. Compositions that can reach `ctx.layout` pass the toggle instead.
+ * @param frame - the host frame element carrying `data-sidebar-drawer`.
+ * @returns whether a mask was found and clicked.
+ */
+export function clickDrawerMask(frame: HTMLElement): boolean {
+  const mask = frame.querySelector<HTMLElement>('[data-sidebar-mask]')
+  if (mask === null) return false
+  // MouseEvent is absent in headless runtimes (the tests drive this default path)
+  mask.dispatchEvent(typeof MouseEvent === 'function'
+    ? new MouseEvent('click', { bubbles: true })
+    : new Event('click', { bubbles: true }))
+  return true
+}
+
+/**
+ * Whether a host frame is a phone-form drawer that is currently OPEN. Pure —
+ * the phone-form probe and the shell-entry tests pin it. The frame carries
+ * `data-sidebar-drawer` below the host's breakpoint and drops
+ * `data-sidebar-collapsed` while the drawer is slid in.
+ * @param frame - the sidebar column's parent (the host frame), or null.
+ */
+export function drawerIsOpen(frame: Pick<HTMLElement, 'hasAttribute'> | null | undefined): boolean {
+  return frame !== null && frame !== undefined
+    && frame.hasAttribute('data-sidebar-drawer')
+    && !frame.hasAttribute('data-sidebar-collapsed')
+}
+
 /** Minimal mounting face (injectable for tests). */
 interface SidebarMountDeps {
-  createRoot(container: HTMLElement): { render(node: ReactNode): void; unmount(): void }
+  /** Defaults to react-dom's `createRoot`. */
+  createRoot?(container: HTMLElement): { render(node: ReactNode): void; unmount(): void }
   doc?: Document
+  /**
+   * Shuts the phone-form navigation drawer after the row OPENED the panel
+   * (native session rows do the same). Defaults to the mask click.
+   */
+  closeDrawer?: DrawerCloser
   /** issue #17: the self-heal machinery's DOM faces, injectable so the
    * regression test can drive mutation batches headlessly (Node has no
    * MutationObserver/rAF). */
@@ -152,7 +195,19 @@ export function mountStudyShell(
     row.innerHTML = `<span class="lks14-sidebar-icon">${STUDY_ICON}</span><span class="lks14-sidebar-label">${text}</span>`
   }
   paintRow()
-  row.addEventListener('click', () => state.setOpen(!state.isOpen()))
+  // The phone form (dsh 0.2.2+): below the host's drawer breakpoint the
+  // sidebar is a MODAL drawer — while it is slid in, the center column (our
+  // panel included) is inert behind its mask. Opening the panel from inside
+  // it must shut the drawer too, exactly like a native session row does;
+  // otherwise the learner taps 「学习」 and stares at a drawer that hides the
+  // panel they just asked for. Closing keeps the drawer open: the learner is
+  // still navigating it.
+  row.addEventListener('click', () => {
+    const opening = !state.isOpen()
+    state.setOpen(opening)
+    const frame = opening ? (knownColumn?.parentElement ?? null) : null
+    if (frame !== null && drawerIsOpen(frame)) (dom?.closeDrawer ?? clickDrawerMask)(frame)
+  })
 
   let knownColumn: HTMLElement | undefined
   const placeRow = (): boolean => {
@@ -179,7 +234,7 @@ export function mountStudyShell(
   // --- Center-column view ------------------------------------------------
   let container: HTMLElement | undefined
   let root: { render(node: ReactNode): void; unmount(): void } | undefined
-  const roots = dom ?? { createRoot: (el: HTMLElement) => createRoot(el) }
+  const createRootFn = dom?.createRoot ?? ((el: HTMLElement) => createRoot(el))
   const ensureView = (): void => {
     if (container !== undefined) return
     const column = doc.querySelector<HTMLElement>(CENTER_COLUMN_SELECTOR)
@@ -189,7 +244,7 @@ export function mountStudyShell(
     container.setAttribute('data-dsh-plugin', 'lookatstudy')
     container.className = 'lks14-shell-view'
     column.appendChild(container)
-    root = roots.createRoot(container)
+    root = createRootFn(container)
     root.render(createElement(view))
   }
 

@@ -100,6 +100,13 @@ gate('bundle', () => {
     [client, '/lookatstudy/api/active', 'activation route wired into the client'],
     [client, 'flex:0 0 var(--lks-rail-w,300px)', 'upstream 300px rail column (var fallback since the v0.29 pane-resize port)'],
     [client, 'clamp(480px,45%,800px)', 'upstream chat clamp column (row-relative)'],
+    // the three-column fit (2026-11-26): the chat default is budgeted against
+    // the notebook's 440, the switch floor sits on the trio's real minimum, and
+    // the notebook's view tabs never break a label (the notebook has no hard
+    // floor any more — it flexes in the 960–1100px band)
+    [client, 'clamp(320px,min(clamp(480px,45%,800px),calc(100% - 446px)),800px)', 'three-column fit: the budgeted chat default'],
+    [client, '@container (max-width: 960px)', 'three-column fit: the narrow switch floor'],
+    [client, 'lks14-viewtab{white-space:nowrap}', 'three-column fit: view-tab labels never break'],
     [client, 'lks14-composer', 'the chat pane owns its composer (host composer untouched)'],
     [client, 'M2 3.2C3.2', 'sidebar entry icon (open-book glyph)'],
     // rail/tree contracts that survived the refactor
@@ -195,6 +202,17 @@ gate('bundle', () => {
     [client, 'lks14-emptycard', 'the empty-state card with 3D CTA'],
     [client, 'lks14-soulrow', 'mode pills ride the composer capsule'],
     [client, 'lks14-railcourse', 'course rows in the import pane'],
+    // the phone form (2026-11-26): dsh 0.2.2's modal-drawer posture — the
+    // entry row shuts the drawer it opened from; the pane-swipe guard and the
+    // coarse-pointer block (touch sizes + 16px entry fields) ride the bundle
+    [client, 'data-sidebar-drawer', 'phone form: drawer-mode detection (opening the panel shuts the drawer)'],
+    [client, 'data-sidebar-mask', 'phone form: the drawer-mask fallback closer'],
+    [client, 'swipeEligible', 'phone form: the pane-swipe guard'],
+    [client, '@media (pointer: coarse)', 'phone form: touch sizes + 16px entry fields'],
+    [client, '@container (max-width: 520px)', 'phone form: the compact app header'],
+    [client, 'min-height:0;min-width:0', 'phone form: the narrow notebook lifts the 440px floor'],
+    [client, '.lks14-starter{flex:none}', 'phone form: the starter row scrolls, its chips never squeeze'],
+    [client, '.lks14-composertext{resize:none}', 'phone form: no resize grip under a finger'],
     // 0.18.0 P11a (C-track quick wins)
     [client, 'lks14-scrollfab', 'the scroll-to-bottom FAB'],
     [client, 'lks-btn-send stop', 'the stop twin of send'],

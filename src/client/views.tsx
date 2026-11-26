@@ -343,6 +343,36 @@ export function swipePane(pane: 'rail' | 'chat' | 'note', dx: number, dy: number
 }
 
 /**
+ * Phone-form guard for `swipePane`: a flick is only a pane gesture where a
+ * finger drag is not ALREADY something else. `blocks` names the nodes a drag
+ * must not be stolen from — text fields (the drag selects text) and boxes
+ * that can scroll horizontally right now (code blocks, wide tables, the
+ * starters strip — the drag scrolls them). The walk climbs from the touch
+ * target through `parent` to the pane root (`boundary`), so nothing outside
+ * the pane body is consulted. Live-caught on a phone viewport: one 120px
+ * flick inside the chat stream flipped 对话 → 黑板, and the same handler sat
+ * under every code block in the thread. Pure — the node type, the parent
+ * step and the block test are all the caller's, so no DOM type leaks in.
+ * @param target - the touch's target element.
+ * @param boundary - the pane body the touch handlers ride (null = walk to the root).
+ * @param parent - the next node up the chain (null ends it).
+ * @param blocks - whether a drag starting at this node is text selection or a horizontal scroll.
+ * @returns whether the gesture may switch panes.
+ */
+export function swipeEligible<N>(
+  target: N | null,
+  boundary: N | null | undefined,
+  parent: (node: N) => N | null,
+  blocks: (node: N) => boolean,
+): boolean {
+  for (let node = target; node !== null; node = parent(node)) {
+    if (blocks(node)) return false
+    if (node === boundary) return true
+  }
+  return true
+}
+
+/**
  * C12 selection-popover settle: coarse pointers need a longer quiet window
  * (upstream's 600/250 two-tier). Pure.
  */

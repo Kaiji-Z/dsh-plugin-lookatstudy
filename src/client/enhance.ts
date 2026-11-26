@@ -286,6 +286,19 @@ export async function enhanceCode(container: HTMLElement): Promise<number> {
   return replaced
 }
 
+/** The render id seed is GLOBAL, not per container (2026-11-26): mermaid's
+ *  render() builds its measuring tree under the given id, removes any existing
+ *  element with that id from the document BEFORE drawing (removeExistingElements),
+ *  and leaves nothing behind — so two containers rendering `lks-mermaid-0`
+ *  (the teach prose AND a settled chat row both enhance, artifact cards do too)
+ *  race each other: the later render deletes the earlier SVG from the page, and
+ *  a render whose temporary tree is torn down mid-flight measures 0×0 and
+ *  collapses to a 16px blank box. Live-caught on the phone form (the diagram
+ *  in the lesson prose died whenever a chat message rendered its own diagram)
+ *  and reproduced at desktop widths — it was a race, so every earlier probe
+ *  that measured before the CDN pipeline finished read green. */
+let mermaidRenderSeq = 0
+
 /** Render mermaid fence blocks to SVG (ELK layout via the registered loader);
  *  the flowchart prefix rewrite is upstream's mermaid-elk-rewrite, vendored. */
 export async function enhanceDiagrams(container: HTMLElement): Promise<number> {
@@ -297,7 +310,7 @@ export async function enhanceDiagrams(container: HTMLElement): Promise<number> {
     if (code.dataset.lksEnhanced === '1') continue
     code.dataset.lksEnhanced = '1'
     try {
-      const { svg } = await mermaid.render(`lks-mermaid-${replaced}`, rewriteFlowchartToElk(code.textContent ?? ''))
+      const { svg } = await mermaid.render(`lks-mermaid-${String(mermaidRenderSeq++)}`, rewriteFlowchartToElk(code.textContent ?? ''))
       const wrap = document.createElement('div')
       wrap.className = 'lks-mermaid'
       wrap.innerHTML = svg

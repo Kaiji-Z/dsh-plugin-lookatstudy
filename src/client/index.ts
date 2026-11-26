@@ -16,7 +16,7 @@ import type { ReactNode } from 'react'
 import type { ClientContext } from './faces.ts'
 import { ensureStudyStyles } from './styles.ts'
 import { studyPanelView, setPanelShell } from './panel.tsx'
-import { mountStudyShell } from './shell-entry.ts'
+import { clickDrawerMask, mountStudyShell } from './shell-entry.ts'
 import { StudySettingsSection } from './settings.tsx'
 import { StudyDockPill } from './dock.tsx'
 import { StudyAnswerView, StudyDueView, StudyExamView, StudyLessonView, type ToolViewPropsFace } from './toolviews.tsx'
@@ -48,7 +48,33 @@ export function apply(ctx: ClientContext): void {
 
   // The study panel: sidebar row in, center-column takeover out. The host
   // session list rides along so USER navigation hands the column back.
-  const shell = mountStudyShell(studyPanelView(ctx), () => tr('tab.label'), undefined, ctx.sessions)
+  // The phone form (dsh 0.2.2+): the panel is opened from inside the host's
+  // modal navigation drawer, which must then shut — the same
+  // `ctx.layout.toggleSidebar()` face the host sidebar's own rows call
+  // (below the auto-collapse breakpoint it flips `narrowExpanded`). The
+  // layout face is reached the only way a plugin scope can (a runtime
+  // inject); compositions without the service simply never fire the
+  // callback and fall back to the drawer mask click — and a client runtime
+  // without the registry mixin at all skips the inject (feature-detect, the
+  // staging-mode idiom: one bundle serves every host generation).
+  let toggleHostSidebar: (() => void) | undefined
+  const injectFace = (ctx as unknown as { inject?: (deps: string[], cb: (scoped: unknown) => void) => unknown }).inject
+  if (typeof injectFace === 'function') {
+    injectFace.call(ctx, ['layout'], (layoutCtx) => {
+      toggleHostSidebar = () => { (layoutCtx as unknown as { layout: { toggleSidebar(): void } }).layout.toggleSidebar() }
+      const scoped = layoutCtx as unknown as { effect(setup: () => () => void, label: string): void }
+      scoped.effect(() => () => { toggleHostSidebar = undefined }, 'lookatstudy.drawer()')
+    })
+  }
+  const shell = mountStudyShell(studyPanelView(ctx), () => tr('tab.label'), {
+    closeDrawer: (frame) => {
+      if (toggleHostSidebar !== undefined) {
+        toggleHostSidebar()
+        return true
+      }
+      return clickDrawerMask(frame)
+    },
+  }, ctx.sessions)
   setPanelShell(shell)
   ctx.effect(() => () => {
     setPanelShell(null)

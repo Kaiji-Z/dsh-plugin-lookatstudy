@@ -233,15 +233,128 @@ test('the B-track skeleton: floating rail chrome, swapped widths, de-carded assi
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railtrack\{[^}]*width:200%/, 'map/import panes slide horizontally')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-railscroll\{[^}]*padding:112px/, 'the scroller reserves the single-card chrome (0.19: 196 -> 112px)')
   assert.doesNotMatch(STUDY_CSS, /\.lks14-colhead\{/, 'the 课程/导师/黑板 column header rows are gone (upstream has none)')
-  // B3: the width logic swap (v0.29 pane-resize: clamp rides the var fallback)
-  assert.match(STUDY_CSS, /\.lks14-chat\{flex:0 0 auto;width:var\(--lks-chat-w,clamp\(480px,45%,800px\)\)/, 'chat is the clamp column (row-relative %, fixed, never squeezed)')
-  assert.match(STUDY_CSS, /\.lks14-note\{flex:1 1 auto;min-width:440px/, 'the notebook takes the remaining width')
+  // B3: the width logic swap (v0.29 pane-resize: clamp rides the var fallback).
+  // Budgeted since 2026-11-26: the clamp is capped at (row − 446) so the
+  // notebook keeps its 440 BEFORE the chat gets its 480, and the floor drops
+  // to the hard 320 only when the notebook must give way — the unbudgeted
+  // clamp + the notebook's hard 440 floor summed past the container in the
+  // 960–1232px band and pushed the notebook off-screen.
+  assert.match(STUDY_CSS, /\.lks14-chat\{flex:0 0 auto;width:var\(--lks-chat-w,clamp\(320px,min\(clamp\(480px,45%,800px\),calc\(100% - 446px\)\),800px\)\)/, 'chat is the clamp column (row-relative %, fixed, never squeezed) — capped at what leaves the notebook its 440 plus the pane handle')
+  assert.match(STUDY_CSS, /\.lks14-note\{flex:1 1 auto;min-width:0;padding:0;overflow-y:auto\}/, 'the notebook takes the remaining width with NO hard floor — a min-width is the one thing flex cannot honor, and it is what pushed the column off-screen')
+  // …and the numbers are pane-resize.ts's: tests/pane-resize.test.ts pins the two sources together
   // B6: assistant prose is cardless
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-msg-assistant\{background:none/, 'assistant text is full-width prose, not a bubble card')
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-msg-user\{align-self:flex-end;max-width:85%\}/, 'user bubbles right-align at 85%')
   // B5: the reading column — 0.25.3 owner directive retired the centered
   // 960px cap; the notebook fills the whole right column
   assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-notebody\{margin:0;width:100%/, 'notebook content fills the column width (owner 0.25.3)')
+})
+
+test('the phone form (2026-11-26): notebook floor, header compaction, touch sizes, starter chips and 16px fields stay scoped', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  // a top-level block's body: from its opening brace to the first line that is only a closing brace
+  const block = (css: string, head: string): string => {
+    const m = new RegExp(`${head.replace(/[(){}[\]/.]/g, '\\$&')}\\{([\\s\\S]*?)\\n\\}`).exec(css)
+    return m === null ? '' : m[1]!
+  }
+  const count = (haystack: string, needle: string): number => haystack.split(needle).length - 1
+  // the sheet with every coarse-pointer block stripped: what a mouse sees
+  const fineOf = (css: string): string => css.replace(/@media \(pointer: coarse\)\{[\s\S]*?\n\}/g, '')
+
+  // F2 — the narrow-mode pane IS the column (the phone-form fix: on a
+  // 390–430px viewport any floor clipped 10–50px off every line's right end)
+  const narrow = block(STUDY_CSS, '@container (max-width: 960px)')
+  assert.match(narrow, /\.lks14-note\{flex:1 1 auto;min-height:0;min-width:0\}/, 'the narrow notebook pane IS the column, not a 440px minimum')
+  assert.doesNotMatch(STUDY_CSS, /\.lks14-note\{[^}]*min-width:[1-9]/, 'no notebook rule anywhere carries a hard min-width (2026-11-26: the desktop floor is gone too — see the three-column fit test)')
+
+  // F3 — the header compaction rides its own narrow container block, placed
+  // after the header's base rule (equal specificity — the later rule wins)
+  const compact = block(UPSTREAM_CSS, '@container (max-width: 520px)')
+  assert.match(compact, /\.lks-ui \.lks14-appheader\{gap:8px\}/, 'the header gaps tighten')
+  assert.match(compact, /\.lks-ui \.lks-hdr-xpbar,\.lks-ui \.lks-hdr-zoom-val\{display:none\}/, 'the XP track and the zoom percentage give their width back to the title')
+  assert.ok(!compact.includes('lks-hdr-title'), 'the title is never hidden — it is the elastic item that receives the room')
+  // …and ONLY inside that block: a wide column keeps the full header chrome
+  assert.equal(count(UPSTREAM_CSS, '.lks-hdr-zoom-val{display:none}'), count(compact, '.lks-hdr-zoom-val{display:none}'), 'the zoom percentage is hidden in the compact header and nowhere else')
+  assert.ok(UPSTREAM_CSS.indexOf('@container (max-width: 520px)') > UPSTREAM_CSS.indexOf('.lks-ui .lks14-appheader{position:relative'), 'the compaction follows the header base rule')
+
+  // F6 — touch sizes under coarse pointers only
+  const coarseBlocks = [...UPSTREAM_CSS.matchAll(/@media \(pointer: coarse\)\{([\s\S]*?)\n\}/g)].map(m => m[1]!)
+  assert.ok(coarseBlocks.length >= 2, 'a touch block and an entry-field block')
+  const touch = coarseBlocks.find(b => b.includes('.lks-ui button{')) ?? ''
+  assert.match(touch, /\.lks-ui button\{min-width:24px;min-height:24px\}/, "WCAG 2.2's 24×24 target floor covers every button in the panel")
+  for (const rule of [
+    '.lks-ui .lks14-switch-btn{min-height:36px', '.lks-ui .lks-btn{min-height:36px}',
+    '.lks-ui .lks-btn-send{width:44px;height:44px}', '.lks-ui .lks-btn-attach{width:40px;height:40px}',
+    '.lks-ui .lks14-ctxring{width:36px;height:36px}', '.lks-ui .lks14-msgaction{width:36px;height:36px',
+    '.lks-ui .lks14-pill{min-height:32px', '.lks-ui .lks-hdr-zoom-btn{min-width:36px;min-height:32px',
+    '.lks-ui .lks14-starter{min-height:32px}', // a one-line starter chip is ~25px tall
+    '.lks-ui .lks14-viewtab,.lks-ui .lks-railtab{min-height:36px}',
+    '.lks-ui .lks14-railscroll{padding-top:140px}', // the floating rail chrome grew: so does its reservation
+    '.lks-ui .lks14-composertext{resize:none}', // the manual resize grip is a mouse affordance
+  ]) assert.ok(touch.includes(rule), `touch rule missing: ${rule}`)
+
+  // the starter row scrolls instead of squeezing (styles.ts: nowrap +
+  // overflow-x:auto): without flex:none the chips shrank and their labels
+  // broke mid-word at phone width. Unconditional — it is the column's width
+  // that squeezes, not the pointer — and it must survive a fine-pointer strip.
+  assert.ok(UPSTREAM_CSS.includes('\n.lks-ui .lks14-starter{flex:none}'), 'starter chips keep their natural width at the top level of the sheet')
+  assert.ok(fineOf(UPSTREAM_CSS).includes('.lks-ui .lks14-starter{flex:none}'), '…on mouse-driven narrow windows too')
+
+  // F5 — 16px entry fields (iOS Safari focus zoom) under coarse pointers only.
+  // :is() is load-bearing — a selector list is scored per matching arm, and a
+  // bare `.lks-ui textarea` arm (0,1,1) loses to the skin's
+  // `.lks-ui .lks14-composertext` (0,2,0); the live probe caught the composer
+  // at 14px under a rule that merely "existed".
+  const fields = coarseBlocks.find(b => b.includes('font-size:16px')) ?? ''
+  assert.match(fields, /\.lks-ui :is\(input:not\(\[type='file'\]\):not\(\[type='checkbox'\]\):not\(\[type='radio'\]\),textarea\),\.lks-root \.lks-set-input\{font-size:16px\}/, 'every text field steps to the 16px touch size — scored as one :is() so no arm can lose to a skinned field class; the settings page (a .lks-root host surface) included')
+  assert.ok(!fields.includes('select'), 'a select opens a picker wheel and never zooms — it keeps its density')
+  assert.ok(!/\.(lks-ui|lks-root) (input|textarea)[,{]/.test(fields), 'no bare element arm: an un-wrapped textarea/input arm would score below the skinned field classes')
+
+  // scope pins — nothing touch-sized leaks to fine pointers: a mouse keeps the desktop density
+  const fine = fineOf(UPSTREAM_CSS)
+  for (const leak of ['.lks-ui button{min-width:24px', 'width:44px;height:44px', 'padding-top:140px', 'min-width:36px;min-height:32px', '.lks14-starter{min-height:32px}', 'resize:none']) {
+    assert.ok(!fine.includes(leak), `touch rule leaked outside the coarse block: ${leak}`)
+  }
+  // order pins — each coarse override follows the base rule it beats at equal specificity
+  assert.ok(UPSTREAM_CSS.indexOf('.lks-ui .lks14-msgaction{width:36px') > UPSTREAM_CSS.indexOf('.lks-ui .lks14-msgaction{display:inline-flex'), 'the 36px speak action follows the 28px anatomy')
+  assert.ok(UPSTREAM_CSS.indexOf('.lks-ui .lks14-railscroll{padding-top:140px}') > UPSTREAM_CSS.indexOf('.lks-ui .lks14-railscroll{height:100%'), 'the 140px reservation follows the 112px one')
+  assert.ok(UPSTREAM_CSS.indexOf('.lks-ui .lks14-composertext{resize:none}') > UPSTREAM_CSS.indexOf('.lks-ui .lks14-composertext{resize:vertical'), 'the touch no-grip rule follows the vertical-grip rule')
+})
+
+test('three-column fit (2026-11-26): the zoomed root is the query container, the switch floor is derived, view-tab labels never break', async () => {
+  const { UPSTREAM_CSS } = await import('../src/client/upstream-theme.ts')
+  const { CHAT_HARD_FLOOR, HANDLE_W, NOTE_MIN, RAIL_DEFAULT, defaultChatWidth } = await import('../src/client/pane-resize.ts')
+  // the container: a size container is measured in its OWN px, and the panel
+  // root carries the E7 font zoom — so every @container below speaks layout
+  // px and each breakpoint follows the zoom the way the px-fixed columns do.
+  // On the host-side view (outside the zoom) they read VISUAL px: at zoom 1.1
+  // a 1000px column held 909px of layout and no breakpoint moved (measured
+  // live — 19 of 48 width×sidebar×zoom combinations clipped the notebook).
+  assert.match(STUDY_CSS, /\.lks14\{[^}]*container-type:inline-size/, 'the panel root is the query container')
+  assert.doesNotMatch(STUDY_CSS, /\[data-dsh-lookatstudy-view\]\{container-type/, 'the host-side view no longer is — it sits outside the zoom root')
+  // the switch floor is DERIVED, not magic: one layout px above it the chat
+  // sits on its hard floor and the notebook still holds four one-line view
+  // tabs (~320). The old 900 floor left the notebook 269px there. (The row
+  // is container − rail − the RAIL's handle; the chat's own handle is inside.)
+  const bp = /@container \(max-width: (\d+)px\)\{\n  \.lks14-switch\{display:flex\}/.exec(STUDY_CSS)
+  assert.ok(bp !== null, 'the narrow switch block')
+  const rowOf = (container: number): number => container - RAIL_DEFAULT - HANDLE_W
+  const rowW = rowOf(Number(bp![1]) + 1)
+  assert.equal(defaultChatWidth(rowW), CHAT_HARD_FLOOR, 'at the floor the chat sits on its hard floor')
+  const note = rowW - HANDLE_W - defaultChatWidth(rowW)
+  assert.ok(note >= 320 && note <= 360, `the notebook gets ${String(Math.round(note))}px just above the floor — room for its tabs`)
+  // …and the 900 floor would NOT have cleared it: the derivation has teeth
+  const at900 = rowOf(901) - HANDLE_W - defaultChatWidth(rowOf(901))
+  assert.ok(at900 < 320, `at the old 900 floor the notebook would get ${String(Math.round(at900))}px`)
+  // the reservation baked into the chat default is the notebook minimum plus the pane's own handle
+  assert.match(STUDY_CSS, new RegExp(`calc\\(100% - ${String(NOTE_MIN + HANDLE_W)}px\\)`), 'NOTE_MIN + HANDLE_W')
+  // view tabs: a CJK label may break between any two characters, so the
+  // evenly divided tabs (flex:1 1 0, upstream verbatim) read 概/念/图 once the
+  // notebook runs under 440 — labels are nowrap, and a row that cannot hold
+  // four whole tabs wraps TABS, never words
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-viewtab\{white-space:nowrap\}/, 'a view-tab label never breaks')
+  assert.match(UPSTREAM_CSS, /\.lks-ui \.lks14-viewtabs\{flex-wrap:wrap\}/, 'the tab row wraps whole tabs')
+  assert.ok(UPSTREAM_CSS.indexOf('.lks-ui .lks14-viewtab{white-space:nowrap}') > UPSTREAM_CSS.indexOf('.lks-ui .lks14-viewtab{display:inline-flex'), 'the nowrap follows the evenly-divided rule (equal specificity — the later rule wins)')
 })
 
 test('friendlyError maps raw host errors to locale lines; the raw text stays console-only (0.19)', async () => {
@@ -288,6 +401,39 @@ test('the C-track interaction folds: sticky-follow, swipe, settle tiers, random 
   const list = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
   for (let i = 0; i < 20; i++) assert.ok(list.includes(views.pickRandomDue(list)!))
   assert.equal(views.pickRandomDue([]), null)
+})
+
+test('phone form: swipeEligible only lets a flick through where the drag is not already a scroll or a text selection', async () => {
+  const { swipeEligible } = await import('../src/client/views.tsx')
+  type N = { name: string, parentElement: N | null }
+  const mk = (name: string, parentElement: N | null = null): N => ({ name, parentElement })
+  const host = mk('host') // outside the pane body — never consulted
+  const body = mk('body', host)
+  const stream = mk('stream', body)
+  const row = mk('row', stream)
+  const code = mk('code', row) // a wide code block: scrolls sideways
+  const field = mk('textarea', row) // a drag here selects text
+  const plain = mk('p', row)
+  const token = mk('span', code)
+  const blocked = new Set(['code', 'textarea'])
+  const blocks = (n: N): boolean => blocked.has(n.name)
+
+  assert.equal(swipeEligible(plain, body, n => n.parentElement, blocks), true, 'a paragraph in the stream is a pane flick')
+  assert.equal(swipeEligible(code, body, n => n.parentElement, blocks), false, 'a wide code block scrolls itself')
+  assert.equal(swipeEligible(field, body, n => n.parentElement, blocks), false, 'a drag in a text field selects text')
+  assert.equal(swipeEligible(token, body, n => n.parentElement, blocks), false, 'the walk climbs: a token inside the scrolling block is blocked too')
+  assert.equal(swipeEligible(body, body, n => n.parentElement, blocks), true, 'the pane root itself is an ordinary start')
+
+  // the boundary ENDS the walk: a blocked node outside the pane body (the
+  // host frame's own scroll containers) must not silence every flick
+  blocked.add('host')
+  assert.equal(swipeEligible(plain, body, n => n.parentElement, blocks), true, 'the host frame sits beyond the pane root')
+  // no boundary (the ref is not attached yet): the walk climbs to the root
+  assert.equal(swipeEligible(plain, null, n => n.parentElement, blocks), false, 'without a boundary the host frame IS consulted')
+  blocked.delete('host')
+  assert.equal(swipeEligible(token, undefined, n => n.parentElement, blocks), false, 'the chain is still honored')
+  // a missing target blocks nothing — the distance/dominance rule still decides
+  assert.equal(swipeEligible(null, body, n => n.parentElement, blocks), true)
 })
 
 test('quiz optionTone never leaks correctness before the submit (C5)', async () => {

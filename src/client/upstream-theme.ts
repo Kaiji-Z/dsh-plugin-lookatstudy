@@ -1011,4 +1011,101 @@ export const UPSTREAM_CSS = `
   .lks-ui .lks14-msg-assistant{max-width:96ch;margin-inline:auto}
 }
 
+/* ══════════ the phone form (2026-11-26) ══════════ */
+/* dsh 0.2.2 ships a phone posture: below 768px the sidebar becomes a modal
+   drawer and the center column IS the screen (390–430px on current phones).
+   The narrow container query in styles.ts already folds the three columns
+   into the 课程/对话/黑板 switch (built for narrow desktop windows; it turns
+   out to carry this posture's layout too). The rules below carry the rest,
+   each one live-measured by scripts/probe-phone.mjs. */
+
+/* The app header's fixed chrome — XP track (92px), streak, level, model chip,
+   zoom pair with its percentage — sums past a phone's width: at 390px the
+   title (flex:1, the ONLY elastic item) starved to 0px and the zoom pair
+   spilled 10px off-screen. On a phone-width column the XP TRACK and the zoom
+   PERCENTAGE go: the bolt + Lv chip still carry progress (the rail card and
+   the settings recap hold the exact figures) and the pair's disabled states
+   already say which tier is active. The takeover view is the query container
+   (styles.ts), so a narrow desktop window gets the same relief. */
+@container (max-width: 520px){
+  .lks-ui .lks14-appheader{gap:8px}
+  .lks-ui .lks-hdr-xpbar,.lks-ui .lks-hdr-zoom-val{display:none}
+}
+
+/* The starter chips ride a one-line sideways scroller (styles.ts: nowrap +
+   overflow-x:auto), but a flex item shrinks by default: at phone width the
+   four chips squeezed to ~77px each and their labels broke mid-word (深入这/点)
+   instead of the row scrolling. flex:none keeps every chip at its natural
+   width — on wide columns nothing changes (the chips never needed to shrink),
+   and where they do not fit the row scrolls as it was built to. Unconditional
+   on purpose: the squeeze is a function of the column's width, not of the
+   pointer (a 520px desktop window hits it too). */
+.lks-ui .lks14-starter{flex:none}
+
+/* The notebook's view tabs divide the column evenly (flex:1 1 0, upstream
+   verbatim above) and a CJK label may break between ANY two characters — so
+   once the notebook runs narrower than upstream's 440 floor, a tab shrank to
+   its min-content (one character wide) and read 概/念/图 on three lines. It
+   can now: the notebook column has no hard floor any more (styles.ts — a
+   floor is what pushed it off-screen), it just flexes in the 960–1100px
+   band. Labels are nowrap; a row that cannot hold four whole tabs wraps
+   TABS, never words. (The fill-mode capsule already hugs its labels.) */
+.lks-ui .lks14-viewtabs{flex-wrap:wrap}
+.lks-ui .lks14-viewtab{white-space:nowrap}
+
+/* Touch. The desktop density (17–29px chips) is right under a mouse; under
+   a thumb every control clears WCAG 2.2's 24×24 target minimum (2.5.8), and
+   the controls a learner hits constantly — the pane switch, composer
+   actions, chips, tabs, copy buttons — step to 32–44px (Apple's 44pt; the
+   host's own phone chrome runs 28–36px). Scoped to coarse pointers, so a
+   mouse never sees any of it. */
+@media (pointer: coarse){
+  .lks-ui button{min-width:24px;min-height:24px}
+  .lks-ui .lks14-switch-btn{min-height:36px;padding:6px 16px}
+  .lks-ui .lks-btn{min-height:36px}
+  .lks-ui .lks-btn-send{width:44px;height:44px}
+  .lks-ui .lks-btn-attach{width:40px;height:40px}
+  .lks-ui .lks14-ctxring{width:36px;height:36px}
+  .lks-ui .lks14-msgaction{width:36px;height:36px;padding:10px}
+  .lks-ui .lks14-pill{min-height:32px;padding:5px 10px}
+  .lks-ui .lks14-starter{min-height:32px}
+  .lks-ui .lks14-threadchip,.lks-ui .lks-modelface-chip{min-height:32px;padding:6px 10px}
+  .lks-ui .lks-hdr-zoom-btn{min-width:36px;min-height:32px;padding:6px}
+  .lks-ui .lks14-toolretry{min-height:32px;padding:6px}
+  .lks-ui .lks-codeblock-copy{min-height:32px;padding:6px 8px}
+  .lks-ui .lks-codehead-copy{min-width:32px;min-height:32px;padding:8px;font-size:13px}
+  .lks-ui .lks14-viewtab,.lks-ui .lks-railtab{min-height:36px}
+  .lks-ui .lks-readtoggle,.lks-ui .lks-railpill,.lks-ui .lks-langview button{min-height:32px}
+  .lks-ui .lks-readstop,.lks-ui .lks-toast-close{width:32px;height:32px}
+  .lks-ui .lks-toast-action{min-height:32px}
+  /* the floating rail chrome grew with its controls: the map pane's scroll
+     content reserves the chrome's height (112px at desktop density, with
+     3px of slack), so the reservation grows with it or the first section
+     head slides under the glass card */
+  .lks-ui .lks14-railscroll{padding-top:140px}
+  /* the composer's manual resize grip (above) is a mouse affordance — a 14px
+     corner handle a finger cannot hold, and the composer already grows with
+     its content; touch devices get no grip. (Desktop Chromium under touch
+     emulation still paints it: its corner dot peeked out over the card's
+     rounded edge. No physical device has been checked for the grip.) */
+  .lks-ui .lks14-composertext{resize:none}
+}
+
+/* iOS Safari zooms the visual viewport for every focused text field under
+   16px and only zooms back out once the field loses focus — the host's own
+   phone tests hold every text field it owns to that step (it does the same
+   per field under this media query). Touch devices get 16px entry fields. A
+   select opens a picker wheel and never zooms, so the course picker keeps
+   its density; the settings page (a host surface scoped .lks-root, not
+   .lks-ui) is named separately.
+   :is() is load-bearing: a selector list is scored per matching arm, and a
+   bare ".lks-ui textarea" arm (0,1,1) LOSES to the skin's
+   ".lks-ui .lks14-composertext" (0,2,0) — the first cut shipped exactly that
+   and the composer stayed at 14px. :is() scores the whole list at its most
+   specific arm, so every field clears the skin. (No backticks in this
+   comment: they would terminate the stylesheet's template literal.) */
+@media (pointer: coarse){
+  .lks-ui :is(input:not([type='file']):not([type='checkbox']):not([type='radio']),textarea),.lks-root .lks-set-input{font-size:16px}
+}
+
 `

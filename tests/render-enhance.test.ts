@@ -88,3 +88,29 @@ test('mermaid hardening (audit A1): untrusted diagram sources render under stric
   const { MERMAID_SECURITY_LEVEL } = await import('../src/client/enhance.ts')
   assert.equal(MERMAID_SECURITY_LEVEL, 'strict', "imported-content diagrams must never run under 'loose' (label HTML + click callbacks = stored XSS)")
 })
+
+test('enhanceDiagrams: render ids never restart per container (a same-id render tears down the earlier SVG)', async () => {
+  // mermaid.render(id) removes any existing element with that id from the
+  // document BEFORE drawing and leaves nothing behind — so the teach prose's
+  // lks-mermaid-0 died the moment a chat row rendered its own lks-mermaid-0
+  // (and a render whose temporary tree is torn down mid-flight collapses to a
+  // 16px blank box). Caught live on the phone form; desktop raced the same way.
+  const { enhanceDiagrams, setEnhanceDeps } = await import('../src/client/enhance.ts')
+  // minimal DOM fakes: the function needs document.createElement + replaceWith only
+  const g = globalThis as { document?: unknown }
+  const realDoc = g.document
+  g.document = { createElement: () => ({ className: '', innerHTML: '' }) }
+  const ids: string[] = []
+  setEnhanceDeps({ loadMermaid: async () => ({ registerLayoutLoaders() {}, initialize() {}, render: async (id: string) => { ids.push(id); return { svg: '<svg/>' } } }) })
+  const container = (n: number) => ({
+    querySelectorAll: () => Array.from({ length: n }, () => ({ dataset: {} as Record<string, string>, textContent: 'graph LR\n A-->B', parentElement: { replaceWith() {} } })),
+  })
+  try {
+    await enhanceDiagrams(container(2) as unknown as HTMLElement) // the teach prose
+    await enhanceDiagrams(container(1) as unknown as HTMLElement) // a settled chat row
+  } finally {
+    setEnhanceDeps(null)
+    g.document = realDoc
+  }
+  assert.deepEqual(ids, ['lks-mermaid-0', 'lks-mermaid-1', 'lks-mermaid-2'], 'ids keep climbing across containers')
+})
